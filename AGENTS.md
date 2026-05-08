@@ -78,6 +78,14 @@ Rules:
 - Use `justfile` as the minimal command entrypoint.
 - `justfile` must not become a second build system.
 
+## Git
+
+- Use commits to keep the development path clear.
+- Commit within clear boundaries.
+- Do not mix unrelated changes.
+- Never push to a remote unless the user explicitly asks for it.
+- If the user asks for a commit, treat it as a local commit only.
+
 ## Documentation
 
 - Product scope belongs in `DEVELOPING/spec/`.
