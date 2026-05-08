@@ -6,7 +6,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 
 use agents_notifier::config::Config;
-use agents_notifier::paths::{log_file_path, pid_file_path};
+use agents_notifier::paths::{default_config_file_path, log_file_path, pid_file_path};
 use agents_notifier::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_notifier::providers::build_providers;
 use agents_notifier::router::{Provider, Router};
@@ -24,14 +24,14 @@ struct Cli {
 enum Command {
     Watch {
         #[arg(long)]
-        config: PathBuf,
+        config: Option<PathBuf>,
         #[arg(long)]
         background: bool,
     },
     Stop,
     Emit {
         #[arg(long)]
-        config: PathBuf,
+        config: Option<PathBuf>,
         #[arg(long)]
         source: String,
         #[arg(long)]
@@ -50,6 +50,7 @@ async fn main() -> anyhow::Result<()> {
             config: config_path,
             background,
         } => {
+            let config_path = resolve_config_path(config_path)?;
             let config = Config::from_path(&config_path).context("config load failed")?;
             if background {
                 start_background_watch(&config_path)?;
@@ -66,10 +67,18 @@ async fn main() -> anyhow::Result<()> {
             title,
             body,
         } => {
-            let config = Config::from_path(&config).context("config load failed")?;
+            let config_path = resolve_config_path(config)?;
+            let config = Config::from_path(&config_path).context("config load failed")?;
             init_tracing(&config.log.level)?;
             run_emit(&config, &source, title, body).await
         }
+    }
+}
+
+fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+    match config {
+        Some(path) => Ok(path),
+        None => default_config_file_path(),
     }
 }
 

@@ -10,6 +10,10 @@ pub fn log_file_path() -> anyhow::Result<PathBuf> {
     Ok(log_file_path_for_home(&home_dir()?))
 }
 
+pub fn default_config_file_path() -> anyhow::Result<PathBuf> {
+    Ok(default_config_file_path_for_home(&home_dir()?))
+}
+
 pub fn pid_file_path_for_home(home: &Path) -> PathBuf {
     home.join("Library")
         .join("Application Support")
@@ -22,6 +26,12 @@ pub fn log_file_path_for_home(home: &Path) -> PathBuf {
         .join("Logs")
         .join("agents-notifier")
         .join("agents-notifier.log")
+}
+
+pub fn default_config_file_path_for_home(home: &Path) -> PathBuf {
+    home.join(".config")
+        .join("agents-notifier")
+        .join("config.toml")
 }
 
 fn home_dir() -> anyhow::Result<PathBuf> {
@@ -62,6 +72,19 @@ mod tests {
                 .join("Logs")
                 .join("agents-notifier")
                 .join("agents-notifier.log")
+        );
+    }
+
+    #[test]
+    fn builds_default_config_file_path() {
+        let path = default_config_file_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join(".config")
+                .join("agents-notifier")
+                .join("config.toml")
         );
     }
 }

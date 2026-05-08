@@ -44,7 +44,7 @@ Sources do not know providers. Providers do not know sources. The core stays ind
 
 ## Phase 1 Usage
 
-Create a config file:
+Create `~/.config/agents-notifier/config.toml`:
 
 ```toml
 schema_version = 1
@@ -76,13 +76,13 @@ providers = ["phone", "debug"]
 Run the Codex Desktop watcher:
 
 ```bash
-agents-notifier watch --config ~/.config/agents-notifier/config.toml
+agents-notifier watch
 ```
 
 Run it in the background:
 
 ```bash
-agents-notifier watch --background --config ~/.config/agents-notifier/config.toml
+agents-notifier watch --background
 ```
 
 Stop the background watcher:
@@ -95,10 +95,11 @@ Send one notification from a CLI hook:
 
 ```bash
 agents-notifier emit \
-  --config ~/.config/agents-notifier/config.toml \
   --source codex_cli \
   --title "Codex" \
   --body "Codex sent a notification."
 ```
+
+Use `--config <path>` to run with a different config file.
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.
