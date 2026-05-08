@@ -1,0 +1,12 @@
+DEVELOPING/
+
+.DS_Store
+.env
+.env.*
+*.log
+*.pid
+
+target/
+
+.idea/
+.vscode/
