@@ -4,6 +4,7 @@ DEVELOPING/
 .env
 .env.*
 *.log
+!tests/fixtures/*.log
 *.pid
 
 target/
