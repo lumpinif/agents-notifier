@@ -42,3 +42,63 @@ A provider adapter sends the signal to a notification channel.
 
 Sources do not know providers. Providers do not know sources. The core stays independent of any specific agent or notification platform.
 
+## Phase 1 Usage
+
+Create a config file:
+
+```toml
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "my-codex-alerts"
+
+[[providers]]
+id = "debug"
+type = "webhook"
+url_env = "AGENTS_NOTIFIER_WEBHOOK_URL"
+
+[[routes]]
+sources = ["codex_desktop", "codex_cli"]
+providers = ["phone", "debug"]
+```
+
+Run the Codex Desktop watcher:
+
+```bash
+agents-notifier watch --config ~/.config/agents-notifier/config.toml
+```
+
+Run it in the background:
+
+```bash
+agents-notifier watch --background --config ~/.config/agents-notifier/config.toml
+```
+
+Stop the background watcher:
+
+```bash
+agents-notifier stop
+```
+
+Send one notification from a CLI hook:
+
+```bash
+agents-notifier emit \
+  --config ~/.config/agents-notifier/config.toml \
+  --source codex_cli \
+  --title "Codex" \
+  --body "Codex sent a notification."
+```
+
+Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.
