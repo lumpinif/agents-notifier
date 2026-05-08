@@ -1,7 +1,9 @@
 pub mod config;
+pub mod local_ingress;
 pub mod paths;
 pub mod process;
 pub mod providers;
 pub mod router;
+pub mod setup;
 pub mod signal;
 pub mod sources;

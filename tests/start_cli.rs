@@ -1,0 +1,25 @@
+use tempfile::{TempDir, tempdir_in};
+use tokio::process::Command;
+
+#[tokio::test]
+async fn start_fails_with_actionable_message_when_default_config_is_missing() {
+    let home = short_home();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .arg("start")
+        .output()
+        .await
+        .expect("command should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("No agents-notifier config found"));
+    assert!(stderr.contains("Run `agents-notifier start` in an interactive terminal"));
+    assert!(stderr.contains("--config <PATH>"));
+}
+
+fn short_home() -> TempDir {
+    tempdir_in("/tmp").expect("short temp home should be created")
+}

@@ -1,76 +1,32 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use tempfile::tempdir;
-use wiremock::matchers::{body_partial_json, method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
-
-#[tokio::test]
-async fn emit_sends_signal_to_configured_webhook() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/hook"))
-        .and(body_partial_json(serde_json::json!({
-            "schema_version": 1,
-            "source_id": "codex_cli",
-            "source_type": "codex_cli",
-            "title": "Codex",
-            "body": "Codex sent a notification.",
-        })))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&server)
-        .await;
-
-    let config_path = write_config(&server.uri());
-
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .args([
-            "emit",
-            "--config",
-            config_path.to_str().unwrap(),
-            "--source",
-            "codex_cli",
-            "--title",
-            "Codex",
-            "--body",
-            "Codex sent a notification.",
-        ])
-        .output()
-        .expect("command should run");
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
+use serde_json::Value;
+use tempfile::{TempDir, tempdir_in};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::UnixListener;
+use tokio::process::Command;
 
 #[tokio::test]
-async fn emit_uses_default_config_path_when_config_is_omitted() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/hook"))
-        .and(body_partial_json(serde_json::json!({
-            "schema_version": 1,
-            "source_id": "codex_cli",
-            "source_type": "codex_cli",
-            "title": "Codex",
-            "body": "Codex sent a notification.",
-        })))
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&server)
-        .await;
+async fn emit_submits_event_to_local_service_socket() {
+    let home = short_home();
+    let socket_path = socket_path_for_home(home.path());
+    create_parent(&socket_path);
+    let listener = UnixListener::bind(&socket_path).expect("test socket should bind");
 
-    let home = tempdir().expect("tempdir should be created");
-    let config_path = home
-        .path()
-        .join(".config")
-        .join("agents-notifier")
-        .join("config.toml");
-    write_config_at(&config_path, &server.uri());
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("client should connect");
+        let mut raw_request = Vec::new();
+        stream
+            .read_to_end(&mut raw_request)
+            .await
+            .expect("request should be readable");
+        stream
+            .write_all(br#"{"ok":true,"error":null}"#)
+            .await
+            .expect("response should be writable");
+        serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
+    });
 
     let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
         .env("HOME", home.path())
@@ -84,6 +40,7 @@ async fn emit_uses_default_config_path_when_config_is_omitted() {
             "Codex sent a notification.",
         ])
         .output()
+        .await
         .expect("command should run");
 
     assert!(
@@ -91,63 +48,92 @@ async fn emit_uses_default_config_path_when_config_is_omitted() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let request = server.await.expect("server task should finish");
+    assert_eq!(request["source_id"], "codex_cli");
+    assert_eq!(request["title"], "Codex");
+    assert_eq!(request["body"], "Codex sent a notification.");
 }
 
-#[test]
-fn emit_fails_for_missing_source() {
-    let config_path = write_config("https://example.com");
+#[tokio::test]
+async fn emit_fails_when_local_service_rejects_event() {
+    let home = short_home();
+    let socket_path = socket_path_for_home(home.path());
+    create_parent(&socket_path);
+    let listener = UnixListener::bind(&socket_path).expect("test socket should bind");
+
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("client should connect");
+        let mut raw_request = Vec::new();
+        stream
+            .read_to_end(&mut raw_request)
+            .await
+            .expect("request should be readable");
+        stream
+            .write_all(br#"{"ok":false,"error":"source `codex_cli` is not configured"}"#)
+            .await
+            .expect("response should be writable");
+    });
 
     let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
         .args([
             "emit",
-            "--config",
-            config_path.to_str().unwrap(),
             "--source",
-            "missing",
+            "codex_cli",
             "--title",
             "Codex",
             "--body",
-            "Body",
+            "Codex sent a notification.",
         ])
         .output()
+        .await
         .expect("command should run");
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("source `missing` is not configured"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("agents-notifier service rejected local ingress event")
+    );
+
+    server.await.expect("server task should finish");
 }
 
-fn write_config(webhook_server: &str) -> PathBuf {
-    let dir = tempdir().expect("tempdir should be created").keep();
-    let path = dir.join("config.toml");
-    write_config_at(&path, webhook_server);
-    path
+#[tokio::test]
+async fn emit_fails_when_local_service_is_not_running() {
+    let home = short_home();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .args([
+            "emit",
+            "--source",
+            "codex_cli",
+            "--title",
+            "Codex",
+            "--body",
+            "Codex sent a notification.",
+        ])
+        .output()
+        .await
+        .expect("command should run");
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("run `agents-notifier start` first"));
 }
 
-fn write_config_at(path: &Path, webhook_server: &str) {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("config directory should be created");
-    }
+fn socket_path_for_home(home: &Path) -> PathBuf {
+    home.join("Library")
+        .join("Application Support")
+        .join("agents-notifier")
+        .join("agents-notifier.sock")
+}
 
-    fs::write(
-        path,
-        format!(
-            r#"
-schema_version = 1
+fn create_parent(path: &Path) {
+    fs::create_dir_all(path.parent().expect("path should have parent"))
+        .expect("parent directory should be created");
+}
 
-[[sources]]
-id = "codex_cli"
-type = "codex_cli"
-
-[[providers]]
-id = "debug"
-type = "webhook"
-url = "{webhook_server}/hook"
-
-[[routes]]
-sources = ["codex_cli"]
-providers = ["debug"]
-"#
-        ),
-    )
-    .expect("config should be written");
+fn short_home() -> TempDir {
+    tempdir_in("/tmp").expect("short temp home should be created")
 }

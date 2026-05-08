@@ -10,6 +10,10 @@ pub fn log_file_path() -> anyhow::Result<PathBuf> {
     Ok(log_file_path_for_home(&home_dir()?))
 }
 
+pub fn socket_file_path() -> anyhow::Result<PathBuf> {
+    Ok(socket_file_path_for_home(&home_dir()?))
+}
+
 pub fn default_config_file_path() -> anyhow::Result<PathBuf> {
     Ok(default_config_file_path_for_home(&home_dir()?))
 }
@@ -26,6 +30,13 @@ pub fn log_file_path_for_home(home: &Path) -> PathBuf {
         .join("Logs")
         .join("agents-notifier")
         .join("agents-notifier.log")
+}
+
+pub fn socket_file_path_for_home(home: &Path) -> PathBuf {
+    home.join("Library")
+        .join("Application Support")
+        .join("agents-notifier")
+        .join("agents-notifier.sock")
 }
 
 pub fn default_config_file_path_for_home(home: &Path) -> PathBuf {
@@ -72,6 +83,20 @@ mod tests {
                 .join("Logs")
                 .join("agents-notifier")
                 .join("agents-notifier.log")
+        );
+    }
+
+    #[test]
+    fn builds_macos_socket_file_path() {
+        let path = socket_file_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join("Library")
+                .join("Application Support")
+                .join("agents-notifier")
+                .join("agents-notifier.sock")
         );
     }
 

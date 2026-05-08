@@ -28,7 +28,7 @@ The first versions are intentionally small. The architecture is designed so new 
 
 ## Architecture
 
-The core pipeline is:
+The service owns the provider delivery path:
 
 ```text
 Source Adapter -> Signal -> Router -> Provider Adapter
@@ -40,11 +40,25 @@ The router decides where that signal should go.
 
 A provider adapter sends the signal to a notification channel.
 
-Sources do not know providers. Providers do not know sources. The core stays independent of any specific agent or notification platform.
+Sources do not know providers. Providers do not know sources. Short-lived hook commands submit events to the local service; they do not send provider notifications directly. The core stays independent of any specific agent or notification platform.
 
 ## Phase 1 Usage
 
-Create `~/.config/agents-notifier/config.toml`:
+Start the local service:
+
+```bash
+agents-notifier start
+```
+
+On first run, `start` guides you through a minimal ntfy setup, writes `~/.config/agents-notifier/config.toml`, starts the background service, asks you to subscribe on your phone, and sends a test notification through the running service.
+
+If the service is already running, `start` is safe to run again. It reuses the existing config and topic, prints the current phone subscription details, and can send another test notification. Your phone only needs a new subscription if you change the ntfy topic in the config.
+
+ntfy notifications are sent with high priority so mobile clients are more likely to show a banner, play a sound, and vibrate.
+
+If a previous service process exited unexpectedly, `start` cleans up stale local service files and starts a fresh background service.
+
+The generated config looks like this:
 
 ```toml
 schema_version = 1
@@ -73,25 +87,19 @@ sources = ["codex_desktop", "codex_cli"]
 providers = ["phone", "debug"]
 ```
 
-Run the Codex Desktop watcher:
+Run the service in the foreground for debugging:
 
 ```bash
 agents-notifier watch
 ```
 
-Run it in the background:
-
-```bash
-agents-notifier watch --background
-```
-
-Stop the background watcher:
+Stop the background service:
 
 ```bash
 agents-notifier stop
 ```
 
-Send one notification from a CLI hook:
+Submit one event from a CLI runtime hook:
 
 ```bash
 agents-notifier emit \
@@ -100,6 +108,8 @@ agents-notifier emit \
   --body "Codex sent a notification."
 ```
 
-Use `--config <path>` to run with a different config file.
+`emit` submits the event to the running local service. It does not read provider config and does not send to `ntfy` or `webhook` by itself.
+
+Use `--config <path>` with `start` or `watch` to run with a different config file.
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.

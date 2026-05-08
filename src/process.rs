@@ -7,25 +7,41 @@ use anyhow::{Context, anyhow};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StopOutcome {
     MissingPidFile,
+    RemovedStalePidFile { pid: u32 },
     Stopped { pid: u32 },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PidFileState {
+    Missing,
+    Stale { pid: u32 },
+    AgentsNotifier { pid: u32 },
+    OtherProcess { pid: u32 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProcessState {
+    Missing,
+    AgentsNotifier,
+    Other,
+}
+
 pub trait ProcessManager {
-    fn is_agents_notifier(&self, pid: u32) -> anyhow::Result<bool>;
+    fn process_state(&self, pid: u32) -> anyhow::Result<ProcessState>;
     fn terminate(&self, pid: u32) -> anyhow::Result<()>;
 }
 
 pub struct SystemProcessManager;
 
 impl ProcessManager for SystemProcessManager {
-    fn is_agents_notifier(&self, pid: u32) -> anyhow::Result<bool> {
+    fn process_state(&self, pid: u32) -> anyhow::Result<ProcessState> {
         let output = Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "comm="])
             .output()
             .with_context(|| format!("failed to inspect process `{pid}`"))?;
 
         if !output.status.success() {
-            return Ok(false);
+            return Ok(ProcessState::Missing);
         }
 
         let command = String::from_utf8_lossy(&output.stdout);
@@ -34,7 +50,11 @@ impl ProcessManager for SystemProcessManager {
             .and_then(|name| name.to_str())
             .unwrap_or_default();
 
-        Ok(name == "agents-notifier")
+        if name == "agents-notifier" {
+            Ok(ProcessState::AgentsNotifier)
+        } else {
+            Ok(ProcessState::Other)
+        }
     }
 
     fn terminate(&self, pid: u32) -> anyhow::Result<()> {
@@ -55,8 +75,35 @@ pub fn stop_with_manager(
     pid_file_path: &Path,
     manager: &dyn ProcessManager,
 ) -> anyhow::Result<StopOutcome> {
+    let pid = match inspect_pid_file(pid_file_path, manager)? {
+        PidFileState::Missing => return Ok(StopOutcome::MissingPidFile),
+        PidFileState::Stale { pid } => {
+            fs::remove_file(pid_file_path).with_context(|| {
+                format!("failed to remove pid file `{}`", pid_file_path.display())
+            })?;
+            return Ok(StopOutcome::RemovedStalePidFile { pid });
+        }
+        PidFileState::AgentsNotifier { pid } => pid,
+        PidFileState::OtherProcess { pid } => {
+            return Err(anyhow!(
+                "pid file points to `{pid}`, but it is not an agents-notifier process"
+            ));
+        }
+    };
+
+    manager.terminate(pid)?;
+    fs::remove_file(pid_file_path)
+        .with_context(|| format!("failed to remove pid file `{}`", pid_file_path.display()))?;
+
+    Ok(StopOutcome::Stopped { pid })
+}
+
+pub fn inspect_pid_file(
+    pid_file_path: &Path,
+    manager: &dyn ProcessManager,
+) -> anyhow::Result<PidFileState> {
     if !pid_file_path.exists() {
-        return Ok(StopOutcome::MissingPidFile);
+        return Ok(PidFileState::Missing);
     }
 
     let raw_pid = fs::read_to_string(pid_file_path)
@@ -66,17 +113,11 @@ pub fn stop_with_manager(
         .parse()
         .with_context(|| format!("pid file `{}` is invalid", pid_file_path.display()))?;
 
-    if !manager.is_agents_notifier(pid)? {
-        return Err(anyhow!(
-            "pid file points to `{pid}`, but it is not an agents-notifier process"
-        ));
+    match manager.process_state(pid)? {
+        ProcessState::Missing => Ok(PidFileState::Stale { pid }),
+        ProcessState::AgentsNotifier => Ok(PidFileState::AgentsNotifier { pid }),
+        ProcessState::Other => Ok(PidFileState::OtherProcess { pid }),
     }
-
-    manager.terminate(pid)?;
-    fs::remove_file(pid_file_path)
-        .with_context(|| format!("failed to remove pid file `{}`", pid_file_path.display()))?;
-
-    Ok(StopOutcome::Stopped { pid })
 }
 
 #[cfg(test)]
@@ -88,22 +129,22 @@ mod tests {
     use super::*;
 
     struct FakeProcessManager {
-        is_agents_notifier: bool,
+        process_state: ProcessState,
         terminated: RefCell<Vec<u32>>,
     }
 
     impl FakeProcessManager {
-        fn new(is_agents_notifier: bool) -> Self {
+        fn new(process_state: ProcessState) -> Self {
             Self {
-                is_agents_notifier,
+                process_state,
                 terminated: RefCell::new(Vec::new()),
             }
         }
     }
 
     impl ProcessManager for FakeProcessManager {
-        fn is_agents_notifier(&self, _pid: u32) -> anyhow::Result<bool> {
-            Ok(self.is_agents_notifier)
+        fn process_state(&self, _pid: u32) -> anyhow::Result<ProcessState> {
+            Ok(self.process_state.clone())
         }
 
         fn terminate(&self, pid: u32) -> anyhow::Result<()> {
@@ -115,7 +156,7 @@ mod tests {
     #[test]
     fn missing_pid_file_is_success() {
         let dir = tempdir().expect("tempdir should be created");
-        let manager = FakeProcessManager::new(true);
+        let manager = FakeProcessManager::new(ProcessState::AgentsNotifier);
 
         let outcome = stop_with_manager(&dir.path().join("missing.pid"), &manager)
             .expect("missing pid file should be successful");
@@ -125,11 +166,47 @@ mod tests {
     }
 
     #[test]
+    fn inspects_agents_notifier_pid_file() {
+        let dir = tempdir().expect("tempdir should be created");
+        let pid_file = dir.path().join("agents-notifier.pid");
+        fs::write(&pid_file, "123").expect("pid file should be written");
+        let manager = FakeProcessManager::new(ProcessState::AgentsNotifier);
+
+        let state = inspect_pid_file(&pid_file, &manager).expect("pid file should be inspected");
+
+        assert_eq!(state, PidFileState::AgentsNotifier { pid: 123 });
+    }
+
+    #[test]
+    fn inspects_stale_pid_file() {
+        let dir = tempdir().expect("tempdir should be created");
+        let pid_file = dir.path().join("agents-notifier.pid");
+        fs::write(&pid_file, "123").expect("pid file should be written");
+        let manager = FakeProcessManager::new(ProcessState::Missing);
+
+        let state = inspect_pid_file(&pid_file, &manager).expect("pid file should be inspected");
+
+        assert_eq!(state, PidFileState::Stale { pid: 123 });
+    }
+
+    #[test]
+    fn inspects_other_process_pid_file() {
+        let dir = tempdir().expect("tempdir should be created");
+        let pid_file = dir.path().join("agents-notifier.pid");
+        fs::write(&pid_file, "123").expect("pid file should be written");
+        let manager = FakeProcessManager::new(ProcessState::Other);
+
+        let state = inspect_pid_file(&pid_file, &manager).expect("pid file should be inspected");
+
+        assert_eq!(state, PidFileState::OtherProcess { pid: 123 });
+    }
+
+    #[test]
     fn stops_agents_notifier_process_and_removes_pid_file() {
         let dir = tempdir().expect("tempdir should be created");
         let pid_file = dir.path().join("agents-notifier.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
-        let manager = FakeProcessManager::new(true);
+        let manager = FakeProcessManager::new(ProcessState::AgentsNotifier);
 
         let outcome =
             stop_with_manager(&pid_file, &manager).expect("agents-notifier process should stop");
@@ -140,11 +217,26 @@ mod tests {
     }
 
     #[test]
+    fn removes_stale_pid_file() {
+        let dir = tempdir().expect("tempdir should be created");
+        let pid_file = dir.path().join("agents-notifier.pid");
+        fs::write(&pid_file, "123").expect("pid file should be written");
+        let manager = FakeProcessManager::new(ProcessState::Missing);
+
+        let outcome = stop_with_manager(&pid_file, &manager)
+            .expect("stale agents-notifier pid file should be removed");
+
+        assert_eq!(outcome, StopOutcome::RemovedStalePidFile { pid: 123 });
+        assert!(!pid_file.exists());
+        assert!(manager.terminated.borrow().is_empty());
+    }
+
+    #[test]
     fn refuses_to_stop_non_agents_notifier_process() {
         let dir = tempdir().expect("tempdir should be created");
         let pid_file = dir.path().join("agents-notifier.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
-        let manager = FakeProcessManager::new(false);
+        let manager = FakeProcessManager::new(ProcessState::Other);
 
         let err = stop_with_manager(&pid_file, &manager)
             .expect_err("non agents-notifier process should not be stopped");

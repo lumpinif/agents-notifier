@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Config {
     pub schema_version: u32,
     #[serde(default)]
@@ -17,7 +18,7 @@ pub struct Config {
     pub routes: Vec<RouteConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct LogConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
@@ -35,14 +36,14 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SourceConfig {
     pub id: String,
     #[serde(rename = "type")]
     pub source_type: SourceType,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceType {
     CodexDesktop,
@@ -58,18 +59,22 @@ impl SourceType {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ProviderConfig {
     pub id: String,
     #[serde(rename = "type")]
     pub provider_type: ProviderType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url_env: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderType {
     Ntfy,
@@ -85,7 +90,7 @@ impl ProviderType {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RouteConfig {
     pub sources: Vec<String>,
     pub providers: Vec<String>,
@@ -93,6 +98,8 @@ pub struct RouteConfig {
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    #[error("config file not found at {path}")]
+    NotFound { path: String },
     #[error("failed to read config at {path}: {source}")]
     Read {
         path: String,
@@ -121,9 +128,17 @@ pub enum ConfigError {
 
 impl Config {
     pub fn from_path(path: &Path) -> Result<Self, ConfigError> {
-        let raw = fs::read_to_string(path).map_err(|source| ConfigError::Read {
-            path: path.display().to_string(),
-            source,
+        let raw = fs::read_to_string(path).map_err(|source| {
+            if source.kind() == ErrorKind::NotFound {
+                ConfigError::NotFound {
+                    path: path.display().to_string(),
+                }
+            } else {
+                ConfigError::Read {
+                    path: path.display().to_string(),
+                    source,
+                }
+            }
         })?;
 
         Self::from_toml_str(&raw)

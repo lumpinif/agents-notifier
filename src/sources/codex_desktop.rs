@@ -21,6 +21,7 @@ pub async fn watch(
 ) -> anyhow::Result<()> {
     let mut child = Command::new("/usr/bin/log")
         .args(["stream", "--style", "compact", "--predicate", LOG_PREDICATE])
+        .kill_on_drop(true)
         .stdout(Stdio::piped())
         .spawn()
         .context("failed to start macOS unified log stream")?;

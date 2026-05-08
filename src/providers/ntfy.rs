@@ -4,6 +4,8 @@ use crate::config::{ProviderConfig, ProviderType};
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
+const DEFAULT_PRIORITY: &str = "high";
+
 #[derive(Debug)]
 pub struct NtfyProvider {
     id: String,
@@ -47,6 +49,7 @@ impl Provider for NtfyProvider {
                 .client
                 .post(&self.endpoint)
                 .header("Title", &signal.title)
+                .header("Priority", DEFAULT_PRIORITY)
                 .body(signal.body.clone())
                 .send()
                 .await
@@ -94,6 +97,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/topic"))
             .and(header("Title", "Codex"))
+            .and(header("Priority", "high"))
             .and(body_string("Codex sent a notification."))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server)
