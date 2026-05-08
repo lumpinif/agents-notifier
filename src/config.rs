@@ -49,6 +49,15 @@ pub enum SourceType {
     CodexCli,
 }
 
+impl SourceType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CodexDesktop => "codex_desktop",
+            Self::CodexCli => "codex_cli",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ProviderConfig {
     pub id: String,
@@ -65,6 +74,15 @@ pub struct ProviderConfig {
 pub enum ProviderType {
     Ntfy,
     Webhook,
+}
+
+impl ProviderType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Ntfy => "ntfy",
+            Self::Webhook => "webhook",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
