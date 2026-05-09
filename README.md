@@ -61,6 +61,14 @@ On macOS, the service is managed by a LaunchAgent at `~/Library/LaunchAgents/com
 
 If the service is already running, `start` is safe to run again. It reuses the existing config, prints the current service and notification target details, and can send another test notification. Your phone only needs a new ntfy subscription if you change the ntfy topic in the config.
 
+To switch providers later, run:
+
+```bash
+agents-notifier configure
+```
+
+`configure` lets you choose a provider again, rewrites the local config, restarts the LaunchAgent-managed service, and sends a test notification.
+
 ntfy notifications are sent with high priority so mobile clients are more likely to show a banner, play a sound, and vibrate.
 
 If a previous pre-LaunchAgent background process is still present, `start` safely stops or cleans up that legacy runtime before starting the LaunchAgent-managed service.

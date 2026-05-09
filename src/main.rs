@@ -40,6 +40,11 @@ enum Command {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
     },
+    #[command(about = "Choose a notification provider and update the local service")]
+    Configure {
+        #[arg(long, value_name = "PATH", help = "Path to the config file")]
+        config: Option<PathBuf>,
+    },
     #[command(about = "Run the local notification service in the foreground")]
     Watch {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
@@ -62,10 +67,10 @@ enum Command {
 
 struct LoadedConfig {
     config: Config,
-    first_start: Option<FirstStartSetup>,
+    guided_setup: Option<GuidedSetup>,
 }
 
-enum FirstStartSetup {
+enum GuidedSetup {
     Ntfy { topic: String },
     FeishuLark,
 }
@@ -73,6 +78,21 @@ enum FirstStartSetup {
 enum InitialProvider {
     Ntfy,
     FeishuLark,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ConfigWriteMode {
+    Created,
+    Updated,
+}
+
+impl ConfigWriteMode {
+    fn past_tense(self) -> &'static str {
+        match self {
+            Self::Created => "Created",
+            Self::Updated => "Updated",
+        }
+    }
 }
 
 #[tokio::main]
@@ -86,7 +106,14 @@ async fn main() -> anyhow::Result<()> {
             let allow_setup = config_path.is_none();
             let config_path = resolve_config_path(config_path)?;
             let loaded = load_config(&config_path, allow_setup)?;
-            run_start_service(&config_path, loaded).await
+            run_start_service(&config_path, loaded, false).await
+        }
+        Command::Configure {
+            config: config_path,
+        } => {
+            let config_path = resolve_config_path(config_path)?;
+            let loaded = run_configure_setup(&config_path)?;
+            run_start_service(&config_path, loaded, true).await
         }
         Command::Watch {
             config: config_path,
@@ -110,7 +137,7 @@ fn load_config(path: &Path, allow_setup: bool) -> anyhow::Result<LoadedConfig> {
     match Config::from_path(path) {
         Ok(config) => Ok(LoadedConfig {
             config,
-            first_start: None,
+            guided_setup: None,
         }),
         Err(ConfigError::NotFound { path }) if allow_setup && is_interactive_terminal() => {
             run_first_start_setup(Path::new(&path))
@@ -132,13 +159,40 @@ fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     println!("First setup connects one notification provider.");
     println!();
 
+    run_guided_provider_setup(path, ConfigWriteMode::Created)
+}
+
+fn run_configure_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+    if !is_interactive_terminal() {
+        anyhow::bail!(
+            "`agents-notifier configure` must be run in an interactive terminal so you can choose a provider."
+        );
+    }
+
+    println!("Configure notification provider.");
+    println!(
+        "This replaces the provider section in `{}`.",
+        path.display()
+    );
+    println!("It does not change Codex or other agent settings.");
+    println!();
+
+    let mode = if path.exists() {
+        ConfigWriteMode::Updated
+    } else {
+        ConfigWriteMode::Created
+    };
+    run_guided_provider_setup(path, mode)
+}
+
+fn run_guided_provider_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
     match prompt_for_initial_provider()? {
-        InitialProvider::Ntfy => run_first_start_ntfy_setup(path),
-        InitialProvider::FeishuLark => run_first_start_feishu_lark_setup(path),
+        InitialProvider::Ntfy => run_ntfy_setup(path, mode),
+        InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode),
     }
 }
 
-fn run_first_start_ntfy_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+fn run_ntfy_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
     let generated_topic = setup::generated_ntfy_topic();
 
     println!();
@@ -151,18 +205,18 @@ fn run_first_start_ntfy_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     setup::write_config(path, &config)?;
 
     println!();
-    println!("Created config: {}", path.display());
+    println!("{} config: {}", mode.past_tense(), path.display());
     println!("ntfy server: https://ntfy.sh");
     println!("ntfy topic: {topic}");
     println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
-        first_start: Some(FirstStartSetup::Ntfy { topic }),
+        guided_setup: Some(GuidedSetup::Ntfy { topic }),
     })
 }
 
-fn run_first_start_feishu_lark_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+fn run_feishu_lark_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
     println!();
     println!("Feishu/Lark sends notifications to a group through a custom bot webhook.");
     println!("Add a custom bot to the target group, then paste its webhook URL.");
@@ -177,13 +231,13 @@ fn run_first_start_feishu_lark_setup(path: &Path) -> anyhow::Result<LoadedConfig
     setup::write_config(path, &config)?;
 
     println!();
-    println!("Created config: {}", path.display());
+    println!("{} config: {}", mode.past_tense(), path.display());
     println!("Feishu/Lark custom bot: configured");
     println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
-        first_start: Some(FirstStartSetup::FeishuLark),
+        guided_setup: Some(GuidedSetup::FeishuLark),
     })
 }
 
@@ -266,7 +320,11 @@ fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     }
 }
 
-async fn run_start_service(config_path: &Path, loaded: LoadedConfig) -> anyhow::Result<()> {
+async fn run_start_service(
+    config_path: &Path,
+    loaded: LoadedConfig,
+    force_restart: bool,
+) -> anyhow::Result<()> {
     build_providers(&loaded.config).context("provider setup failed")?;
     cleanup_legacy_background_service()?;
 
@@ -274,14 +332,20 @@ async fn run_start_service(config_path: &Path, loaded: LoadedConfig) -> anyhow::
     let definition = build_service_definition(config_path)?;
     let plist_path = launch_agent_plist_path()?;
     let metadata_path = service_metadata_path()?;
-    let outcome = manager.install_or_update(&definition, &plist_path, &metadata_path)?;
+    let outcome = if force_restart {
+        manager.stop(&plist_path)?;
+        remove_socket_file_if_exists()?;
+        manager.install_or_update(&definition, &plist_path, &metadata_path)?
+    } else {
+        manager.install_or_update(&definition, &plist_path, &metadata_path)?
+    };
     wait_for_service(&socket_file_path()?).await?;
 
     let status = manager.status(&plist_path)?;
     print_service_start_outcome(outcome, status.pid, &definition.log_file);
 
-    if let Some(setup) = loaded.first_start {
-        finish_first_start_setup(setup).await?;
+    if let Some(setup) = loaded.guided_setup {
+        finish_guided_setup(setup).await?;
     } else {
         print_notification_targets(&loaded.config);
         offer_test_notification(&loaded.config).await?;
@@ -427,12 +491,12 @@ fn cleanup_legacy_background_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn finish_first_start_setup(setup: FirstStartSetup) -> anyhow::Result<()> {
+async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
     let socket_path = socket_file_path()?;
     wait_for_service(&socket_path).await?;
 
     match setup {
-        FirstStartSetup::Ntfy { topic } => {
+        GuidedSetup::Ntfy { topic } => {
             println!();
             println!("Next: connect your phone.");
             println!("1. Open the ntfy app.");
@@ -444,7 +508,7 @@ async fn finish_first_start_setup(setup: FirstStartSetup) -> anyhow::Result<()> 
                 "After your phone is subscribed, press Enter to send a test notification.",
             )?;
         }
-        FirstStartSetup::FeishuLark => {
+        GuidedSetup::FeishuLark => {
             println!();
             println!("Next: check your Feishu/Lark group.");
             wait_for_enter("Press Enter to send a test notification to the custom bot.")?;

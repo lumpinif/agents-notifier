@@ -37,6 +37,24 @@ async fn watch_background_is_not_supported() {
     assert!(stderr.contains("unexpected argument '--background'"));
 }
 
+#[tokio::test]
+async fn configure_requires_interactive_terminal() {
+    let home = short_home();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .arg("configure")
+        .output()
+        .await
+        .expect("command should run");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("must be run in an interactive terminal"));
+    assert!(stderr.contains("choose a provider"));
+}
+
 fn short_home() -> TempDir {
     tempdir_in("/tmp").expect("short temp home should be created")
 }
