@@ -4,6 +4,7 @@ pub mod paths;
 pub mod process;
 pub mod providers;
 pub mod router;
+pub mod service;
 pub mod setup;
 pub mod signal;
 pub mod sources;

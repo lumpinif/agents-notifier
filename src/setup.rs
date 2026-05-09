@@ -10,6 +10,8 @@ use crate::config::{
 };
 
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
+pub const TEST_NOTIFICATION_SKIPPED_MESSAGE: &str =
+    "Service is running. No test notification was sent.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NtfySubscription {
@@ -164,5 +166,11 @@ mod tests {
                 topic: "agents-notifier-test".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn skipped_test_notification_message_confirms_running_service() {
+        assert!(TEST_NOTIFICATION_SKIPPED_MESSAGE.contains("Service is running"));
+        assert!(TEST_NOTIFICATION_SKIPPED_MESSAGE.contains("No test notification was sent"));
     }
 }

@@ -6,8 +6,20 @@ pub fn pid_file_path() -> anyhow::Result<PathBuf> {
     Ok(pid_file_path_for_home(&home_dir()?))
 }
 
+pub fn app_support_dir_path() -> anyhow::Result<PathBuf> {
+    Ok(app_support_dir_path_for_home(&home_dir()?))
+}
+
+pub fn launch_agent_plist_path() -> anyhow::Result<PathBuf> {
+    Ok(launch_agent_plist_path_for_home(&home_dir()?))
+}
+
 pub fn log_file_path() -> anyhow::Result<PathBuf> {
     Ok(log_file_path_for_home(&home_dir()?))
+}
+
+pub fn service_metadata_path() -> anyhow::Result<PathBuf> {
+    Ok(service_metadata_path_for_home(&home_dir()?))
 }
 
 pub fn socket_file_path() -> anyhow::Result<PathBuf> {
@@ -19,10 +31,19 @@ pub fn default_config_file_path() -> anyhow::Result<PathBuf> {
 }
 
 pub fn pid_file_path_for_home(home: &Path) -> PathBuf {
+    app_support_dir_path_for_home(home).join("agents-notifier.pid")
+}
+
+pub fn app_support_dir_path_for_home(home: &Path) -> PathBuf {
     home.join("Library")
         .join("Application Support")
         .join("agents-notifier")
-        .join("agents-notifier.pid")
+}
+
+pub fn launch_agent_plist_path_for_home(home: &Path) -> PathBuf {
+    home.join("Library")
+        .join("LaunchAgents")
+        .join("com.agents-notifier.service.plist")
 }
 
 pub fn log_file_path_for_home(home: &Path) -> PathBuf {
@@ -33,10 +54,11 @@ pub fn log_file_path_for_home(home: &Path) -> PathBuf {
 }
 
 pub fn socket_file_path_for_home(home: &Path) -> PathBuf {
-    home.join("Library")
-        .join("Application Support")
-        .join("agents-notifier")
-        .join("agents-notifier.sock")
+    app_support_dir_path_for_home(home).join("agents-notifier.sock")
+}
+
+pub fn service_metadata_path_for_home(home: &Path) -> PathBuf {
+    app_support_dir_path_for_home(home).join("service.json")
 }
 
 pub fn default_config_file_path_for_home(home: &Path) -> PathBuf {
@@ -73,6 +95,32 @@ mod tests {
     }
 
     #[test]
+    fn builds_macos_app_support_dir_path() {
+        let path = app_support_dir_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join("Library")
+                .join("Application Support")
+                .join("agents-notifier")
+        );
+    }
+
+    #[test]
+    fn builds_macos_launch_agent_plist_path() {
+        let path = launch_agent_plist_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join("Library")
+                .join("LaunchAgents")
+                .join("com.agents-notifier.service.plist")
+        );
+    }
+
+    #[test]
     fn builds_macos_log_file_path() {
         let path = log_file_path_for_home(Path::new("/Users/tester"));
 
@@ -97,6 +145,20 @@ mod tests {
                 .join("Application Support")
                 .join("agents-notifier")
                 .join("agents-notifier.sock")
+        );
+    }
+
+    #[test]
+    fn builds_service_metadata_path() {
+        let path = service_metadata_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join("Library")
+                .join("Application Support")
+                .join("agents-notifier")
+                .join("service.json")
         );
     }
 

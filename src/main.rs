@@ -1,7 +1,6 @@
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command as StdCommand, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -11,13 +10,15 @@ use tokio::time::sleep;
 use agents_notifier::config::{Config, ConfigError};
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::paths::{
-    default_config_file_path, log_file_path, pid_file_path, socket_file_path,
+    default_config_file_path, launch_agent_plist_path, log_file_path, pid_file_path,
+    service_metadata_path, socket_file_path,
 };
-use agents_notifier::process::{
-    PidFileState, StopOutcome, SystemProcessManager, inspect_pid_file, stop_with_manager,
-};
+use agents_notifier::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_notifier::providers::build_providers;
 use agents_notifier::router::Provider;
+use agents_notifier::service::{
+    LaunchAgentManager, ServiceDefinition, ServiceStartOutcome, ServiceStopOutcome, load_metadata,
+};
 use agents_notifier::setup;
 use agents_notifier::sources::codex_desktop;
 
@@ -34,7 +35,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    #[command(about = "Start the local notification service in the background")]
+    #[command(about = "Set up and start the local notification service")]
     Start {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
@@ -43,11 +44,11 @@ enum Command {
     Watch {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
-        #[arg(long, help = "Start the service in the background")]
-        background: bool,
     },
-    #[command(about = "Stop the background notification service")]
+    #[command(about = "Stop the local notification service")]
     Stop,
+    #[command(about = "Show the local notification service status")]
+    Status,
     #[command(about = "Submit a hook event to the running local service")]
     Emit {
         #[arg(long, help = "Configured source id for this event")]
@@ -68,16 +69,6 @@ struct FirstStartSetup {
     ntfy_topic: String,
 }
 
-struct BackgroundService {
-    pid: u32,
-    log_file: PathBuf,
-}
-
-enum BackgroundStartOutcome {
-    Started(BackgroundService),
-    AlreadyRunning(BackgroundService),
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -89,23 +80,18 @@ async fn main() -> anyhow::Result<()> {
             let allow_setup = config_path.is_none();
             let config_path = resolve_config_path(config_path)?;
             let loaded = load_config(&config_path, allow_setup)?;
-            run_background_service(&config_path, loaded).await
+            run_start_service(&config_path, loaded).await
         }
         Command::Watch {
             config: config_path,
-            background,
         } => {
-            let allow_setup = config_path.is_none() && background;
             let config_path = resolve_config_path(config_path)?;
-            let loaded = load_config(&config_path, allow_setup)?;
-            if background {
-                run_background_service(&config_path, loaded).await
-            } else {
-                init_tracing(&loaded.config.log.level)?;
-                run_watch(&loaded.config).await
-            }
+            let loaded = load_config(&config_path, false)?;
+            init_tracing(&loaded.config.log.level)?;
+            run_watch(&loaded.config).await
         }
         Command::Stop => run_stop(),
+        Command::Status => run_status(),
         Command::Emit {
             source,
             title,
@@ -185,100 +171,72 @@ fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     }
 }
 
-async fn run_background_service(config_path: &Path, loaded: LoadedConfig) -> anyhow::Result<()> {
+async fn run_start_service(config_path: &Path, loaded: LoadedConfig) -> anyhow::Result<()> {
     build_providers(&loaded.config).context("provider setup failed")?;
+    cleanup_legacy_background_service()?;
 
-    match start_background_service(config_path)? {
-        BackgroundStartOutcome::Started(service) => {
-            wait_for_service(&socket_file_path()?).await?;
-            print_started_service(&service);
-            if let Some(setup) = loaded.first_start {
-                finish_first_start_setup(setup).await?;
-            } else {
-                print_ntfy_subscriptions(&loaded.config);
-                offer_test_notification(&loaded.config).await?;
-            }
-        }
-        BackgroundStartOutcome::AlreadyRunning(service) => {
-            print_already_running_service(&service);
-            print_ntfy_subscriptions(&loaded.config);
-            offer_test_notification(&loaded.config).await?;
-        }
+    let manager = LaunchAgentManager::system()?;
+    let definition = build_service_definition(config_path)?;
+    let plist_path = launch_agent_plist_path()?;
+    let metadata_path = service_metadata_path()?;
+    let outcome = manager.install_or_update(&definition, &plist_path, &metadata_path)?;
+    wait_for_service(&socket_file_path()?).await?;
+
+    let status = manager.status(&plist_path)?;
+    print_service_start_outcome(outcome, status.pid, &definition.log_file);
+
+    if let Some(setup) = loaded.first_start {
+        finish_first_start_setup(setup).await?;
+    } else {
+        print_ntfy_subscriptions(&loaded.config);
+        offer_test_notification(&loaded.config).await?;
     }
 
     Ok(())
 }
 
-fn start_background_service(config_path: &Path) -> anyhow::Result<BackgroundStartOutcome> {
-    let pid_file = pid_file_path()?;
+fn build_service_definition(config_path: &Path) -> anyhow::Result<ServiceDefinition> {
+    let binary_path = resolved_current_exe()?;
+    let working_dir = std::env::current_dir().context("failed to detect working directory")?;
     let log_file = log_file_path()?;
-    match inspect_pid_file(&pid_file, &SystemProcessManager)? {
-        PidFileState::Missing => {}
-        PidFileState::Stale { pid } => {
-            remove_stale_runtime_files(&pid_file, &socket_file_path()?).with_context(|| {
-                format!("failed to clean stale service files for exited process `{pid}`")
-            })?;
-        }
-        PidFileState::AgentsNotifier { pid } => {
-            return Ok(BackgroundStartOutcome::AlreadyRunning(BackgroundService {
-                pid,
-                log_file,
-            }));
-        }
-        PidFileState::OtherProcess { pid } => {
-            anyhow::bail!(
-                "pid file already exists at `{}`, but pid `{pid}` is not an agents-notifier process; the pid file may be stale",
-                pid_file.display()
-            );
-        }
-    }
+    let home = std::env::var("HOME").context("HOME is not set")?;
+    let env_path = std::env::var("PATH")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin".to_string());
 
-    if let Some(parent) = pid_file.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create pid directory `{}`", parent.display()))?;
-    }
-    if let Some(parent) = log_file.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create log directory `{}`", parent.display()))?;
-    }
-
-    let stdout = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file)
-        .with_context(|| format!("failed to open log file `{}`", log_file.display()))?;
-    let stderr = stdout
-        .try_clone()
-        .with_context(|| format!("failed to clone log file `{}`", log_file.display()))?;
-
-    let child = StdCommand::new(std::env::current_exe().context("failed to locate current exe")?)
-        .args(["watch", "--config"])
-        .arg(config_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
-        .spawn()
-        .context("failed to start background service")?;
-
-    fs::write(&pid_file, child.id().to_string())
-        .with_context(|| format!("failed to write pid file `{}`", pid_file.display()))?;
-
-    Ok(BackgroundStartOutcome::Started(BackgroundService {
-        pid: child.id(),
+    Ok(ServiceDefinition {
+        binary_path,
+        config_path: config_path.to_path_buf(),
+        working_dir,
         log_file,
-    }))
+        home,
+        env_path,
+    })
 }
 
-fn print_started_service(service: &BackgroundService) {
-    println!("agents-notifier service is running in the background.");
-    println!("pid: {}", service.pid);
-    println!("log: {}", service.log_file.display());
+fn resolved_current_exe() -> anyhow::Result<PathBuf> {
+    let exe = std::env::current_exe().context("failed to locate current executable")?;
+    Ok(fs::canonicalize(&exe).unwrap_or(exe))
 }
 
-fn print_already_running_service(service: &BackgroundService) {
-    println!("agents-notifier service is already running.");
-    println!("pid: {}", service.pid);
-    println!("log: {}", service.log_file.display());
+fn print_service_start_outcome(outcome: ServiceStartOutcome, pid: Option<u32>, log_file: &Path) {
+    match outcome {
+        ServiceStartOutcome::AlreadyRunning => {
+            println!("agents-notifier service is already running.");
+        }
+        ServiceStartOutcome::Started => {
+            println!("agents-notifier service is running.");
+        }
+        ServiceStartOutcome::UpdatedAndStarted => {
+            println!("agents-notifier service was updated and restarted.");
+        }
+    }
+    println!("manager: LaunchAgent");
+    if let Some(pid) = pid {
+        println!("pid: {pid}");
+    }
+    println!("log: {}", log_file.display());
 }
 
 fn print_ntfy_subscriptions(config: &Config) {
@@ -293,6 +251,67 @@ fn print_ntfy_subscriptions(config: &Config) {
         println!("server: {}", subscription.server);
         println!("topic: {}", subscription.topic);
     }
+}
+
+fn print_status_ntfy_subscriptions(config_path: &Path) {
+    match Config::from_path(config_path) {
+        Ok(config) => print_ntfy_subscriptions(&config),
+        Err(error) => {
+            println!();
+            println!("Config status: {error}");
+        }
+    }
+}
+
+fn run_status() -> anyhow::Result<()> {
+    let manager = LaunchAgentManager::system()?;
+    let plist_path = launch_agent_plist_path()?;
+    let metadata_path = service_metadata_path()?;
+    let socket_path = socket_file_path()?;
+    let status = manager.status(&plist_path)?;
+    let metadata = load_metadata(&metadata_path).ok();
+
+    println!("agents-notifier status");
+    println!();
+    println!("manager: {}", status.platform);
+    println!("installed: {}", yes_no(status.installed));
+    println!("running: {}", yes_no(status.running));
+    if let Some(pid) = status.pid {
+        println!("pid: {pid}");
+    }
+    println!("plist: {}", plist_path.display());
+    println!("socket ready: {}", yes_no(socket_path.exists()));
+
+    let config_path = metadata
+        .as_ref()
+        .map(|metadata| PathBuf::from(&metadata.config_path))
+        .unwrap_or(default_config_file_path()?);
+    let log_file = metadata
+        .as_ref()
+        .map(|metadata| PathBuf::from(&metadata.log_file))
+        .unwrap_or(log_file_path()?);
+
+    println!("config: {}", config_path.display());
+    println!("log: {}", log_file.display());
+    print_status_ntfy_subscriptions(&config_path);
+
+    Ok(())
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
+}
+
+fn cleanup_legacy_background_service() -> anyhow::Result<()> {
+    let pid_file = pid_file_path()?;
+    match stop_with_manager(&pid_file, &SystemProcessManager)? {
+        StopOutcome::MissingPidFile => {}
+        StopOutcome::RemovedStalePidFile { .. } | StopOutcome::Stopped { .. } => {
+            remove_socket_file_if_exists()?;
+        }
+    }
+
+    Ok(())
 }
 
 async fn finish_first_start_setup(setup: FirstStartSetup) -> anyhow::Result<()> {
@@ -335,6 +354,7 @@ async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
     }
 
     if !prompt_yes_no("Send a test notification now? [Y/n] ")? {
+        println!("{}", setup::TEST_NOTIFICATION_SKIPPED_MESSAGE);
         return Ok(());
     }
 
@@ -416,37 +436,29 @@ fn prompt_yes_no(prompt: &str) -> anyhow::Result<bool> {
 
 fn run_stop() -> anyhow::Result<()> {
     init_tracing("info")?;
-    let pid_file = pid_file_path()?;
-    match stop_with_manager(&pid_file, &SystemProcessManager)? {
-        StopOutcome::MissingPidFile => {
-            println!("agents-notifier is not running.");
+    let manager = LaunchAgentManager::system()?;
+    let plist_path = launch_agent_plist_path()?;
+    match manager.stop(&plist_path)? {
+        ServiceStopOutcome::NotInstalled => {
+            println!("agents-notifier service is not installed.");
         }
+        ServiceStopOutcome::AlreadyStopped => {
+            println!("agents-notifier service is already stopped.");
+        }
+        ServiceStopOutcome::Stopped => {
+            println!("agents-notifier service stopped.");
+        }
+    }
+
+    remove_socket_file_if_exists()?;
+    match stop_with_manager(&pid_file_path()?, &SystemProcessManager)? {
+        StopOutcome::MissingPidFile => {}
         StopOutcome::RemovedStalePidFile { pid } => {
-            remove_socket_file_if_exists()?;
-            println!("agents-notifier is not running.");
             println!("removed stale pid file for process {pid}.");
         }
         StopOutcome::Stopped { pid } => {
-            remove_socket_file_if_exists()?;
-            println!("agents-notifier stopped process {pid}.");
+            println!("stopped legacy background process {pid}.");
         }
-    }
-    Ok(())
-}
-
-fn remove_stale_runtime_files(pid_file: &Path, socket_file: &Path) -> anyhow::Result<()> {
-    if pid_file.exists() {
-        fs::remove_file(pid_file)
-            .with_context(|| format!("failed to remove stale pid file `{}`", pid_file.display()))?;
-    }
-
-    if socket_file.exists() {
-        fs::remove_file(socket_file).with_context(|| {
-            format!(
-                "failed to remove stale socket file `{}`",
-                socket_file.display()
-            )
-        })?;
     }
 
     Ok(())

@@ -52,11 +52,13 @@ agents-notifier start
 
 On first run, `start` guides you through a minimal ntfy setup, writes `~/.config/agents-notifier/config.toml`, starts the background service, asks you to subscribe on your phone, and sends a test notification through the running service.
 
-If the service is already running, `start` is safe to run again. It reuses the existing config and topic, prints the current phone subscription details, and can send another test notification. Your phone only needs a new subscription if you change the ntfy topic in the config.
+On macOS, the service is managed by a LaunchAgent at `~/Library/LaunchAgents/com.agents-notifier.service.plist`. The LaunchAgent runs `agents-notifier watch --config <path>` as the long-running worker, so the service can keep running after the terminal closes and can start again when you log in.
+
+If the service is already running, `start` is safe to run again. It reuses the existing config and topic, prints the current service and phone subscription details, and can send another test notification. Your phone only needs a new subscription if you change the ntfy topic in the config.
 
 ntfy notifications are sent with high priority so mobile clients are more likely to show a banner, play a sound, and vibrate.
 
-If a previous service process exited unexpectedly, `start` cleans up stale local service files and starts a fresh background service.
+If a previous pre-LaunchAgent background process is still present, `start` safely stops or cleans up that legacy runtime before starting the LaunchAgent-managed service.
 
 The generated config looks like this:
 
@@ -93,7 +95,13 @@ Run the service in the foreground for debugging:
 agents-notifier watch
 ```
 
-Stop the background service:
+Show service status:
+
+```bash
+agents-notifier status
+```
+
+Stop the service:
 
 ```bash
 agents-notifier stop
@@ -110,6 +118,6 @@ agents-notifier emit \
 
 `emit` submits the event to the running local service. It does not read provider config and does not send to `ntfy` or `webhook` by itself.
 
-Use `--config <path>` with `start` or `watch` to run with a different config file.
+Use `--config <path>` with `start` or `watch` to run with a different config file. `start` installs or updates the LaunchAgent to use that config path; `watch` runs the worker directly in the foreground and does not install service files.
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.
