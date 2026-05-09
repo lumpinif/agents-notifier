@@ -114,6 +114,8 @@ mod tests {
             topic: None,
             url: Some(format!("{}/hook", server.uri())),
             url_env: None,
+            secret: None,
+            secret_env: None,
         })
         .expect("provider config should be valid");
 
@@ -132,6 +134,8 @@ mod tests {
             topic: None,
             url: Some("https://example.com/hook".to_string()),
             url_env: Some("AGENTS_NOTIFIER_WEBHOOK_URL".to_string()),
+            secret: None,
+            secret_env: None,
         })
         .expect_err("ambiguous URL config should fail");
 
@@ -154,6 +158,8 @@ mod tests {
             topic: None,
             url: Some(format!("{}/hook", server.uri())),
             url_env: None,
+            secret: None,
+            secret_env: None,
         })
         .expect("provider config should be valid");
 

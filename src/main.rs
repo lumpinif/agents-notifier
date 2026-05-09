@@ -65,8 +65,14 @@ struct LoadedConfig {
     first_start: Option<FirstStartSetup>,
 }
 
-struct FirstStartSetup {
-    ntfy_topic: String,
+enum FirstStartSetup {
+    Ntfy { topic: String },
+    FeishuLark,
+}
+
+enum InitialProvider {
+    Ntfy,
+    FeishuLark,
 }
 
 #[tokio::main]
@@ -121,11 +127,22 @@ fn is_interactive_terminal() -> bool {
 }
 
 fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
-    let generated_topic = setup::generated_ntfy_topic();
-
     println!("No agents-notifier config found at `{}`.", path.display());
     println!();
-    println!("First setup will use ntfy, the simplest provider for Phase 1.");
+    println!("First setup connects one notification provider.");
+    println!();
+
+    match prompt_for_initial_provider()? {
+        InitialProvider::Ntfy => run_first_start_ntfy_setup(path),
+        InitialProvider::FeishuLark => run_first_start_feishu_lark_setup(path),
+    }
+}
+
+fn run_first_start_ntfy_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+    let generated_topic = setup::generated_ntfy_topic();
+
+    println!();
+    println!("ntfy sends notifications to your phone through a topic subscription.");
     println!("Install the ntfy app on your phone, then subscribe to the topic below.");
     println!();
 
@@ -141,8 +158,55 @@ fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
 
     Ok(LoadedConfig {
         config,
-        first_start: Some(FirstStartSetup { ntfy_topic: topic }),
+        first_start: Some(FirstStartSetup::Ntfy { topic }),
     })
+}
+
+fn run_first_start_feishu_lark_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Feishu/Lark sends notifications to a group through a custom bot webhook.");
+    println!("Add a custom bot to the target group, then paste its webhook URL.");
+    println!(
+        "If you enable security, use Signature Verification. Keyword security can block notifications unless every message contains your keyword."
+    );
+    println!();
+
+    let webhook_url = prompt_for_feishu_lark_webhook_url()?;
+    let secret = prompt_for_feishu_lark_secret()?;
+    let config = setup::build_feishu_lark_config(&webhook_url, secret);
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("Created config: {}", path.display());
+    println!("Feishu/Lark custom bot: configured");
+    println!("Starting agents-notifier now.");
+
+    Ok(LoadedConfig {
+        config,
+        first_start: Some(FirstStartSetup::FeishuLark),
+    })
+}
+
+fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
+    loop {
+        println!("Where should Agents Notifier send notifications?");
+        println!("1. ntfy");
+        println!("2. Feishu/Lark custom bot");
+        print!("Choose a provider [1/2]: ");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read provider choice")?;
+
+        match input.trim() {
+            "" | "1" => return Ok(InitialProvider::Ntfy),
+            "2" => return Ok(InitialProvider::FeishuLark),
+            _ => println!("Please enter 1 or 2."),
+        }
+        println!();
+    }
 }
 
 fn prompt_for_ntfy_topic(generated_topic: &str) -> anyhow::Result<String> {
@@ -162,6 +226,37 @@ fn prompt_for_ntfy_topic(generated_topic: &str) -> anyhow::Result<String> {
             }
         }
     }
+}
+
+fn prompt_for_feishu_lark_webhook_url() -> anyhow::Result<String> {
+    loop {
+        print!("Webhook URL: ");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read webhook URL")?;
+
+        match setup::resolve_feishu_lark_webhook_url(&input) {
+            Ok(url) => return Ok(url),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_feishu_lark_secret() -> anyhow::Result<Option<String>> {
+    print!("Signing secret, or press Enter if you did not enable Signature Verification: ");
+    io::stdout().flush().context("failed to flush stdout")?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("failed to read signing secret")?;
+
+    Ok(setup::resolve_feishu_lark_secret(&input))
 }
 
 fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
@@ -188,7 +283,7 @@ async fn run_start_service(config_path: &Path, loaded: LoadedConfig) -> anyhow::
     if let Some(setup) = loaded.first_start {
         finish_first_start_setup(setup).await?;
     } else {
-        print_ntfy_subscriptions(&loaded.config);
+        print_notification_targets(&loaded.config);
         offer_test_notification(&loaded.config).await?;
     }
 
@@ -239,23 +334,41 @@ fn print_service_start_outcome(outcome: ServiceStartOutcome, pid: Option<u32>, l
     println!("log: {}", log_file.display());
 }
 
-fn print_ntfy_subscriptions(config: &Config) {
+fn print_notification_targets(config: &Config) {
     let subscriptions = setup::ntfy_subscriptions(config);
-    if subscriptions.is_empty() {
-        return;
+    let feishu_lark_targets = setup::feishu_lark_targets(config);
+    if !subscriptions.is_empty() || !feishu_lark_targets.is_empty() {
+        println!();
     }
 
-    println!();
-    println!("Phone subscription:");
-    for subscription in subscriptions {
-        println!("server: {}", subscription.server);
-        println!("topic: {}", subscription.topic);
+    if !subscriptions.is_empty() {
+        println!("Phone subscription:");
+        for subscription in subscriptions {
+            println!("server: {}", subscription.server);
+            println!("topic: {}", subscription.topic);
+        }
+    }
+
+    if !feishu_lark_targets.is_empty() {
+        println!("Feishu/Lark custom bot:");
+        for target in feishu_lark_targets {
+            println!("provider: {}", target.provider_id);
+            println!("webhook: {}", target.webhook_host);
+            println!(
+                "signature verification: {}",
+                if target.signed {
+                    "configured"
+                } else {
+                    "not configured"
+                }
+            );
+        }
     }
 }
 
-fn print_status_ntfy_subscriptions(config_path: &Path) {
+fn print_status_notification_targets(config_path: &Path) {
     match Config::from_path(config_path) {
-        Ok(config) => print_ntfy_subscriptions(&config),
+        Ok(config) => print_notification_targets(&config),
         Err(error) => {
             println!();
             println!("Config status: {error}");
@@ -293,7 +406,7 @@ fn run_status() -> anyhow::Result<()> {
 
     println!("config: {}", config_path.display());
     println!("log: {}", log_file.display());
-    print_status_ntfy_subscriptions(&config_path);
+    print_status_notification_targets(&config_path);
 
     Ok(())
 }
@@ -318,25 +431,34 @@ async fn finish_first_start_setup(setup: FirstStartSetup) -> anyhow::Result<()> 
     let socket_path = socket_file_path()?;
     wait_for_service(&socket_path).await?;
 
-    println!();
-    println!("Next: connect your phone.");
-    println!("1. Open the ntfy app.");
-    println!("2. Add a subscription.");
-    println!("3. Server: https://ntfy.sh");
-    println!("4. Topic: {}", setup.ntfy_topic);
-    println!();
-    wait_for_enter("After your phone is subscribed, press Enter to send a test notification.")?;
+    match setup {
+        FirstStartSetup::Ntfy { topic } => {
+            println!();
+            println!("Next: connect your phone.");
+            println!("1. Open the ntfy app.");
+            println!("2. Add a subscription.");
+            println!("3. Server: https://ntfy.sh");
+            println!("4. Topic: {topic}");
+            println!();
+            wait_for_enter(
+                "After your phone is subscribed, press Enter to send a test notification.",
+            )?;
+        }
+        FirstStartSetup::FeishuLark => {
+            println!();
+            println!("Next: check your Feishu/Lark group.");
+            wait_for_enter("Press Enter to send a test notification to the custom bot.")?;
+        }
+    }
 
     send_test_notification().await?;
 
     println!("Test notification sent.");
-    if prompt_yes_no("Did it arrive on your phone? [Y/n] ")? {
-        println!("Setup complete. Codex Desktop notifications can now be forwarded to your phone.");
+    if prompt_yes_no("Did it arrive? [Y/n] ")? {
+        println!("Setup complete. Codex Desktop notifications can now be forwarded.");
     } else {
-        println!("The service is still running, but the phone did not receive the test.");
-        println!("Check that the ntfy app is subscribed to exactly this topic:");
-        println!("{}", setup.ntfy_topic);
-        println!("Then run this test again:");
+        println!("The service is still running, but the test notification did not arrive.");
+        println!("Check the provider settings in your config, then run this test again:");
         println!(
             "agents-notifier emit --source codex_cli --title \"Agents Notifier\" --body \"Test notification from your Mac.\""
         );
@@ -346,10 +468,7 @@ async fn finish_first_start_setup(setup: FirstStartSetup) -> anyhow::Result<()> 
 }
 
 async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
-    if !is_interactive_terminal()
-        || setup::ntfy_subscriptions(config).is_empty()
-        || config.source("codex_cli").is_none()
-    {
+    if !is_interactive_terminal() || !can_send_test_notification(config) {
         return Ok(());
     }
 
@@ -360,16 +479,21 @@ async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
 
     send_test_notification().await?;
     println!("Test notification sent.");
-    if prompt_yes_no("Did it arrive on your phone? [Y/n] ")? {
-        println!(
-            "ntfy is working. Codex Desktop notifications can now be forwarded to your phone."
-        );
+    if prompt_yes_no("Did it arrive? [Y/n] ")? {
+        println!("Agents Notifier is working. Codex Desktop notifications can now be forwarded.");
     } else {
-        println!("The service is running, but the phone did not receive the test.");
-        println!("Check that the ntfy app is subscribed to exactly the topic printed above.");
+        println!("The service is running, but the test notification did not arrive.");
+        println!("Check the provider settings printed above.");
     }
 
     Ok(())
+}
+
+fn can_send_test_notification(config: &Config) -> bool {
+    config.source("codex_cli").is_some()
+        && config.routes.iter().any(|route| {
+            route.sources.iter().any(|source| source == "codex_cli") && !route.providers.is_empty()
+        })
 }
 
 async fn send_test_notification() -> anyhow::Result<()> {
@@ -381,9 +505,8 @@ async fn send_test_notification() -> anyhow::Result<()> {
         &LocalSignalEvent {
             source_id: "codex_cli".to_string(),
             title: "Agents Notifier".to_string(),
-            body:
-                "Test notification from your Mac. If this arrived on your phone, ntfy is working."
-                    .to_string(),
+            body: "Test notification from your Mac. If this arrived, Agents Notifier is working."
+                .to_string(),
         },
     )
     .await

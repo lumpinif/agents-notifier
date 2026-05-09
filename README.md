@@ -50,17 +50,22 @@ Start the local service:
 agents-notifier start
 ```
 
-On first run, `start` guides you through a minimal ntfy setup, writes `~/.config/agents-notifier/config.toml`, starts the background service, asks you to subscribe on your phone, and sends a test notification through the running service.
+On first run, `start` guides you through one notification provider, writes `~/.config/agents-notifier/config.toml`, starts the background service, and sends a test notification through the running service.
+
+The guided setup supports:
+
+- `ntfy`, for phone notifications through a topic subscription.
+- Feishu/Lark Custom Bot, for posting notifications into one group chat through a custom bot webhook.
 
 On macOS, the service is managed by a LaunchAgent at `~/Library/LaunchAgents/com.agents-notifier.service.plist`. The LaunchAgent runs `agents-notifier watch --config <path>` as the long-running worker, so the service can keep running after the terminal closes and can start again when you log in.
 
-If the service is already running, `start` is safe to run again. It reuses the existing config and topic, prints the current service and phone subscription details, and can send another test notification. Your phone only needs a new subscription if you change the ntfy topic in the config.
+If the service is already running, `start` is safe to run again. It reuses the existing config, prints the current service and notification target details, and can send another test notification. Your phone only needs a new ntfy subscription if you change the ntfy topic in the config.
 
 ntfy notifications are sent with high priority so mobile clients are more likely to show a banner, play a sound, and vibrate.
 
 If a previous pre-LaunchAgent background process is still present, `start` safely stops or cleans up that legacy runtime before starting the LaunchAgent-managed service.
 
-The generated config looks like this:
+A config can look like this:
 
 ```toml
 schema_version = 1
@@ -84,9 +89,15 @@ id = "debug"
 type = "webhook"
 url_env = "AGENTS_NOTIFIER_WEBHOOK_URL"
 
+[[providers]]
+id = "work_chat"
+type = "feishu_lark"
+url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
+secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
+
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug"]
+providers = ["phone", "debug", "work_chat"]
 ```
 
 Run the service in the foreground for debugging:
@@ -116,8 +127,10 @@ agents-notifier emit \
   --body "Codex sent a notification."
 ```
 
-`emit` submits the event to the running local service. It does not read provider config and does not send to `ntfy` or `webhook` by itself.
+`emit` submits the event to the running local service. It does not read provider config and does not send to `ntfy`, Feishu/Lark, or `webhook` by itself.
 
 Use `--config <path>` with `start` or `watch` to run with a different config file. `start` installs or updates the LaunchAgent to use that config path; `watch` runs the worker directly in the foreground and does not install service files.
+
+Feishu/Lark Custom Bot uses the official custom bot webhook format and sends a plain text message. If Signature Verification is enabled for the bot, set `secret` or `secret_env`.
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.

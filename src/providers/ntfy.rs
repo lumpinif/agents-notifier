@@ -110,6 +110,8 @@ mod tests {
             topic: Some("topic".to_string()),
             url: None,
             url_env: None,
+            secret: None,
+            secret_env: None,
         })
         .expect("provider config should be valid");
 
@@ -135,6 +137,8 @@ mod tests {
             topic: Some("topic".to_string()),
             url: None,
             url_env: None,
+            secret: None,
+            secret_env: None,
         })
         .expect("provider config should be valid");
 

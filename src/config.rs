@@ -72,6 +72,10 @@ pub struct ProviderConfig {
     pub url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret_env: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -79,6 +83,7 @@ pub struct ProviderConfig {
 pub enum ProviderType {
     Ntfy,
     Webhook,
+    FeishuLark,
 }
 
 impl ProviderType {
@@ -86,6 +91,7 @@ impl ProviderType {
         match self {
             Self::Ntfy => "ntfy",
             Self::Webhook => "webhook",
+            Self::FeishuLark => "feishu_lark",
         }
     }
 }
@@ -124,6 +130,12 @@ pub enum ConfigError {
     },
     #[error("webhook provider `{provider_id}` must set exactly one of `url` or `url_env`")]
     InvalidWebhookUrlSource { provider_id: String },
+    #[error("feishu_lark provider `{provider_id}` must set exactly one of `url` or `url_env`")]
+    InvalidFeishuLarkUrlSource { provider_id: String },
+    #[error(
+        "feishu_lark provider `{provider_id}` must set at most one of `secret` or `secret_env`"
+    )]
+    InvalidFeishuLarkSecretSource { provider_id: String },
 }
 
 impl Config {
@@ -215,6 +227,23 @@ impl ProviderConfig {
                     });
                 }
             }
+            ProviderType::FeishuLark => {
+                let has_url = is_present(self.url.as_deref());
+                let has_url_env = is_present(self.url_env.as_deref());
+                if has_url == has_url_env {
+                    return Err(ConfigError::InvalidFeishuLarkUrlSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+
+                let has_secret = is_present(self.secret.as_deref());
+                let has_secret_env = is_present(self.secret_env.as_deref());
+                if has_secret && has_secret_env {
+                    return Err(ConfigError::InvalidFeishuLarkSecretSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -262,9 +291,15 @@ id = "debug_webhook"
 type = "webhook"
 url_env = "AGENTS_NOTIFIER_WEBHOOK_URL"
 
+[[providers]]
+id = "work_chat"
+type = "feishu_lark"
+url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
+secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
+
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug_webhook"]
+providers = ["phone", "debug_webhook", "work_chat"]
 "#;
 
     #[test]
@@ -273,7 +308,7 @@ providers = ["phone", "debug_webhook"]
 
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.sources.len(), 2);
-        assert_eq!(config.providers.len(), 2);
+        assert_eq!(config.providers.len(), 3);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
     }
@@ -350,6 +385,47 @@ providers = ["phone"]
         assert!(matches!(
             err,
             ConfigError::InvalidWebhookUrlSource { provider_id } if provider_id == "debug_webhook"
+        ));
+    }
+
+    #[test]
+    fn rejects_feishu_lark_without_webhook_url() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "work_chat"
+type = "feishu_lark"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["work_chat"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing webhook URL should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidFeishuLarkUrlSource { provider_id } if provider_id == "work_chat"
+        ));
+    }
+
+    #[test]
+    fn rejects_feishu_lark_with_both_secret_sources() {
+        let raw = VALID_CONFIG.replace(
+            "secret_env = \"AGENTS_NOTIFIER_FEISHU_LARK_SECRET\"",
+            "secret = \"inline-secret\"\nsecret_env = \"AGENTS_NOTIFIER_FEISHU_LARK_SECRET\"",
+        );
+
+        let err = Config::from_toml_str(&raw).expect_err("ambiguous secret source should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidFeishuLarkSecretSource { provider_id } if provider_id == "work_chat"
         ));
     }
 }

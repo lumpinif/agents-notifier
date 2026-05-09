@@ -90,6 +90,8 @@ mod tests {
                 topic: None,
                 url: Some("https://example.com/hook".to_string()),
                 url_env: None,
+                secret: None,
+                secret_env: None,
             }],
             routes: vec![RouteConfig {
                 sources: vec!["codex_cli".to_string()],

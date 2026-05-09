@@ -315,6 +315,8 @@ mod tests {
                     topic: Some("topic".to_string()),
                     url: None,
                     url_env: None,
+                    secret: None,
+                    secret_env: None,
                 },
                 ProviderConfig {
                     id: "debug".to_string(),
@@ -323,6 +325,8 @@ mod tests {
                     topic: None,
                     url: Some("https://example.com/hook".to_string()),
                     url_env: None,
+                    secret: None,
+                    secret_env: None,
                 },
             ],
             routes,
