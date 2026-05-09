@@ -132,13 +132,13 @@ Submit one event from a CLI runtime hook:
 agents-notifier emit \
   --source codex_cli \
   --title "Codex" \
-  --body "Codex sent a notification."
+  --body "Codex finished a job."
 ```
 
 `emit` submits the event to the running local service. It does not read provider config and does not send to `ntfy`, Feishu/Lark, or `webhook` by itself.
 
 Use `--config <path>` with `start` or `watch` to run with a different config file. `start` installs or updates the LaunchAgent to use that config path; `watch` runs the worker directly in the foreground and does not install service files.
 
-Feishu/Lark Custom Bot uses the official custom bot webhook format and sends a plain text message. If Signature Verification is enabled for the bot, set `secret` or `secret_env`.
+Feishu/Lark Custom Bot uses the official custom bot webhook format and sends a plain text message. Message time is shown in the Mac's local time with a numeric UTC offset. If Signature Verification is enabled for the bot, set `secret` or `secret_env`.
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.

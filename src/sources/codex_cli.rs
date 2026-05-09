@@ -43,13 +43,13 @@ mod tests {
     fn creates_signal_from_cli_args() {
         let config = test_config(SourceType::CodexCli);
 
-        let signal = create_signal(&config, "codex_cli", "Codex", "Codex sent a notification.")
+        let signal = create_signal(&config, "codex_cli", "Codex", "Codex finished a job.")
             .expect("codex_cli source should create signal");
 
         assert_eq!(signal.source_id, "codex_cli");
         assert_eq!(signal.source_type, "codex_cli");
         assert_eq!(signal.title, "Codex");
-        assert_eq!(signal.body, "Codex sent a notification.");
+        assert_eq!(signal.body, "Codex finished a job.");
     }
 
     #[test]

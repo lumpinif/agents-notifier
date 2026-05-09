@@ -101,7 +101,7 @@ pub fn signal_from_log_line(source: &SourceConfig, line: &str) -> Option<Signal>
         source.id.clone(),
         source.source_type.as_str(),
         "Codex",
-        "Codex sent a notification.",
+        "Codex finished a job.",
         metadata,
     ))
 }
@@ -132,7 +132,7 @@ mod tests {
         assert_eq!(signal.source_id, "codex_desktop");
         assert_eq!(signal.source_type, "codex_desktop");
         assert_eq!(signal.title, "Codex");
-        assert_eq!(signal.body, "Codex sent a notification.");
+        assert_eq!(signal.body, "Codex finished a job.");
         assert_eq!(
             signal.metadata.get("raw_notification_id"),
             Some(&"ABCD-1234".to_string())

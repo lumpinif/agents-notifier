@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -210,17 +210,32 @@ fn sign_request(timestamp: &str, secret: &str) -> String {
 }
 
 fn format_signal_text(signal: &Signal) -> String {
+    format_signal_text_with_time(signal, &format_local_timestamp(signal.timestamp))
+}
+
+fn format_signal_text_with_time(signal: &Signal, formatted_time: &str) -> String {
     format!(
         "{}\n\n{}\n\nSource: {}\nTime: {}",
         signal.title,
         signal.body,
-        signal.source_id,
-        format_timestamp(signal.timestamp)
+        source_display_name(signal),
+        formatted_time
     )
 }
 
-fn format_timestamp(timestamp: DateTime<Utc>) -> String {
-    timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
+    timestamp
+        .with_timezone(&Local)
+        .format("%Y-%m-%d %H:%M:%S %:z")
+        .to_string()
+}
+
+fn source_display_name(signal: &Signal) -> &str {
+    match signal.source_type.as_str() {
+        "codex_desktop" => "Codex Desktop",
+        "codex_cli" => "Codex CLI",
+        _ => signal.source_id.as_str(),
+    }
 }
 
 fn present(value: Option<&str>) -> Option<&str> {
@@ -233,7 +248,7 @@ mod tests {
 
     use chrono::{DateTime, Utc};
     use serde_json::json;
-    use wiremock::matchers::{body_json, body_partial_json, method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
@@ -243,11 +258,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/open-apis/bot/v2/hook/test"))
-            .and(body_json(json!({
-                "msg_type": "text",
-                "content": {
-                    "text": "Codex\n\nCodex sent a notification.\n\nSource: codex_desktop\nTime: 2026-05-08 12:00:00 UTC"
-                }
+            .and(body_partial_json(json!({
+                "msg_type": "text"
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "code": 0,
@@ -273,6 +285,21 @@ mod tests {
             .send(&test_signal())
             .await
             .expect("feishu_lark send should succeed");
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("requests should be recorded");
+        let body: serde_json::Value = requests[0]
+            .body_json()
+            .expect("request body should be JSON");
+        let text = body["content"]["text"]
+            .as_str()
+            .expect("text content should be present");
+        assert!(text.contains("Codex\n\nCodex finished a job."));
+        assert!(text.contains("Source: Codex Desktop"));
+        assert!(text.contains("Time: "));
+        assert!(!text.contains("UTC"));
     }
 
     #[tokio::test]
@@ -283,7 +310,7 @@ mod tests {
             .and(body_partial_json(json!({
                 "msg_type": "text",
                 "content": {
-                    "text": "Codex\n\nCodex sent a notification.\n\nSource: codex_desktop\nTime: 2026-05-08 12:00:00 UTC"
+                    "text": format_signal_text(&test_signal())
                 }
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -334,6 +361,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn formats_message_with_display_source_and_supplied_time() {
+        assert_eq!(
+            format_signal_text_with_time(&test_signal(), "2026-05-08 20:00:00 +08:00"),
+            "Codex\n\nCodex finished a job.\n\nSource: Codex Desktop\nTime: 2026-05-08 20:00:00 +08:00"
+        );
+    }
+
+    #[test]
+    fn formats_local_timestamp_with_numeric_offset() {
+        let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let formatted = format_local_timestamp(timestamp);
+
+        assert_eq!(formatted.len(), "2026-05-08 20:00:00 +08:00".len());
+        assert!(matches!(formatted.as_bytes()[20], b'+' | b'-'));
+        assert!(!formatted.contains("UTC"));
+    }
+
     #[tokio::test]
     async fn returns_error_for_non_success_response_code() {
         let server = MockServer::start().await;
@@ -377,7 +425,7 @@ mod tests {
             "codex_desktop",
             "codex_desktop",
             "Codex",
-            "Codex sent a notification.",
+            "Codex finished a job.",
             timestamp,
             BTreeMap::new(),
         )

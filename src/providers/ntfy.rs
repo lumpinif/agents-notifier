@@ -98,7 +98,7 @@ mod tests {
             .and(path("/topic"))
             .and(header("Title", "Codex"))
             .and(header("Priority", "high"))
-            .and(body_string("Codex sent a notification."))
+            .and(body_string("Codex finished a job."))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server)
             .await;
@@ -160,7 +160,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "Codex sent a notification.",
+            "Codex finished a job.",
             timestamp,
             BTreeMap::new(),
         )

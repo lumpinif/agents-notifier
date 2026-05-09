@@ -76,7 +76,7 @@ mod tests {
             "codex_desktop",
             "codex_desktop",
             "Codex",
-            "Codex sent a notification.",
+            "Codex finished a job.",
             timestamp,
             metadata,
         );
@@ -86,7 +86,7 @@ mod tests {
         assert_eq!(signal.source_id, "codex_desktop");
         assert_eq!(signal.source_type, "codex_desktop");
         assert_eq!(signal.title, "Codex");
-        assert_eq!(signal.body, "Codex sent a notification.");
+        assert_eq!(signal.body, "Codex finished a job.");
         assert_eq!(
             signal.metadata.get("raw_notification_id"),
             Some(&"1234".to_string())
@@ -103,7 +103,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "Codex sent a notification.",
+            "Codex finished a job.",
             timestamp,
             BTreeMap::new(),
         );
@@ -118,7 +118,7 @@ mod tests {
                 "source_id": "codex_cli",
                 "source_type": "codex_cli",
                 "title": "Codex",
-                "body": "Codex sent a notification.",
+                "body": "Codex finished a job.",
                 "timestamp": "2026-05-08T12:00:00Z",
                 "metadata": {}
             })

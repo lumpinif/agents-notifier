@@ -181,7 +181,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "Codex sent a notification.",
+            "Codex finished a job.",
             timestamp,
             BTreeMap::new(),
         )
