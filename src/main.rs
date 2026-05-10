@@ -84,11 +84,15 @@ enum GuidedSetup {
     FeishuLark {
         agent: setup::AgentSelection,
     },
+    Webhook {
+        agent: setup::AgentSelection,
+    },
 }
 
 enum InitialProvider {
     Ntfy,
     FeishuLark,
+    Webhook,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -207,6 +211,7 @@ fn run_guided_provider_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Resu
     match prompt_for_initial_provider()? {
         InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent),
         InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode, agent),
+        InitialProvider::Webhook => run_webhook_setup(path, mode, agent),
     }
 }
 
@@ -269,6 +274,32 @@ fn run_feishu_lark_setup(
     })
 }
 
+fn run_webhook_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Webhook sends every signal as JSON to your HTTPS endpoint.");
+    println!("Use this for internal tools, automation platforms, or your own notification bridge.");
+    println!();
+
+    let webhook_url = prompt_for_webhook_url()?;
+    let config = setup::build_webhook_config(agent, &webhook_url);
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("webhook: configured");
+    println!("Starting agents-notifier now.");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Webhook { agent }),
+    })
+}
+
 fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
     loop {
         println!("Which agent should Agents Notifier watch?");
@@ -296,7 +327,8 @@ fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
         println!("Where should Agents Notifier send notifications?");
         println!("1. ntfy");
         println!("2. Feishu/Lark custom bot");
-        print!("Choose a provider [1/2]: ");
+        println!("3. Webhook");
+        print!("Choose a provider [1/2/3]: ");
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -307,7 +339,8 @@ fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
         match input.trim() {
             "" | "1" => return Ok(InitialProvider::Ntfy),
             "2" => return Ok(InitialProvider::FeishuLark),
-            _ => println!("Please enter 1 or 2."),
+            "3" => return Ok(InitialProvider::Webhook),
+            _ => println!("Please enter 1, 2, or 3."),
         }
         println!();
     }
@@ -361,6 +394,25 @@ fn prompt_for_feishu_lark_secret() -> anyhow::Result<Option<String>> {
         .context("failed to read signing secret")?;
 
     Ok(setup::resolve_feishu_lark_secret(&input))
+}
+
+fn prompt_for_webhook_url() -> anyhow::Result<String> {
+    loop {
+        print!("Webhook URL: ");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read webhook URL")?;
+
+        match setup::resolve_webhook_url(&input) {
+            Ok(url) => return Ok(url),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
 }
 
 fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
@@ -452,7 +504,12 @@ fn print_notification_targets(config: &Config) {
     let agents = configured_agents(config);
     let subscriptions = setup::ntfy_subscriptions(config);
     let feishu_lark_targets = setup::feishu_lark_targets(config);
-    if !agents.is_empty() || !subscriptions.is_empty() || !feishu_lark_targets.is_empty() {
+    let webhook_targets = setup::webhook_targets(config);
+    if !agents.is_empty()
+        || !subscriptions.is_empty()
+        || !feishu_lark_targets.is_empty()
+        || !webhook_targets.is_empty()
+    {
         println!();
     }
 
@@ -490,6 +547,17 @@ fn print_notification_targets(config: &Config) {
                     "not configured"
                 }
             );
+        }
+    }
+
+    if !webhook_targets.is_empty() {
+        if !agents.is_empty() || !subscriptions.is_empty() || !feishu_lark_targets.is_empty() {
+            println!();
+        }
+        println!("Webhook:");
+        for target in &webhook_targets {
+            println!("provider: {}", target.provider_id);
+            println!("endpoint: {}", target.webhook_host);
         }
     }
 }
@@ -589,6 +657,12 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             println!();
             println!("Next: check your Feishu/Lark group.");
             wait_for_enter("Press Enter to send a test notification to the custom bot.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::Webhook { agent } => {
+            println!();
+            println!("Next: check your webhook receiver.");
+            wait_for_enter("Press Enter to send a test JSON payload to the webhook.")?;
             print_agent_setup_note(agent);
         }
     }

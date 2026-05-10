@@ -5,6 +5,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -46,7 +47,7 @@ impl WebhookProvider {
         Ok(Self {
             id: config.id.clone(),
             url,
-            client: reqwest::Client::new(),
+            client: provider_http_client()?,
         })
     }
 }

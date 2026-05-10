@@ -33,6 +33,8 @@ Anything else is treated as a failed delivery.
 - A stable URL.
 - Agents Notifier installed.
 
+Local test URLs such as `http://127.0.0.1:8080/hook` are accepted during setup. Remote HTTP URLs are rejected.
+
 ## 1. Prepare the Endpoint
 
 Your endpoint should accept:
@@ -44,7 +46,25 @@ Content-Type: application/json
 
 Start simple. Log the request body first. Add processing after you see the first signal.
 
-## 2. Add the Provider
+## 2. Connect Agents Notifier
+
+Run:
+
+```bash
+agents-notifier setup
+```
+
+Choose:
+
+```text
+Webhook
+```
+
+Paste the HTTPS endpoint URL.
+
+Agents Notifier stores the provider, starts the local service, and sends a test JSON payload through the same service route used by real agent events.
+
+## Manual Config
 
 Webhook is configured in:
 

@@ -29,6 +29,12 @@ pub struct FeishuLarkTarget {
     pub signed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebhookTarget {
+    pub provider_id: String,
+    pub webhook_host: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSelection {
     CodexDesktop,
@@ -101,6 +107,30 @@ pub fn resolve_feishu_lark_secret(input: &str) -> Option<String> {
     }
 }
 
+pub fn resolve_webhook_url(input: &str) -> anyhow::Result<String> {
+    let url = input.trim();
+    if url.is_empty() {
+        anyhow::bail!("webhook URL is required");
+    }
+
+    let parsed =
+        reqwest::Url::parse(url).map_err(|_| anyhow::anyhow!("webhook URL must be a valid URL"))?;
+    let Some(host) = parsed.host_str() else {
+        anyhow::bail!("webhook URL must include a host");
+    };
+
+    let scheme = parsed.scheme();
+    let is_local_http = scheme == "http" && matches!(host, "localhost" | "127.0.0.1" | "::1");
+    if scheme != "https" && !is_local_http {
+        anyhow::bail!("webhook URL must use HTTPS, except localhost test URLs");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        anyhow::bail!("webhook URL must not include username or password");
+    }
+
+    Ok(url.to_string())
+}
+
 pub fn build_ntfy_config(agent: AgentSelection, topic: &str) -> Config {
     build_config(
         agent,
@@ -132,6 +162,22 @@ pub fn build_feishu_lark_config(
             url: Some(webhook_url.to_string()),
             url_env: None,
             secret,
+            secret_env: None,
+        }],
+    )
+}
+
+pub fn build_webhook_config(agent: AgentSelection, webhook_url: &str) -> Config {
+    build_config(
+        agent,
+        vec![ProviderConfig {
+            id: "webhook".to_string(),
+            provider_type: ProviderType::Webhook,
+            server: None,
+            topic: None,
+            url: Some(webhook_url.to_string()),
+            url_env: None,
+            secret: None,
             secret_env: None,
         }],
     )
@@ -220,6 +266,35 @@ pub fn feishu_lark_targets(config: &Config) -> Vec<FeishuLarkTarget> {
                         .secret_env
                         .as_deref()
                         .is_some_and(|value| !value.trim().is_empty()),
+            })
+        })
+        .collect()
+}
+
+pub fn webhook_targets(config: &Config) -> Vec<WebhookTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Webhook)
+        .filter_map(|provider| {
+            let webhook_host = match (
+                provider
+                    .url
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty()),
+                provider
+                    .url_env
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty()),
+            ) {
+                (Some(url), _) => webhook_host(url),
+                (None, Some(env_name)) => format!("env:{env_name}"),
+                (None, None) => return None,
+            };
+
+            Some(WebhookTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
             })
         })
         .collect()
@@ -347,6 +422,26 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_webhook_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_webhook_config(AgentSelection::CodexDesktop, "https://example.com/hook");
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("webhook")
+                .and_then(|provider| provider.url.as_deref()),
+            Some("https://example.com/hook")
+        );
+        assert!(parsed.source("codex_desktop").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_cli").is_none());
+    }
+
+    #[test]
     fn accepts_feishu_and_lark_webhook_urls() {
         assert_eq!(
             resolve_feishu_lark_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/abc")
@@ -366,6 +461,36 @@ mod tests {
             .expect_err("wrong URL should fail");
 
         assert!(err.to_string().contains("webhook URL must start"));
+    }
+
+    #[test]
+    fn accepts_https_and_local_webhook_urls() {
+        assert_eq!(
+            resolve_webhook_url("https://example.com/agents-notifier")
+                .expect("HTTPS webhook should be valid"),
+            "https://example.com/agents-notifier"
+        );
+        assert_eq!(
+            resolve_webhook_url("http://127.0.0.1:8080/hook")
+                .expect("local HTTP webhook should be valid"),
+            "http://127.0.0.1:8080/hook"
+        );
+    }
+
+    #[test]
+    fn rejects_insecure_remote_webhook_url() {
+        let err = resolve_webhook_url("http://example.com/hook")
+            .expect_err("remote HTTP webhook should fail");
+
+        assert!(err.to_string().contains("must use HTTPS"));
+    }
+
+    #[test]
+    fn rejects_webhook_url_with_basic_auth() {
+        let err = resolve_webhook_url("https://user:pass@example.com/hook")
+            .expect_err("webhook URL credentials should fail");
+
+        assert!(err.to_string().contains("must not include username"));
     }
 
     #[test]
@@ -400,6 +525,24 @@ mod tests {
                 provider_id: "work_chat".to_string(),
                 webhook_host: "open.larksuite.com".to_string(),
                 signed: true,
+            }]
+        );
+    }
+
+    #[test]
+    fn extracts_webhook_targets_without_printing_full_url() {
+        let config = build_webhook_config(
+            AgentSelection::CodexDesktop,
+            "https://example.com/secret-token",
+        );
+
+        let targets = webhook_targets(&config);
+
+        assert_eq!(
+            targets,
+            vec![WebhookTarget {
+                provider_id: "webhook".to_string(),
+                webhook_host: "example.com".to_string(),
             }]
         );
     }

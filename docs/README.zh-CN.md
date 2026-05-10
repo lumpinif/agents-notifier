@@ -110,6 +110,10 @@ Provider 设置教程：
 - [ntfy](providers/ntfy.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
+Agent 设置教程：
+
+- [Codex CLI](agents/codex-cli.md)
+
 ## 🧹 卸载
 
 一行命令干净卸载：

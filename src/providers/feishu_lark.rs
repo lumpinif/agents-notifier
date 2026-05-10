@@ -14,6 +14,7 @@ use crate::delivery::{
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
 use crate::providers::formatting::body_with_local_time;
+use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -47,7 +48,7 @@ impl FeishuLarkProvider {
             url,
             secret,
             computer_name,
-            client: reqwest::Client::new(),
+            client: provider_http_client()?,
         })
     }
 }

@@ -33,6 +33,8 @@ Agents Notifier 会把完整 `Signal` 作为 JSON 发出去：
 - 一个稳定 URL。
 - 已经安装 Agents Notifier。
 
+setup 允许本地测试 URL，例如 `http://127.0.0.1:8080/hook`。远端 HTTP URL 会被拒绝。
+
 ## 1. 准备 Endpoint
 
 你的 endpoint 需要接受：
@@ -44,7 +46,25 @@ Content-Type: application/json
 
 先保持简单。第一步只打印 request body。确认收到第一条 signal 后，再加后续处理。
 
-## 2. 添加 Provider
+## 2. 连接 Agents Notifier
+
+运行：
+
+```bash
+agents-notifier setup
+```
+
+选择：
+
+```text
+Webhook
+```
+
+粘贴 HTTPS endpoint URL。
+
+Agents Notifier 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试 JSON payload。
+
+## 手动配置
 
 Webhook 配置在：
 

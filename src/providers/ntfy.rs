@@ -7,6 +7,7 @@ use crate::delivery::{
     is_retriable_http_status, provider_request_error,
 };
 use crate::providers::formatting::body_with_local_time;
+use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -35,7 +36,7 @@ impl NtfyProvider {
                 server.trim_end_matches('/'),
                 topic.trim_start_matches('/')
             ),
-            client: reqwest::Client::new(),
+            client: provider_http_client()?,
         })
     }
 }

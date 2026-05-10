@@ -1,7 +1,7 @@
 class AgentsNotifier < Formula
   desc "Local-only notifications for AI coding agents"
   homepage "https://github.com/lumpinif/agents-notifier"
-  version "0.1.0"
+  version "0.1.2"
 
   on_macos do
     if Hardware::CPU.arm?

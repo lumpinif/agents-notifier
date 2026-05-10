@@ -109,6 +109,10 @@ Provider setup guides:
 - [ntfy](docs/providers/ntfy.md)
 - [Webhook](docs/providers/webhook.md)
 
+Agent setup guides:
+
+- [Codex CLI](docs/agents/codex-cli.md)
+
 ## 🧹 Uninstall
 
 Remove Agents Notifier cleanly:
