@@ -46,6 +46,7 @@ pub struct SourceConfig {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceType {
+    AgentsNotifier,
     CodexDesktop,
     CodexCli,
 }
@@ -53,6 +54,7 @@ pub enum SourceType {
 impl SourceType {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::AgentsNotifier => "agents_notifier",
             Self::CodexDesktop => "codex_desktop",
             Self::CodexCli => "codex_cli",
         }

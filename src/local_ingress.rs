@@ -7,9 +7,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tracing::{info, warn};
 
-use crate::config::Config;
+use crate::config::{Config, SourceType};
 use crate::router::{Provider, Router};
-use crate::sources::codex_cli;
+use crate::signal::Signal;
+use crate::sources::{agents_notifier, codex_cli};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSignalEvent {
@@ -105,7 +106,7 @@ pub async fn route_event(
         event = "ingress.received",
     );
 
-    let signal = codex_cli::create_signal(config, &event.source_id, event.title, event.body)?;
+    let signal = create_signal(config, &event.source_id, event.title, event.body)?;
     info!(
         signal.id = %signal.id,
         source.id = %signal.source_id,
@@ -115,6 +116,30 @@ pub async fn route_event(
 
     Router::new(config).route(&signal, providers).await?;
     Ok(())
+}
+
+fn create_signal(
+    config: &Config,
+    source_id: &str,
+    title: String,
+    body: String,
+) -> anyhow::Result<Signal> {
+    let source = config
+        .source(source_id)
+        .with_context(|| format!("source `{source_id}` is not configured"))?;
+
+    match source.source_type {
+        SourceType::AgentsNotifier => {
+            agents_notifier::create_signal(config, source_id, title, body)
+        }
+        SourceType::CodexCli => codex_cli::create_signal(config, source_id, title, body),
+        SourceType::CodexDesktop => {
+            anyhow::bail!(
+                "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier` and `codex_cli` events",
+                source.id
+            )
+        }
+    }
 }
 
 async fn handle_connection(
@@ -236,14 +261,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_event_creates_signal_and_uses_service_router() {
+    async fn route_event_creates_codex_cli_signal_and_uses_service_router() {
         let calls = Arc::new(Mutex::new(Vec::new()));
         let provider = TestProvider {
             calls: Arc::clone(&calls),
         };
 
         route_event(
-            &test_config(),
+            &test_config("codex_cli", SourceType::CodexCli),
             &[&provider],
             LocalSignalEvent {
                 source_id: "codex_cli".to_string(),
@@ -260,13 +285,66 @@ mod tests {
         );
     }
 
-    fn test_config() -> Config {
+    #[tokio::test]
+    async fn route_event_creates_agents_notifier_signal_for_service_tests() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let provider = TestProvider {
+            calls: Arc::clone(&calls),
+        };
+
+        route_event(
+            &test_config("agents_notifier", SourceType::AgentsNotifier),
+            &[&provider],
+            LocalSignalEvent {
+                source_id: "agents_notifier".to_string(),
+                title: "Agents Notifier".to_string(),
+                body: "Test notification from your Mac.".to_string(),
+            },
+        )
+        .await
+        .expect("service test event should route through service router");
+
+        assert_eq!(
+            *calls.lock().expect("calls lock should not be poisoned"),
+            vec!["agents_notifier:Test notification from your Mac.".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn route_event_rejects_codex_desktop_local_ingress() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let provider = TestProvider {
+            calls: Arc::clone(&calls),
+        };
+
+        let err = route_event(
+            &test_config("codex_desktop", SourceType::CodexDesktop),
+            &[&provider],
+            LocalSignalEvent {
+                source_id: "codex_desktop".to_string(),
+                title: "Codex Desktop".to_string(),
+                body: "Body".to_string(),
+            },
+        )
+        .await
+        .expect_err("Codex Desktop should not accept local ingress events");
+
+        assert!(err.to_string().contains("local ingress only accepts"));
+        assert!(
+            calls
+                .lock()
+                .expect("calls lock should not be poisoned")
+                .is_empty()
+        );
+    }
+
+    fn test_config(source_id: &str, source_type: SourceType) -> Config {
         Config {
             schema_version: 1,
             log: LogConfig::default(),
             sources: vec![SourceConfig {
-                id: "codex_cli".to_string(),
-                source_type: SourceType::CodexCli,
+                id: source_id.to_string(),
+                source_type,
             }],
             providers: vec![ProviderConfig {
                 id: "debug".to_string(),
@@ -279,7 +357,7 @@ mod tests {
                 secret_env: None,
             }],
             routes: vec![RouteConfig {
-                sources: vec!["codex_cli".to_string()],
+                sources: vec![source_id.to_string()],
                 providers: vec!["debug".to_string()],
             }],
         }

@@ -7,7 +7,7 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use tokio::time::sleep;
 
-use agents_notifier::config::{Config, ConfigError};
+use agents_notifier::config::{Config, ConfigError, SourceConfig, SourceType};
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::paths::{
     default_config_file_path, launch_agent_plist_path, log_file_path, pid_file_path,
@@ -35,13 +35,13 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    #[command(about = "Set up and start the local notification service")]
+    #[command(about = "Start the local notification service")]
     Start {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
     },
-    #[command(about = "Choose a notification provider and update the local service")]
-    Configure {
+    #[command(about = "Set up Agents Notifier and start the service")]
+    Setup {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
     },
@@ -71,8 +71,13 @@ struct LoadedConfig {
 }
 
 enum GuidedSetup {
-    Ntfy { topic: String },
-    FeishuLark,
+    Ntfy {
+        agent: setup::AgentSelection,
+        topic: String,
+    },
+    FeishuLark {
+        agent: setup::AgentSelection,
+    },
 }
 
 enum InitialProvider {
@@ -108,11 +113,11 @@ async fn main() -> anyhow::Result<()> {
             let loaded = load_config(&config_path, allow_setup)?;
             run_start_service(&config_path, loaded, false).await
         }
-        Command::Configure {
+        Command::Setup {
             config: config_path,
         } => {
             let config_path = resolve_config_path(config_path)?;
-            let loaded = run_configure_setup(&config_path)?;
+            let loaded = run_provider_setup(&config_path)?;
             run_start_service(&config_path, loaded, true).await
         }
         Command::Watch {
@@ -156,22 +161,23 @@ fn is_interactive_terminal() -> bool {
 fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     println!("No agents-notifier config found at `{}`.", path.display());
     println!();
-    println!("First setup connects one notification provider.");
+    println!("Starting setup now.");
+    println!("Setup connects one agent to one notification provider.");
     println!();
 
     run_guided_provider_setup(path, ConfigWriteMode::Created)
 }
 
-fn run_configure_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     if !is_interactive_terminal() {
         anyhow::bail!(
-            "`agents-notifier configure` must be run in an interactive terminal so you can choose a provider."
+            "`agents-notifier setup` must be run in an interactive terminal so you can choose an agent and a provider."
         );
     }
 
-    println!("Configure notification provider.");
+    println!("Set up agent notifications.");
     println!(
-        "This replaces the provider section in `{}`.",
+        "This replaces the agent, provider, and route sections in `{}`.",
         path.display()
     );
     println!("It does not change Codex or other agent settings.");
@@ -186,13 +192,18 @@ fn run_configure_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
 }
 
 fn run_guided_provider_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
+    let agent = prompt_for_agent()?;
     match prompt_for_initial_provider()? {
-        InitialProvider::Ntfy => run_ntfy_setup(path, mode),
-        InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode),
+        InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent),
+        InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode, agent),
     }
 }
 
-fn run_ntfy_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
+fn run_ntfy_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+) -> anyhow::Result<LoadedConfig> {
     let generated_topic = setup::generated_ntfy_topic();
 
     println!();
@@ -201,22 +212,27 @@ fn run_ntfy_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedCo
     println!();
 
     let topic = prompt_for_ntfy_topic(&generated_topic)?;
-    let config = setup::build_ntfy_config(&topic);
+    let config = setup::build_ntfy_config(agent, &topic);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
     println!("ntfy server: https://ntfy.sh");
     println!("ntfy topic: {topic}");
     println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
-        guided_setup: Some(GuidedSetup::Ntfy { topic }),
+        guided_setup: Some(GuidedSetup::Ntfy { agent, topic }),
     })
 }
 
-fn run_feishu_lark_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
+fn run_feishu_lark_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+) -> anyhow::Result<LoadedConfig> {
     println!();
     println!("Feishu/Lark sends notifications to a group through a custom bot webhook.");
     println!("Add a custom bot to the target group, then paste its webhook URL.");
@@ -227,18 +243,41 @@ fn run_feishu_lark_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<L
 
     let webhook_url = prompt_for_feishu_lark_webhook_url()?;
     let secret = prompt_for_feishu_lark_secret()?;
-    let config = setup::build_feishu_lark_config(&webhook_url, secret);
+    let config = setup::build_feishu_lark_config(agent, &webhook_url, secret);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
     println!("Feishu/Lark custom bot: configured");
     println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
-        guided_setup: Some(GuidedSetup::FeishuLark),
+        guided_setup: Some(GuidedSetup::FeishuLark { agent }),
     })
+}
+
+fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
+    loop {
+        println!("Which agent should Agents Notifier watch?");
+        println!("1. Codex Desktop");
+        println!("2. Codex CLI");
+        print!("Choose an agent [1/2]: ");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read agent choice")?;
+
+        match input.trim() {
+            "" | "1" => return Ok(setup::AgentSelection::CodexDesktop),
+            "2" => return Ok(setup::AgentSelection::CodexCli),
+            _ => println!("Please enter 1 or 2."),
+        }
+        println!();
+    }
 }
 
 fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
@@ -399,23 +438,37 @@ fn print_service_start_outcome(outcome: ServiceStartOutcome, pid: Option<u32>, l
 }
 
 fn print_notification_targets(config: &Config) {
+    let agents = configured_agents(config);
     let subscriptions = setup::ntfy_subscriptions(config);
     let feishu_lark_targets = setup::feishu_lark_targets(config);
-    if !subscriptions.is_empty() || !feishu_lark_targets.is_empty() {
+    if !agents.is_empty() || !subscriptions.is_empty() || !feishu_lark_targets.is_empty() {
         println!();
     }
 
+    if !agents.is_empty() {
+        println!("Watched agents:");
+        for agent in &agents {
+            println!("agent: {agent}");
+        }
+    }
+
     if !subscriptions.is_empty() {
+        if !agents.is_empty() {
+            println!();
+        }
         println!("Phone subscription:");
-        for subscription in subscriptions {
+        for subscription in &subscriptions {
             println!("server: {}", subscription.server);
             println!("topic: {}", subscription.topic);
         }
     }
 
     if !feishu_lark_targets.is_empty() {
+        if !agents.is_empty() || !subscriptions.is_empty() {
+            println!();
+        }
         println!("Feishu/Lark custom bot:");
-        for target in feishu_lark_targets {
+        for target in &feishu_lark_targets {
             println!("provider: {}", target.provider_id);
             println!("webhook: {}", target.webhook_host);
             println!(
@@ -428,6 +481,18 @@ fn print_notification_targets(config: &Config) {
             );
         }
     }
+}
+
+fn configured_agents(config: &Config) -> Vec<&'static str> {
+    config
+        .sources
+        .iter()
+        .filter_map(|source| match source.source_type {
+            SourceType::CodexDesktop => Some("Codex Desktop"),
+            SourceType::CodexCli => Some("Codex CLI"),
+            SourceType::AgentsNotifier => None,
+        })
+        .collect()
 }
 
 fn print_status_notification_targets(config_path: &Path) {
@@ -496,7 +561,7 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
     wait_for_service(&socket_path).await?;
 
     match setup {
-        GuidedSetup::Ntfy { topic } => {
+        GuidedSetup::Ntfy { agent, topic } => {
             println!();
             println!("Next: connect your phone.");
             println!("1. Open the ntfy app.");
@@ -507,11 +572,13 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             wait_for_enter(
                 "After your phone is subscribed, press Enter to send a test notification.",
             )?;
+            print_agent_setup_note(agent);
         }
-        GuidedSetup::FeishuLark => {
+        GuidedSetup::FeishuLark { agent } => {
             println!();
             println!("Next: check your Feishu/Lark group.");
             wait_for_enter("Press Enter to send a test notification to the custom bot.")?;
+            print_agent_setup_note(agent);
         }
     }
 
@@ -519,16 +586,30 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
 
     println!("Test notification sent.");
     if prompt_yes_no("Did it arrive? [Y/n] ")? {
-        println!("Setup complete. Codex Desktop notifications can now be forwarded.");
+        println!("Setup complete. Agent notifications can now be forwarded.");
     } else {
         println!("The service is still running, but the test notification did not arrive.");
         println!("Check the provider settings in your config, then run this test again:");
         println!(
-            "agents-notifier emit --source codex_cli --title \"Agents Notifier\" --body \"Test notification from your Mac.\""
+            "agents-notifier emit --source agents_notifier --title \"Agents Notifier\" --body \"Test notification from your Mac.\""
         );
     }
 
     Ok(())
+}
+
+fn print_agent_setup_note(agent: setup::AgentSelection) {
+    match agent {
+        setup::AgentSelection::CodexDesktop => {
+            println!("Agents Notifier will watch Codex Desktop completed jobs on this Mac.");
+        }
+        setup::AgentSelection::CodexCli => {
+            println!("Agents Notifier is ready for Codex CLI hook events.");
+            println!(
+                "Configure your Codex CLI hook to call `agents-notifier emit --source codex_cli`."
+            );
+        }
+    }
 }
 
 async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
@@ -544,7 +625,7 @@ async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
     send_test_notification().await?;
     println!("Test notification sent.");
     if prompt_yes_no("Did it arrive? [Y/n] ")? {
-        println!("Agents Notifier is working. Codex Desktop notifications can now be forwarded.");
+        println!("Agents Notifier is working. Agent notifications can now be forwarded.");
     } else {
         println!("The service is running, but the test notification did not arrive.");
         println!("Check the provider settings printed above.");
@@ -554,9 +635,13 @@ async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
 }
 
 fn can_send_test_notification(config: &Config) -> bool {
-    config.source("codex_cli").is_some()
+    config.source("agents_notifier").is_some()
         && config.routes.iter().any(|route| {
-            route.sources.iter().any(|source| source == "codex_cli") && !route.providers.is_empty()
+            route
+                .sources
+                .iter()
+                .any(|source| source == "agents_notifier")
+                && !route.providers.is_empty()
         })
 }
 
@@ -567,7 +652,7 @@ async fn send_test_notification() -> anyhow::Result<()> {
     local_ingress::submit_event(
         &socket_path,
         &LocalSignalEvent {
-            source_id: "codex_cli".to_string(),
+            source_id: "agents_notifier".to_string(),
             title: "Agents Notifier".to_string(),
             body: "Test notification from your Mac. If this arrived, Agents Notifier is working."
                 .to_string(),
@@ -662,22 +747,29 @@ fn remove_socket_file_if_exists() -> anyhow::Result<()> {
 }
 
 async fn run_watch(config: &Config) -> anyhow::Result<()> {
-    let source = config
-        .sources
-        .iter()
-        .find(|source| source.source_type == agents_notifier::config::SourceType::CodexDesktop)
-        .context("no `codex_desktop` source is configured")?;
     let providers = build_providers(config).context("provider setup failed")?;
     let provider_refs: Vec<&dyn Provider> = providers
         .iter()
         .map(|provider| provider.as_ref() as &dyn Provider)
         .collect();
     let socket_path = socket_file_path()?;
+    let codex_desktop_source = codex_desktop_source(config);
 
-    tokio::select! {
-        result = codex_desktop::watch(config, source, &provider_refs) => result,
-        result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+    if let Some(source) = codex_desktop_source {
+        tokio::select! {
+            result = codex_desktop::watch(config, source, &provider_refs) => result,
+            result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+        }
+    } else {
+        local_ingress::serve(config, &provider_refs, &socket_path).await
     }
+}
+
+fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
+    config
+        .sources
+        .iter()
+        .find(|source| source.source_type == SourceType::CodexDesktop)
 }
 
 async fn run_emit(source_id: &str, title: String, body: String) -> anyhow::Result<()> {

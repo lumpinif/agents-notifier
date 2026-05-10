@@ -44,30 +44,37 @@ Sources do not know providers. Providers do not know sources. Short-lived hook c
 
 ## Phase 1 Usage
 
-Start the local service:
+Set up Agents Notifier:
 
 ```bash
-agents-notifier start
+agents-notifier setup
 ```
 
-On first run, `start` guides you through one notification provider, writes `~/.config/agents-notifier/config.toml`, starts the background service, and sends a test notification through the running service.
+`setup` asks which agent to watch, asks where notifications should go, writes `~/.config/agents-notifier/config.toml`, starts the background service, and sends a test notification through the running service.
 
-The guided setup supports:
+The guided setup supports these agents:
+
+- Codex Desktop, for completed jobs written by the Codex Desktop app.
+- Codex CLI, for hook events submitted to the local service with `agents-notifier emit`.
+
+It supports these notification providers:
 
 - `ntfy`, for phone notifications through a topic subscription.
 - Feishu/Lark Custom Bot, for posting notifications into one group chat through a custom bot webhook.
 
 On macOS, the service is managed by a LaunchAgent at `~/Library/LaunchAgents/com.agents-notifier.service.plist`. The LaunchAgent runs `agents-notifier watch --config <path>` as the long-running worker, so the service can keep running after the terminal closes and can start again when you log in.
 
-If the service is already running, `start` is safe to run again. It reuses the existing config, prints the current service and notification target details, and can send another test notification. Your phone only needs a new ntfy subscription if you change the ntfy topic in the config.
-
-To switch providers later, run:
+To start the service later with the existing config, run:
 
 ```bash
-agents-notifier configure
+agents-notifier start
 ```
 
-`configure` lets you choose a provider again, rewrites the local config, restarts the LaunchAgent-managed service, and sends a test notification.
+If the service is already running, `start` is safe to run again. It reuses the existing config, prints the current service and notification target details, and can send another test notification. Your phone only needs a new ntfy subscription if you change the ntfy topic in the config.
+
+If there is no config yet and `start` is run in an interactive terminal, it enters the same setup flow. In non-interactive shells, missing config is an error and the command tells you to run `agents-notifier setup`.
+
+To switch agents or providers later, run `agents-notifier setup` again. It rewrites the local config, restarts the LaunchAgent-managed service, and sends a test notification.
 
 ntfy notifications are sent with high priority so mobile clients are more likely to show a banner, play a sound, and vibrate.
 
@@ -85,8 +92,8 @@ id = "codex_desktop"
 type = "codex_desktop"
 
 [[sources]]
-id = "codex_cli"
-type = "codex_cli"
+id = "agents_notifier"
+type = "agents_notifier"
 
 [[providers]]
 id = "phone"
@@ -106,9 +113,11 @@ url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
 secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
 
 [[routes]]
-sources = ["codex_desktop", "codex_cli"]
+sources = ["codex_desktop", "agents_notifier"]
 providers = ["phone", "debug", "work_chat"]
 ```
+
+For Codex CLI instead of Codex Desktop, use a `codex_cli` source and route it to the providers you want. `agents_notifier` is the service's own test source; setup includes it so test notifications use the same running service and provider route as real agent notifications.
 
 Run the service in the foreground for debugging:
 

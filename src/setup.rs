@@ -29,6 +29,34 @@ pub struct FeishuLarkTarget {
     pub signed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentSelection {
+    CodexDesktop,
+    CodexCli,
+}
+
+impl AgentSelection {
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::CodexDesktop => "Codex Desktop",
+            Self::CodexCli => "Codex CLI",
+        }
+    }
+
+    fn source_config(self) -> SourceConfig {
+        match self {
+            Self::CodexDesktop => SourceConfig {
+                id: "codex_desktop".to_string(),
+                source_type: SourceType::CodexDesktop,
+            },
+            Self::CodexCli => SourceConfig {
+                id: "codex_cli".to_string(),
+                source_type: SourceType::CodexCli,
+            },
+        }
+    }
+}
+
 pub fn generated_ntfy_topic() -> String {
     let id = Uuid::new_v4().simple().to_string();
     format!("agents-notifier-{}", &id[..12])
@@ -73,54 +101,63 @@ pub fn resolve_feishu_lark_secret(input: &str) -> Option<String> {
     }
 }
 
-pub fn build_ntfy_config(topic: &str) -> Config {
-    build_config(vec![ProviderConfig {
-        id: "phone".to_string(),
-        provider_type: ProviderType::Ntfy,
-        server: Some(DEFAULT_NTFY_SERVER.to_string()),
-        topic: Some(topic.to_string()),
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-    }])
+pub fn build_ntfy_config(agent: AgentSelection, topic: &str) -> Config {
+    build_config(
+        agent,
+        vec![ProviderConfig {
+            id: "phone".to_string(),
+            provider_type: ProviderType::Ntfy,
+            server: Some(DEFAULT_NTFY_SERVER.to_string()),
+            topic: Some(topic.to_string()),
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+        }],
+    )
 }
 
-pub fn build_feishu_lark_config(webhook_url: &str, secret: Option<String>) -> Config {
-    build_config(vec![ProviderConfig {
-        id: "work_chat".to_string(),
-        provider_type: ProviderType::FeishuLark,
-        server: None,
-        topic: None,
-        url: Some(webhook_url.to_string()),
-        url_env: None,
-        secret,
-        secret_env: None,
-    }])
+pub fn build_feishu_lark_config(
+    agent: AgentSelection,
+    webhook_url: &str,
+    secret: Option<String>,
+) -> Config {
+    build_config(
+        agent,
+        vec![ProviderConfig {
+            id: "work_chat".to_string(),
+            provider_type: ProviderType::FeishuLark,
+            server: None,
+            topic: None,
+            url: Some(webhook_url.to_string()),
+            url_env: None,
+            secret,
+            secret_env: None,
+        }],
+    )
 }
 
-fn build_config(providers: Vec<ProviderConfig>) -> Config {
+fn build_config(agent: AgentSelection, providers: Vec<ProviderConfig>) -> Config {
     let provider_ids = providers
         .iter()
         .map(|provider| provider.id.clone())
         .collect();
+    let agent_source = agent.source_config();
+    let agent_source_id = agent_source.id.clone();
 
     Config {
         schema_version: CONFIG_SCHEMA_VERSION,
         log: LogConfig::default(),
         sources: vec![
+            agent_source,
             SourceConfig {
-                id: "codex_desktop".to_string(),
-                source_type: SourceType::CodexDesktop,
-            },
-            SourceConfig {
-                id: "codex_cli".to_string(),
-                source_type: SourceType::CodexCli,
+                id: "agents_notifier".to_string(),
+                source_type: SourceType::AgentsNotifier,
             },
         ],
         providers,
         routes: vec![RouteConfig {
-            sources: vec!["codex_desktop".to_string(), "codex_cli".to_string()],
+            sources: vec![agent_source_id, "agents_notifier".to_string()],
             providers: provider_ids,
         }],
     }
@@ -192,7 +229,7 @@ pub fn missing_config_message(path: &str) -> String {
     format!(
         r#"No agents-notifier config found at `{path}`.
 
-Run `agents-notifier start` in an interactive terminal to set up a notification provider.
+Run `agents-notifier setup` in an interactive terminal to choose an agent and a notification provider.
 
 If you are running non-interactively, create the config file first or pass `--config <PATH>`."#
     )
@@ -241,7 +278,7 @@ mod tests {
     fn writes_parseable_ntfy_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_ntfy_config("agents-notifier-test");
+        let config = build_ntfy_config(AgentSelection::CodexDesktop, "agents-notifier-test");
 
         write_config(&path, &config).expect("config should be written");
 
@@ -253,7 +290,30 @@ mod tests {
             Some("agents-notifier-test")
         );
         assert!(parsed.source("codex_desktop").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_cli").is_none());
+        assert_eq!(
+            parsed.routes[0].sources,
+            vec!["codex_desktop".to_string(), "agents_notifier".to_string()]
+        );
+    }
+
+    #[test]
+    fn writes_parseable_codex_cli_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_ntfy_config(AgentSelection::CodexCli, "agents-notifier-test");
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
         assert!(parsed.source("codex_cli").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_desktop").is_none());
+        assert_eq!(
+            parsed.routes[0].sources,
+            vec!["codex_cli".to_string(), "agents_notifier".to_string()]
+        );
     }
 
     #[test]
@@ -261,6 +321,7 @@ mod tests {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
         let config = build_feishu_lark_config(
+            AgentSelection::CodexDesktop,
             "https://open.larksuite.com/open-apis/bot/v2/hook/test",
             Some("secret".to_string()),
         );
@@ -281,7 +342,8 @@ mod tests {
             Some("secret")
         );
         assert!(parsed.source("codex_desktop").is_some());
-        assert!(parsed.source("codex_cli").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_cli").is_none());
     }
 
     #[test]
@@ -308,7 +370,7 @@ mod tests {
 
     #[test]
     fn extracts_ntfy_subscriptions_from_config() {
-        let config = build_ntfy_config("agents-notifier-test");
+        let config = build_ntfy_config(AgentSelection::CodexDesktop, "agents-notifier-test");
 
         let subscriptions = ntfy_subscriptions(&config);
 
@@ -325,6 +387,7 @@ mod tests {
     #[test]
     fn extracts_feishu_lark_targets_without_printing_webhook_token() {
         let config = build_feishu_lark_config(
+            AgentSelection::CodexDesktop,
             "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
             Some("secret".to_string()),
         );
