@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time;
 use tracing::{debug, info, warn};
 
-use crate::config::{Config, SourceConfig};
+use crate::config::{AnswerDetail, Config, SourceConfig};
 use crate::paths::{
     codex_desktop_source_state_path, codex_session_index_path, codex_sessions_dir_path,
 };
@@ -44,7 +44,7 @@ pub async fn watch(
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                let signals = watcher.poll(source)?;
+                let signals = watcher.poll(source, config.notification.answer_detail)?;
                 for signal in signals {
                     info!(
                         signal.id = %signal.id,
@@ -102,7 +102,11 @@ impl CodexDesktopSessionWatcher {
         Ok(watcher)
     }
 
-    fn poll(&mut self, source: &SourceConfig) -> anyhow::Result<Vec<Signal>> {
+    fn poll(
+        &mut self,
+        source: &SourceConfig,
+        answer_detail: AnswerDetail,
+    ) -> anyhow::Result<Vec<Signal>> {
         let titles = load_session_titles(&self.session_index_path)?;
         let mut signals = Vec::new();
         let mut changed = false;
@@ -182,6 +186,7 @@ impl CodexDesktopSessionWatcher {
                             &session,
                             titles.get(session_id).map(String::as_str),
                             task,
+                            answer_detail,
                         ) {
                             self.state.delivered_turns.insert(delivery_key);
                             self.state.prune_delivered_turns();
@@ -316,7 +321,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::config::SourceType;
+    use crate::config::{AnswerDetail, SourceType};
 
     use super::*;
 
@@ -349,7 +354,7 @@ mod tests {
         )
         .expect("watcher should start");
         let first = watcher
-            .poll(&source_config())
+            .poll(&source_config(), AnswerDetail::Preview)
             .expect("first poll should pass");
         assert!(first.is_empty());
 
@@ -358,7 +363,7 @@ mod tests {
             &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
         );
         let second = watcher
-            .poll(&source_config())
+            .poll(&source_config(), AnswerDetail::Preview)
             .expect("second poll should pass");
 
         assert_eq!(second.len(), 1);

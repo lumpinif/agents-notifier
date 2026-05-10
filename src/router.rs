@@ -185,7 +185,8 @@ mod tests {
 
     use super::*;
     use crate::config::{
-        Config, LogConfig, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
+        Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
+        SourceConfig, SourceType,
     };
     use crate::delivery::DeliveryErrorContext;
 
@@ -342,6 +343,7 @@ mod tests {
         Config {
             schema_version: 1,
             log: LogConfig::default(),
+            notification: NotificationConfig::default(),
             sources: vec![
                 SourceConfig {
                     id: "codex_cli".to_string(),

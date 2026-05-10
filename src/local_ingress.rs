@@ -230,7 +230,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::config::{
-        Config, LogConfig, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
+        Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
+        SourceConfig, SourceType,
     };
     use crate::delivery::ProviderSendResult;
     use crate::router::{Provider, ProviderFuture};
@@ -373,6 +374,7 @@ mod tests {
         Config {
             schema_version: 1,
             log: LogConfig::default(),
+            notification: NotificationConfig::default(),
             sources: vec![SourceConfig {
                 id: source_id.to_string(),
                 source_type,

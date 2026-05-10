@@ -13,7 +13,7 @@ use crate::delivery::{
 };
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
-use crate::providers::formatting::body_with_local_time;
+use crate::providers::formatting::{body_with_local_time, split_trailing_answer_block};
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -381,10 +381,10 @@ fn format_signal_card_elements(card_body: FeishuLarkCardBody) -> Vec<FeishuLarkC
         });
     }
 
-    if let Some(preview) = card_body.preview {
+    if let Some(answer) = card_body.answer {
         elements.push(FeishuLarkCardElement::Divider);
         elements.push(FeishuLarkCardElement::Markdown {
-            content: format!("**Preview**\n{preview}"),
+            content: format!("**{}**\n{}", answer.label, answer.content),
         });
     }
 
@@ -425,11 +425,28 @@ struct FeishuLarkCardBody {
     time: Option<String>,
     other_details: Vec<String>,
     open_url: Option<String>,
-    preview: Option<String>,
+    answer: Option<FeishuLarkAnswerBlock>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FeishuLarkAnswerBlock {
+    label: &'static str,
+    content: String,
 }
 
 impl FeishuLarkCardBody {
     fn from_body(body: &str) -> Self {
+        let (body, answer) = split_trailing_answer_block(body)
+            .map(|(details, block)| {
+                (
+                    details,
+                    Some(FeishuLarkAnswerBlock {
+                        label: block.label,
+                        content: block.content.trim().to_string(),
+                    }),
+                )
+            })
+            .unwrap_or((body, None));
         let mut project = None;
         let mut project_path = None;
         let mut session = None;
@@ -438,13 +455,21 @@ impl FeishuLarkCardBody {
         let mut time = None;
         let mut other_details = Vec::new();
         let mut open_url = None;
-        let mut preview = None;
+        let mut answer = answer;
 
         for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
             if let Some(session_id) = codex_thread_line(line) {
                 open_url = codex_thread_bridge_url(session_id);
             } else if let Some(preview_text) = line.strip_prefix("Preview:") {
-                preview = Some(preview_text.trim().to_string());
+                answer = Some(FeishuLarkAnswerBlock {
+                    label: "Preview",
+                    content: preview_text.trim().to_string(),
+                });
+            } else if let Some(answer_text) = line.strip_prefix("Answer:") {
+                answer = Some(FeishuLarkAnswerBlock {
+                    label: "Answer",
+                    content: answer_text.trim().to_string(),
+                });
             } else if let Some((label, value)) = split_detail_line(line) {
                 match label {
                     "Project" => project = Some(value.to_string()),
@@ -469,7 +494,7 @@ impl FeishuLarkCardBody {
             time,
             other_details,
             open_url,
-            preview,
+            answer,
         }
     }
 
@@ -779,7 +804,33 @@ mod tests {
                 time: None,
                 other_details: Vec::new(),
                 open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
-                preview: Some("done".to_string()),
+                answer: Some(FeishuLarkAnswerBlock {
+                    label: "Preview",
+                    content: "done".to_string(),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn builds_card_body_with_multiline_answer_block() {
+        assert_eq!(
+            FeishuLarkCardBody::from_body(
+                "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\n\nAnswer: Fixed the route.\n\nRun tests next."
+            ),
+            FeishuLarkCardBody {
+                project: Some("agents-notifier".to_string()),
+                project_path: None,
+                session: None,
+                duration: None,
+                branch: None,
+                time: None,
+                other_details: Vec::new(),
+                open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
+                answer: Some(FeishuLarkAnswerBlock {
+                    label: "Answer",
+                    content: "Fixed the route.\n\nRun tests next.".to_string(),
+                }),
             }
         );
     }

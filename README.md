@@ -57,7 +57,7 @@ For Codex Desktop, it reads only completion data needed for the notification:
 - duration
 - branch
 - time
-- short preview
+- final answer preview by default, or full answer when enabled
 - Mac computer name
 
 In Feishu/Lark, notifications are sent as Codex-colored interactive cards with a clickable Open in Codex button.
@@ -91,12 +91,15 @@ agents-notifier setup
 agents-notifier setup
 ```
 
-It asks two questions:
+It asks three questions:
 
 1. Which agent should it watch?
-2. Where should notifications go?
+2. Answer detail?
+3. Where should notifications go?
 
 Then it writes config, starts the service, and sends a test notification.
+
+For every setup option, see [Setup](docs/setup.md).
 
 ## 🎉 That's it
 

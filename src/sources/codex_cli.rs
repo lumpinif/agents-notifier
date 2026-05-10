@@ -36,7 +36,8 @@ pub fn create_signal(
 mod tests {
     use super::*;
     use crate::config::{
-        Config, LogConfig, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
+        Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
+        SourceConfig, SourceType,
     };
 
     #[test]
@@ -79,6 +80,7 @@ mod tests {
         Config {
             schema_version: 1,
             log: LogConfig::default(),
+            notification: NotificationConfig::default(),
             sources: vec![SourceConfig {
                 id: "codex_cli".to_string(),
                 source_type,

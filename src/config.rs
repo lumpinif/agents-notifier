@@ -13,6 +13,8 @@ pub struct Config {
     pub schema_version: u32,
     #[serde(default)]
     pub log: LogConfig,
+    #[serde(default)]
+    pub notification: NotificationConfig,
     pub sources: Vec<SourceConfig>,
     pub providers: Vec<ProviderConfig>,
     pub routes: Vec<RouteConfig>,
@@ -34,6 +36,37 @@ impl Default for LogConfig {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct NotificationConfig {
+    #[serde(default)]
+    pub answer_detail: AnswerDetail,
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        Self {
+            answer_detail: AnswerDetail::Preview,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnswerDetail {
+    #[default]
+    Preview,
+    Full,
+}
+
+impl AnswerDetail {
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Preview => "Preview",
+            Self::Full => "Full Answer",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -315,6 +348,20 @@ providers = ["phone", "debug_webhook", "work_chat"]
         assert_eq!(config.providers.len(), 3);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
+        assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
+    }
+
+    #[test]
+    fn parses_full_answer_detail() {
+        let raw = VALID_CONFIG.replacen(
+            "[[sources]]",
+            "[notification]\nanswer_detail = \"full\"\n\n[[sources]]",
+            1,
+        );
+
+        let config = Config::from_toml_str(&raw).expect("valid config should parse");
+
+        assert_eq!(config.notification.answer_detail, AnswerDetail::Full);
     }
 
     #[test]

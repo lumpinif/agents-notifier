@@ -7,7 +7,9 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use tokio::time::sleep;
 
-use agents_notifier::config::{Config, ConfigError, ProviderType, SourceConfig, SourceType};
+use agents_notifier::config::{
+    AnswerDetail, Config, ConfigError, ProviderType, SourceConfig, SourceType,
+};
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
 use agents_notifier::paths::{
@@ -208,10 +210,11 @@ fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
 
 fn run_guided_provider_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
     let agent = prompt_for_agent()?;
+    let answer_detail = prompt_for_answer_detail()?;
     match prompt_for_initial_provider()? {
-        InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent),
-        InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode, agent),
-        InitialProvider::Webhook => run_webhook_setup(path, mode, agent),
+        InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent, answer_detail),
+        InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode, agent, answer_detail),
+        InitialProvider::Webhook => run_webhook_setup(path, mode, agent, answer_detail),
     }
 }
 
@@ -219,6 +222,7 @@ fn run_ntfy_setup(
     path: &Path,
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
 ) -> anyhow::Result<LoadedConfig> {
     let generated_topic = setup::generated_ntfy_topic();
 
@@ -228,12 +232,13 @@ fn run_ntfy_setup(
     println!();
 
     let topic = prompt_for_ntfy_topic(&generated_topic)?;
-    let config = setup::build_ntfy_config(agent, &topic);
+    let config = setup::build_ntfy_config(agent, answer_detail, &topic);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
     println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
     println!("ntfy server: https://ntfy.sh");
     println!("ntfy topic: {topic}");
     println!("Starting agents-notifier now.");
@@ -248,6 +253,7 @@ fn run_feishu_lark_setup(
     path: &Path,
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
     println!("Feishu/Lark sends notifications to a group through a custom bot webhook.");
@@ -259,12 +265,13 @@ fn run_feishu_lark_setup(
 
     let webhook_url = prompt_for_feishu_lark_webhook_url()?;
     let secret = prompt_for_feishu_lark_secret()?;
-    let config = setup::build_feishu_lark_config(agent, &webhook_url, secret);
+    let config = setup::build_feishu_lark_config(agent, answer_detail, &webhook_url, secret);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
     println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
     println!("Feishu/Lark custom bot: configured");
     println!("Starting agents-notifier now.");
 
@@ -278,6 +285,7 @@ fn run_webhook_setup(
     path: &Path,
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
     println!("Webhook sends every signal as JSON to your HTTPS endpoint.");
@@ -285,12 +293,13 @@ fn run_webhook_setup(
     println!();
 
     let webhook_url = prompt_for_webhook_url()?;
-    let config = setup::build_webhook_config(agent, &webhook_url);
+    let config = setup::build_webhook_config(agent, answer_detail, &webhook_url);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
     println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
     println!("webhook: configured");
     println!("Starting agents-notifier now.");
 
@@ -319,6 +328,28 @@ fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
             "2" => return Ok(setup::AgentSelection::CodexCli),
             "3" => return Ok(setup::AgentSelection::ClaudeCode),
             _ => println!("Please enter 1, 2, or 3."),
+        }
+        println!();
+    }
+}
+
+fn prompt_for_answer_detail() -> anyhow::Result<AnswerDetail> {
+    loop {
+        println!("Answer detail?");
+        println!("1. Preview (Recommended)");
+        println!("2. Full Answer");
+        print!("Choose answer detail [1/2, default: 1]: ");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read answer detail choice")?;
+
+        match input.trim() {
+            "" | "1" => return Ok(AnswerDetail::Preview),
+            "2" => return Ok(AnswerDetail::Full),
+            _ => println!("Please enter 1 or 2."),
         }
         println!();
     }
@@ -507,15 +538,16 @@ fn print_notification_targets(config: &Config) {
     let subscriptions = setup::ntfy_subscriptions(config);
     let feishu_lark_targets = setup::feishu_lark_targets(config);
     let webhook_targets = setup::webhook_targets(config);
-    if !agents.is_empty()
-        || !subscriptions.is_empty()
-        || !feishu_lark_targets.is_empty()
-        || !webhook_targets.is_empty()
-    {
-        println!();
-    }
+
+    println!();
+    println!("Notification:");
+    println!(
+        "answer detail: {}",
+        config.notification.answer_detail.display_name()
+    );
 
     if !agents.is_empty() {
+        println!();
         println!("Watched agents:");
         for agent in &agents {
             println!("agent: {agent}");

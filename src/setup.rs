@@ -5,8 +5,8 @@ use anyhow::Context;
 use uuid::Uuid;
 
 use crate::config::{
-    CONFIG_SCHEMA_VERSION, Config, LogConfig, ProviderConfig, ProviderType, RouteConfig,
-    SourceConfig, SourceType,
+    AnswerDetail, CONFIG_SCHEMA_VERSION, Config, LogConfig, NotificationConfig, ProviderConfig,
+    ProviderType, RouteConfig, SourceConfig, SourceType,
 };
 
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
@@ -137,9 +137,14 @@ pub fn resolve_webhook_url(input: &str) -> anyhow::Result<String> {
     Ok(url.to_string())
 }
 
-pub fn build_ntfy_config(agent: AgentSelection, topic: &str) -> Config {
+pub fn build_ntfy_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    topic: &str,
+) -> Config {
     build_config(
         agent,
+        answer_detail,
         vec![ProviderConfig {
             id: "phone".to_string(),
             provider_type: ProviderType::Ntfy,
@@ -155,11 +160,13 @@ pub fn build_ntfy_config(agent: AgentSelection, topic: &str) -> Config {
 
 pub fn build_feishu_lark_config(
     agent: AgentSelection,
+    answer_detail: AnswerDetail,
     webhook_url: &str,
     secret: Option<String>,
 ) -> Config {
     build_config(
         agent,
+        answer_detail,
         vec![ProviderConfig {
             id: "work_chat".to_string(),
             provider_type: ProviderType::FeishuLark,
@@ -173,9 +180,14 @@ pub fn build_feishu_lark_config(
     )
 }
 
-pub fn build_webhook_config(agent: AgentSelection, webhook_url: &str) -> Config {
+pub fn build_webhook_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    webhook_url: &str,
+) -> Config {
     build_config(
         agent,
+        answer_detail,
         vec![ProviderConfig {
             id: "webhook".to_string(),
             provider_type: ProviderType::Webhook,
@@ -189,7 +201,11 @@ pub fn build_webhook_config(agent: AgentSelection, webhook_url: &str) -> Config 
     )
 }
 
-fn build_config(agent: AgentSelection, providers: Vec<ProviderConfig>) -> Config {
+fn build_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    providers: Vec<ProviderConfig>,
+) -> Config {
     let provider_ids = providers
         .iter()
         .map(|provider| provider.id.clone())
@@ -200,6 +216,7 @@ fn build_config(agent: AgentSelection, providers: Vec<ProviderConfig>) -> Config
     Config {
         schema_version: CONFIG_SCHEMA_VERSION,
         log: LogConfig::default(),
+        notification: NotificationConfig { answer_detail },
         sources: vec![
             agent_source,
             SourceConfig {
@@ -359,11 +376,16 @@ mod tests {
     fn writes_parseable_ntfy_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_ntfy_config(AgentSelection::CodexDesktop, "agents-notifier-test");
+        let config = build_ntfy_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            "agents-notifier-test",
+        );
 
         write_config(&path, &config).expect("config should be written");
 
         let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(parsed.notification.answer_detail, AnswerDetail::Preview);
         assert_eq!(
             parsed
                 .provider("phone")
@@ -380,10 +402,30 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_full_answer_detail_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_ntfy_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Full,
+            "agents-notifier-test",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(parsed.notification.answer_detail, AnswerDetail::Full);
+    }
+
+    #[test]
     fn writes_parseable_codex_cli_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_ntfy_config(AgentSelection::CodexCli, "agents-notifier-test");
+        let config = build_ntfy_config(
+            AgentSelection::CodexCli,
+            AnswerDetail::Preview,
+            "agents-notifier-test",
+        );
 
         write_config(&path, &config).expect("config should be written");
 
@@ -401,7 +443,11 @@ mod tests {
     fn writes_parseable_claude_code_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_ntfy_config(AgentSelection::ClaudeCode, "agents-notifier-test");
+        let config = build_ntfy_config(
+            AgentSelection::ClaudeCode,
+            AnswerDetail::Preview,
+            "agents-notifier-test",
+        );
 
         write_config(&path, &config).expect("config should be written");
 
@@ -422,6 +468,7 @@ mod tests {
         let path = dir.path().join("config.toml");
         let config = build_feishu_lark_config(
             AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
             "https://open.larksuite.com/open-apis/bot/v2/hook/test",
             Some("secret".to_string()),
         );
@@ -450,7 +497,11 @@ mod tests {
     fn writes_parseable_webhook_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_webhook_config(AgentSelection::CodexDesktop, "https://example.com/hook");
+        let config = build_webhook_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            "https://example.com/hook",
+        );
 
         write_config(&path, &config).expect("config should be written");
 
@@ -520,7 +571,11 @@ mod tests {
 
     #[test]
     fn extracts_ntfy_subscriptions_from_config() {
-        let config = build_ntfy_config(AgentSelection::CodexDesktop, "agents-notifier-test");
+        let config = build_ntfy_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            "agents-notifier-test",
+        );
 
         let subscriptions = ntfy_subscriptions(&config);
 
@@ -538,6 +593,7 @@ mod tests {
     fn extracts_feishu_lark_targets_without_printing_webhook_token() {
         let config = build_feishu_lark_config(
             AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
             "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
             Some("secret".to_string()),
         );
@@ -558,6 +614,7 @@ mod tests {
     fn extracts_webhook_targets_without_printing_full_url() {
         let config = build_webhook_config(
             AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
             "https://example.com/secret-token",
         );
 

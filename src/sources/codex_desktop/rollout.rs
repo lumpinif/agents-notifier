@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::config::SourceConfig;
+use crate::config::{AnswerDetail, SourceConfig};
 use crate::signal::Signal;
 
 const PREVIEW_LIMIT_CHARS: usize = 360;
@@ -157,17 +157,17 @@ pub(super) fn signal_from_task_complete(
     session: &SessionInfo,
     session_title: Option<&str>,
     task: TaskComplete,
+    answer_detail: AnswerDetail,
 ) -> Option<Signal> {
     if !session.is_codex_desktop() {
         return None;
     }
 
     let project = session.project_name();
-    let preview = task
+    let answer = task
         .last_agent_message
         .as_deref()
-        .map(preview_text)
-        .filter(|preview| !preview.is_empty());
+        .and_then(|message| answer_block(message, answer_detail));
     let duration = task.duration_ms.map(format_duration);
     let branch = present_owned(session.branch.as_deref());
     let session_title = present_owned(session_title);
@@ -195,11 +195,13 @@ pub(super) fn signal_from_task_complete(
     }
 
     let mut body = lines.join("\n");
-    if let Some(preview) = &preview {
+    if let Some(answer) = &answer {
         if !body.is_empty() {
             body.push_str("\n\n");
         }
-        body.push_str(&format!("Preview: {preview}"));
+        body.push_str(answer.label);
+        body.push_str(": ");
+        body.push_str(&answer.content);
     }
 
     let mut metadata = BTreeMap::new();
@@ -242,6 +244,24 @@ pub(super) fn signal_from_task_complete(
         task.timestamp,
         metadata,
     ))
+}
+
+struct AnswerBlock {
+    label: &'static str,
+    content: String,
+}
+
+fn answer_block(value: &str, answer_detail: AnswerDetail) -> Option<AnswerBlock> {
+    let (label, content) = match answer_detail {
+        AnswerDetail::Preview => ("Preview", preview_text(value)),
+        AnswerDetail::Full => ("Answer", value.trim().to_string()),
+    };
+
+    if content.is_empty() {
+        None
+    } else {
+        Some(AnswerBlock { label, content })
+    }
 }
 
 pub(super) fn load_session_titles(path: &Path) -> anyhow::Result<HashMap<String, String>> {
@@ -471,7 +491,7 @@ struct SessionIndexRecord {
 mod tests {
     use chrono::{DateTime, Utc};
 
-    use crate::config::{SourceConfig, SourceType};
+    use crate::config::{AnswerDetail, SourceConfig, SourceType};
 
     use super::*;
 
@@ -498,9 +518,14 @@ mod tests {
             ),
         };
 
-        let signal =
-            signal_from_task_complete(&source, &session, Some("agents-notifier sync report"), task)
-                .expect("Codex Desktop task should create a signal");
+        let signal = signal_from_task_complete(
+            &source,
+            &session,
+            Some("agents-notifier sync report"),
+            task,
+            AnswerDetail::Preview,
+        )
+        .expect("Codex Desktop task should create a signal");
 
         assert_eq!(signal.source_id, "codex_desktop");
         assert_eq!(signal.source_type, "codex_desktop");
@@ -525,6 +550,32 @@ mod tests {
     }
 
     #[test]
+    fn creates_signal_with_full_answer_detail() {
+        let source = source_config();
+        let session = SessionInfo {
+            id: Some("session-1".to_string()),
+            originator: Some("Codex Desktop".to_string()),
+            cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+            branch: Some("main".to_string()),
+            ..SessionInfo::default()
+        };
+        let task = TaskComplete {
+            turn_id: "turn-1".to_string(),
+            timestamp: Utc::now(),
+            completed_at: None,
+            duration_ms: Some(1_000),
+            last_agent_message: Some("Fixed the route.\n\nNext, run the tests.".to_string()),
+        };
+
+        let signal = signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full)
+            .expect("Codex Desktop task should create a signal");
+
+        assert!(signal.body.contains("Answer: Fixed the route."));
+        assert!(signal.body.contains("Next, run the tests."));
+        assert!(!signal.body.contains("Preview:"));
+    }
+
+    #[test]
     fn ignores_non_desktop_codex_originator() {
         let source = source_config();
         let session = SessionInfo {
@@ -540,7 +591,10 @@ mod tests {
             last_agent_message: Some("done".to_string()),
         };
 
-        assert!(signal_from_task_complete(&source, &session, None, task).is_none());
+        assert!(
+            signal_from_task_complete(&source, &session, None, task, AnswerDetail::Preview)
+                .is_none()
+        );
     }
 
     #[test]
