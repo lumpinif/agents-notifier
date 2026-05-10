@@ -34,6 +34,7 @@ Choose how much answer text notifications include:
 ```
 
 Press Enter to keep `Preview`.
+Full Answer includes the visible assistant answer and omits Codex App control directives.
 
 Manual config:
 

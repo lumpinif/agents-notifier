@@ -252,8 +252,9 @@ struct AnswerBlock {
 }
 
 fn answer_block(value: &str, answer_detail: AnswerDetail) -> Option<AnswerBlock> {
+    let value = strip_codex_app_directive_lines(value);
     let (label, content) = match answer_detail {
-        AnswerDetail::Preview => ("Preview", preview_text(value)),
+        AnswerDetail::Preview => ("Preview", preview_text(&value)),
         AnswerDetail::Full => ("Answer", value.trim().to_string()),
     };
 
@@ -262,6 +263,54 @@ fn answer_block(value: &str, answer_detail: AnswerDetail) -> Option<AnswerBlock>
     } else {
         Some(AnswerBlock { label, content })
     }
+}
+
+fn strip_codex_app_directive_lines(value: &str) -> String {
+    let mut in_fenced_code = false;
+    let mut lines = Vec::new();
+
+    for line in value.lines() {
+        let trimmed = line.trim_start();
+        if is_markdown_fence(trimmed) {
+            in_fenced_code = !in_fenced_code;
+            lines.push(line);
+            continue;
+        }
+
+        if !in_fenced_code && is_codex_app_directive_line(line) {
+            continue;
+        }
+
+        lines.push(line);
+    }
+
+    lines.join("\n")
+}
+
+fn is_markdown_fence(trimmed_line: &str) -> bool {
+    trimmed_line.starts_with("```") || trimmed_line.starts_with("~~~")
+}
+
+fn is_codex_app_directive_line(line: &str) -> bool {
+    let line = line.trim();
+    if !line.starts_with("::") || !line.ends_with('}') {
+        return false;
+    }
+
+    let Some(open_brace) = line.find('{') else {
+        return false;
+    };
+
+    matches!(
+        &line[2..open_brace],
+        "archive"
+            | "code-comment"
+            | "git-commit"
+            | "git-create-branch"
+            | "git-create-pr"
+            | "git-push"
+            | "git-stage"
+    )
 }
 
 pub(super) fn load_session_titles(path: &Path) -> anyhow::Result<HashMap<String, String>> {
@@ -573,6 +622,56 @@ mod tests {
         assert!(signal.body.contains("Answer: Fixed the route."));
         assert!(signal.body.contains("Next, run the tests."));
         assert!(!signal.body.contains("Preview:"));
+    }
+
+    #[test]
+    fn full_answer_detail_omits_codex_app_directives() {
+        let source = source_config();
+        let session = SessionInfo {
+            id: Some("session-1".to_string()),
+            originator: Some("Codex Desktop".to_string()),
+            cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+            branch: Some("main".to_string()),
+            ..SessionInfo::default()
+        };
+        let task = TaskComplete {
+            turn_id: "turn-1".to_string(),
+            timestamp: Utc::now(),
+            completed_at: None,
+            duration_ms: Some(1_000),
+            last_agent_message: Some(
+                "Implemented the fix.\n\n::git-stage{cwd=\"/repo\"}\n::git-commit{cwd=\"/repo\"}"
+                    .to_string(),
+            ),
+        };
+
+        let signal = signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full)
+            .expect("Codex Desktop task should create a signal");
+
+        assert!(signal.body.contains("Answer: Implemented the fix."));
+        assert!(!signal.body.contains("::git-stage"));
+        assert!(!signal.body.contains("::git-commit"));
+    }
+
+    #[test]
+    fn preview_detail_omits_codex_app_directives() {
+        let block = answer_block(
+            "Implemented the fix.\n\n::git-stage{cwd=\"/repo\"}",
+            AnswerDetail::Preview,
+        )
+        .expect("answer block should be present");
+
+        assert_eq!(block.content, "Implemented the fix.");
+    }
+
+    #[test]
+    fn directive_filter_preserves_directive_examples_inside_code_fences() {
+        let answer = "Use this example:\n\n```text\n::git-stage{cwd=\"/repo\"}\n```\n\n::git-commit{cwd=\"/repo\"}";
+
+        let filtered = strip_codex_app_directive_lines(answer);
+
+        assert!(filtered.contains("::git-stage"));
+        assert!(!filtered.contains("::git-commit"));
     }
 
     #[test]
