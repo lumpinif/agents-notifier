@@ -49,6 +49,7 @@ pub enum SourceType {
     AgentsNotifier,
     CodexDesktop,
     CodexCli,
+    ClaudeCode,
 }
 
 impl SourceType {
@@ -57,6 +58,7 @@ impl SourceType {
             Self::AgentsNotifier => "agents_notifier",
             Self::CodexDesktop => "codex_desktop",
             Self::CodexCli => "codex_cli",
+            Self::ClaudeCode => "claude_code",
         }
     }
 }

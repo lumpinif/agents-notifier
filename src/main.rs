@@ -305,7 +305,8 @@ fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
         println!("Which agent should Agents Notifier watch?");
         println!("1. Codex Desktop");
         println!("2. Codex CLI");
-        print!("Choose an agent [1/2]: ");
+        println!("3. Claude Code");
+        print!("Choose an agent [1/2/3]: ");
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -316,7 +317,8 @@ fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
         match input.trim() {
             "" | "1" => return Ok(setup::AgentSelection::CodexDesktop),
             "2" => return Ok(setup::AgentSelection::CodexCli),
-            _ => println!("Please enter 1 or 2."),
+            "3" => return Ok(setup::AgentSelection::ClaudeCode),
+            _ => println!("Please enter 1, 2, or 3."),
         }
         println!();
     }
@@ -569,6 +571,7 @@ fn configured_agents(config: &Config) -> Vec<&'static str> {
         .filter_map(|source| match source.source_type {
             SourceType::CodexDesktop => Some("Codex Desktop"),
             SourceType::CodexCli => Some("Codex CLI"),
+            SourceType::ClaudeCode => Some("Claude Code"),
             SourceType::AgentsNotifier => None,
         })
         .collect()
@@ -692,6 +695,12 @@ fn print_agent_setup_note(agent: setup::AgentSelection) {
             println!("Agents Notifier is ready for Codex CLI hook events.");
             println!(
                 "Configure your Codex CLI hook to call `agents-notifier emit --source codex_cli`."
+            );
+        }
+        setup::AgentSelection::ClaudeCode => {
+            println!("Agents Notifier is ready for Claude Code hook events.");
+            println!(
+                "Configure your Claude Code hook to call `agents-notifier emit --source claude_code`."
             );
         }
     }

@@ -1,5 +1,7 @@
 # Codex CLI
 
+中文文档：[codex-cli.zh-CN.md](codex-cli.zh-CN.md)
+
 Use Codex CLI integration when you want a terminal Codex workflow to submit completion events to the running Agents Notifier service.
 
 ## What Agents Notifier Needs

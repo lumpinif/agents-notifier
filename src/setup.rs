@@ -39,6 +39,7 @@ pub struct WebhookTarget {
 pub enum AgentSelection {
     CodexDesktop,
     CodexCli,
+    ClaudeCode,
 }
 
 impl AgentSelection {
@@ -46,6 +47,7 @@ impl AgentSelection {
         match self {
             Self::CodexDesktop => "Codex Desktop",
             Self::CodexCli => "Codex CLI",
+            Self::ClaudeCode => "Claude Code",
         }
     }
 
@@ -58,6 +60,10 @@ impl AgentSelection {
             Self::CodexCli => SourceConfig {
                 id: "codex_cli".to_string(),
                 source_type: SourceType::CodexCli,
+            },
+            Self::ClaudeCode => SourceConfig {
+                id: "claude_code".to_string(),
+                source_type: SourceType::ClaudeCode,
             },
         }
     }
@@ -388,6 +394,25 @@ mod tests {
         assert_eq!(
             parsed.routes[0].sources,
             vec!["codex_cli".to_string(), "agents_notifier".to_string()]
+        );
+    }
+
+    #[test]
+    fn writes_parseable_claude_code_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_ntfy_config(AgentSelection::ClaudeCode, "agents-notifier-test");
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert!(parsed.source("claude_code").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_desktop").is_none());
+        assert!(parsed.source("codex_cli").is_none());
+        assert_eq!(
+            parsed.routes[0].sources,
+            vec!["claude_code".to_string(), "agents_notifier".to_string()]
         );
     }
 

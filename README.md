@@ -30,7 +30,7 @@ Agents:
 
 - [Codex Desktop](https://openai.com/codex/) on macOS
 - [Codex CLI](https://github.com/openai/codex) through hooks
-- [Claude Code](https://claude.com/product/claude-code) soon
+- [Claude Code](https://claude.com/product/claude-code) through hooks
 - More local agents soon
 
 Providers (Where do you want to get the notification?):
@@ -112,6 +112,7 @@ Provider setup guides:
 Agent setup guides:
 
 - [Codex CLI](docs/agents/codex-cli.md)
+- [Claude Code](docs/agents/claude-code.md)
 
 ## 🧹 Uninstall
 
@@ -132,13 +133,20 @@ agents-notifier uninstall # remove service, config, logs, state, and binary
 agents-notifier watch    # foreground debug worker
 ```
 
-Codex CLI hooks can submit events with:
+CLI agent hooks can submit events with:
 
 ```bash
 agents-notifier emit \
   --source codex_cli \
   --title "Codex" \
   --body "Ready for review."
+```
+
+```bash
+agents-notifier emit \
+  --source claude_code \
+  --title "Claude Code" \
+  --body "Claude Code finished a task."
 ```
 
 `emit` only talks to the local service. Providers are sent by the service.

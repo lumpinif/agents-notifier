@@ -351,6 +351,10 @@ mod tests {
                     id: "codex_desktop".to_string(),
                     source_type: SourceType::CodexDesktop,
                 },
+                SourceConfig {
+                    id: "claude_code".to_string(),
+                    source_type: SourceType::ClaudeCode,
+                },
             ],
             providers: vec![
                 ProviderConfig {
