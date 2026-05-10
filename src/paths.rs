@@ -26,6 +26,18 @@ pub fn socket_file_path() -> anyhow::Result<PathBuf> {
     Ok(socket_file_path_for_home(&home_dir()?))
 }
 
+pub fn codex_desktop_source_state_path() -> anyhow::Result<PathBuf> {
+    Ok(codex_desktop_source_state_path_for_home(&home_dir()?))
+}
+
+pub fn codex_sessions_dir_path() -> anyhow::Result<PathBuf> {
+    Ok(codex_sessions_dir_path_for_home(&home_dir()?))
+}
+
+pub fn codex_session_index_path() -> anyhow::Result<PathBuf> {
+    Ok(codex_session_index_path_for_home(&home_dir()?))
+}
+
 pub fn default_config_file_path() -> anyhow::Result<PathBuf> {
     Ok(default_config_file_path_for_home(&home_dir()?))
 }
@@ -59,6 +71,18 @@ pub fn socket_file_path_for_home(home: &Path) -> PathBuf {
 
 pub fn service_metadata_path_for_home(home: &Path) -> PathBuf {
     app_support_dir_path_for_home(home).join("service.json")
+}
+
+pub fn codex_desktop_source_state_path_for_home(home: &Path) -> PathBuf {
+    app_support_dir_path_for_home(home).join("codex-desktop-source-state.json")
+}
+
+pub fn codex_sessions_dir_path_for_home(home: &Path) -> PathBuf {
+    home.join(".codex").join("sessions")
+}
+
+pub fn codex_session_index_path_for_home(home: &Path) -> PathBuf {
+    home.join(".codex").join("session_index.jsonl")
 }
 
 pub fn default_config_file_path_for_home(home: &Path) -> PathBuf {
@@ -159,6 +183,42 @@ mod tests {
                 .join("Application Support")
                 .join("agents-notifier")
                 .join("service.json")
+        );
+    }
+
+    #[test]
+    fn builds_codex_desktop_source_state_path() {
+        let path = codex_desktop_source_state_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join("Library")
+                .join("Application Support")
+                .join("agents-notifier")
+                .join("codex-desktop-source-state.json")
+        );
+    }
+
+    #[test]
+    fn builds_codex_sessions_dir_path() {
+        let path = codex_sessions_dir_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester").join(".codex").join("sessions")
+        );
+    }
+
+    #[test]
+    fn builds_codex_session_index_path() {
+        let path = codex_session_index_path_for_home(Path::new("/Users/tester"));
+
+        assert_eq!(
+            path,
+            Path::new("/Users/tester")
+                .join(".codex")
+                .join("session_index.jsonl")
         );
     }
 

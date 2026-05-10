@@ -214,13 +214,12 @@ fn format_signal_text(signal: &Signal) -> String {
 }
 
 fn format_signal_text_with_time(signal: &Signal, formatted_time: &str) -> String {
-    format!(
-        "{}\n\n{}\n\nSource: {}\nTime: {}",
-        signal.title,
-        signal.body,
-        source_display_name(signal),
-        formatted_time
-    )
+    let body = signal.body.trim_end();
+    if body.is_empty() {
+        format!("{}\n\nTime: {}", signal.title, formatted_time)
+    } else {
+        format!("{}\n\n{}\nTime: {}", signal.title, body, formatted_time)
+    }
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
@@ -228,14 +227,6 @@ fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
         .with_timezone(&Local)
         .format("%Y-%m-%d %H:%M:%S %:z")
         .to_string()
-}
-
-fn source_display_name(signal: &Signal) -> &str {
-    match signal.source_type.as_str() {
-        "codex_desktop" => "Codex Desktop",
-        "codex_cli" => "Codex CLI",
-        _ => signal.source_id.as_str(),
-    }
 }
 
 fn present(value: Option<&str>) -> Option<&str> {
@@ -297,7 +288,6 @@ mod tests {
             .as_str()
             .expect("text content should be present");
         assert!(text.contains("Codex\n\nCodex finished a job."));
-        assert!(text.contains("Source: Codex Desktop"));
         assert!(text.contains("Time: "));
         assert!(!text.contains("UTC"));
     }
@@ -365,7 +355,28 @@ mod tests {
     fn formats_message_with_display_source_and_supplied_time() {
         assert_eq!(
             format_signal_text_with_time(&test_signal(), "2026-05-08 20:00:00 +08:00"),
-            "Codex\n\nCodex finished a job.\n\nSource: Codex Desktop\nTime: 2026-05-08 20:00:00 +08:00"
+            "Codex\n\nCodex finished a job.\nTime: 2026-05-08 20:00:00 +08:00"
+        );
+    }
+
+    #[test]
+    fn formats_codex_desktop_message_without_separate_source_line() {
+        let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let signal = Signal::new_with_timestamp(
+            "signal-1",
+            "codex_desktop",
+            "codex_desktop",
+            "Codex Desktop finished a job.",
+            "Project: agents-notifier\nSession: agents-notifier sync report\nPreview: Updated the Codex Desktop default notification text...\nDuration: 1m 32s\nBranch: main",
+            timestamp,
+            BTreeMap::new(),
+        );
+
+        assert_eq!(
+            format_signal_text_with_time(&signal, "2026-05-10 01:35:42 +08:00"),
+            "Codex Desktop finished a job.\n\nProject: agents-notifier\nSession: agents-notifier sync report\nPreview: Updated the Codex Desktop default notification text...\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 01:35:42 +08:00"
         );
     }
 

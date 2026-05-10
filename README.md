@@ -73,6 +73,8 @@ ntfy notifications are sent with high priority so mobile clients are more likely
 
 If a previous pre-LaunchAgent background process is still present, `start` safely stops or cleans up that legacy runtime before starting the LaunchAgent-managed service.
 
+For Codex Desktop, Phase 1 watches local Codex session files under `~/.codex/sessions` and forwards new `task_complete` events. This catches completed jobs even when the Codex window is focused and macOS does not create a system notification. The source reads only the completion event and lightweight session metadata needed for the message: project name, session title, final reply preview, duration, branch, and completion time. It does not log prompts, full replies, tool output, code, or full session content.
+
 A config can look like this:
 
 ```toml
@@ -140,5 +142,18 @@ agents-notifier emit \
 Use `--config <path>` with `start` or `watch` to run with a different config file. `start` installs or updates the LaunchAgent to use that config path; `watch` runs the worker directly in the foreground and does not install service files.
 
 Feishu/Lark Custom Bot uses the official custom bot webhook format and sends a plain text message. Message time is shown in the Mac's local time with a numeric UTC offset. If Signature Verification is enabled for the bot, set `secret` or `secret_env`.
+
+Codex Desktop completion messages are formatted like this:
+
+```text
+Codex Desktop finished a job.
+
+Project: agents-notifier
+Session: agents-notifier sync report
+Preview: Updated the Codex Desktop default notification text...
+Duration: 1m 32s
+Branch: main
+Time: 2026-05-10 01:35:42 +08:00
+```
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.

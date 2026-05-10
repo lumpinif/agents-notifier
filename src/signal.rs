@@ -69,7 +69,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
         let mut metadata = BTreeMap::new();
-        metadata.insert("raw_notification_id".to_string(), "1234".to_string());
+        metadata.insert("turn_id".to_string(), "turn-1".to_string());
 
         let signal = Signal::new_with_timestamp(
             "signal-1",
@@ -87,10 +87,7 @@ mod tests {
         assert_eq!(signal.source_type, "codex_desktop");
         assert_eq!(signal.title, "Codex");
         assert_eq!(signal.body, "Codex finished a job.");
-        assert_eq!(
-            signal.metadata.get("raw_notification_id"),
-            Some(&"1234".to_string())
-        );
+        assert_eq!(signal.metadata.get("turn_id"), Some(&"turn-1".to_string()));
     }
 
     #[test]

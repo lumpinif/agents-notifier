@@ -1,4 +1,5 @@
 use anyhow::{Context, anyhow};
+use chrono::{DateTime, Local, Utc};
 
 use crate::config::{ProviderConfig, ProviderType};
 use crate::router::{Provider, ProviderFuture};
@@ -50,7 +51,7 @@ impl Provider for NtfyProvider {
                 .post(&self.endpoint)
                 .header("Title", &signal.title)
                 .header("Priority", DEFAULT_PRIORITY)
-                .body(signal.body.clone())
+                .body(format_ntfy_body(signal))
                 .send()
                 .await
                 .map_err(reqwest::Error::without_url)
@@ -80,6 +81,23 @@ fn required_field<'a>(
         .ok_or_else(|| anyhow!("provider `{}` requires `{}`", config.id, field))
 }
 
+fn format_ntfy_body(signal: &Signal) -> String {
+    let body = signal.body.trim_end();
+    let time = format_local_timestamp(signal.timestamp);
+    if body.is_empty() {
+        format!("Time: {time}")
+    } else {
+        format!("{body}\nTime: {time}")
+    }
+}
+
+fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
+    timestamp
+        .with_timezone(&Local)
+        .format("%Y-%m-%d %H:%M:%S %:z")
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -98,7 +116,10 @@ mod tests {
             .and(path("/topic"))
             .and(header("Title", "Codex"))
             .and(header("Priority", "high"))
-            .and(body_string("Codex finished a job."))
+            .and(body_string(format!(
+                "Codex finished a job.\nTime: {}",
+                format_local_timestamp(test_timestamp())
+            )))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server)
             .await;
@@ -151,18 +172,20 @@ mod tests {
     }
 
     fn test_signal() -> Signal {
-        let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
         Signal::new_with_timestamp(
             "signal-1",
             "codex_cli",
             "codex_cli",
             "Codex",
             "Codex finished a job.",
-            timestamp,
+            test_timestamp(),
             BTreeMap::new(),
         )
+    }
+
+    fn test_timestamp() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
     }
 }
