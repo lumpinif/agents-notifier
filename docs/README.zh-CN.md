@@ -93,16 +93,14 @@ agents-notifier setup
 agents-notifier setup
 ```
 
-它会问三个问题：
+必须回答的是：
 
 1. 要监听哪个 agent？
-2. Answer detail？
-3. Include your prompt？
-4. 通知要发到哪里？
+2. 通知要发到哪里？
 
 然后它会写入配置、启动 service，并发送一条测试通知。
 
-完整 setup 选项见 [Setup](setup.zh-CN.md)。
+Answer detail、是否包含 prompt 等可选设置见 [Setup](setup.zh-CN.md)。
 
 ## 🎉 就这样
 

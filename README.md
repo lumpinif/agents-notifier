@@ -92,16 +92,14 @@ agents-notifier setup
 agents-notifier setup
 ```
 
-It asks four questions:
+The required choices are:
 
 1. Which agent should it watch?
-2. Answer detail?
-3. Include your prompt?
-4. Where should notifications go?
+2. Where should notifications go?
 
 Then it writes config, starts the service, and sends a test notification.
 
-For every setup option, see [Setup](docs/setup.md).
+For optional settings such as answer detail and prompt inclusion, see [Setup](docs/setup.md).
 
 ## 🎉 That's it
 
