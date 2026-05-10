@@ -47,6 +47,8 @@ Choose whether notifications include your original prompt:
 
 Press Enter to keep `No`. Prompt detail is off by default because prompts can contain private
 requirements, code, logs, paths, or secrets.
+For Codex Desktop, the prompt comes from Codex's local `user_message` record. Codex may include
+IDE context such as the active file and open tabs in that record.
 If a source does not provide a prompt, no Prompt section is shown.
 
 Manual config:
