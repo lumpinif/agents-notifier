@@ -93,6 +93,10 @@ agents-notifier setup
 
 在 macOS 上，这个 service 会作为 LaunchAgent 运行。
 
+Provider 设置教程：
+
+- [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
+
 ## 🧭 命令
 
 ```bash

@@ -92,6 +92,10 @@ Then it writes config, starts the service, and sends a test notification.
 
 On macOS, the service runs as a LaunchAgent.
 
+Provider setup guides:
+
+- [Feishu/Lark Custom Bot](docs/providers/feishu-lark-custom-bot.md)
+
 ## 🧭 Commands
 
 ```bash
