@@ -8,4 +8,5 @@ English documentation: [README.md](README.md)
 ## 教程
 
 - [飞书/Lark Custom Bot](feishu-lark-custom-bot.zh-CN.md)
-
+- [ntfy](ntfy.zh-CN.md)
+- [Webhook](webhook.zh-CN.md)

@@ -8,4 +8,5 @@ Set up the provider first. Then run `agents-notifier setup`.
 ## Guides
 
 - [Feishu/Lark Custom Bot](feishu-lark-custom-bot.md)
-
+- [ntfy](ntfy.md)
+- [Webhook](webhook.md)

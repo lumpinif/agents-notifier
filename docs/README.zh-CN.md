@@ -96,6 +96,8 @@ agents-notifier setup
 Provider 设置教程：
 
 - [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
+- [ntfy](providers/ntfy.zh-CN.md)
+- [Webhook](providers/webhook.zh-CN.md)
 
 ## 🧭 命令
 

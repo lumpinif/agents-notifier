@@ -95,6 +95,8 @@ On macOS, the service runs as a LaunchAgent.
 Provider setup guides:
 
 - [Feishu/Lark Custom Bot](docs/providers/feishu-lark-custom-bot.md)
+- [ntfy](docs/providers/ntfy.md)
+- [Webhook](docs/providers/webhook.md)
 
 ## 🧭 Commands
 
