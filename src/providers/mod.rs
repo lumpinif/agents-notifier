@@ -1,4 +1,5 @@
 pub mod feishu_lark;
+mod formatting;
 pub mod ntfy;
 pub mod webhook;
 

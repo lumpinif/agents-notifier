@@ -175,14 +175,19 @@ pub(super) fn signal_from_task_complete(
     if let Some(session_title) = &session_title {
         lines.push(format!("Session: {session_title}"));
     }
-    if let Some(preview) = &preview {
-        lines.push(format!("Preview: {preview}"));
-    }
     if let Some(duration) = &duration {
         lines.push(format!("Duration: {duration}"));
     }
     if let Some(branch) = &branch {
         lines.push(format!("Branch: {branch}"));
+    }
+
+    let mut body = lines.join("\n");
+    if let Some(preview) = &preview {
+        if !body.is_empty() {
+            body.push_str("\n\n");
+        }
+        body.push_str(&format!("Preview: {preview}"));
     }
 
     let mut metadata = BTreeMap::new();
@@ -218,7 +223,7 @@ pub(super) fn signal_from_task_complete(
         source.id.clone(),
         source.source_type.as_str(),
         DEFAULT_TITLE,
-        lines.join("\n"),
+        body,
         task.timestamp,
         metadata,
     ))
@@ -478,7 +483,7 @@ mod tests {
         assert_eq!(signal.title, "Codex Desktop finished a job.");
         assert_eq!(
             signal.body,
-            "Project: agents-notifier\nSession: agents-notifier sync report\nPreview: Updated the Codex finished a job copy across the Codex Desktop default notification, CLI examples, tests, and docs.\nDuration: 1m 32s\nBranch: main"
+            "Project: agents-notifier\nSession: agents-notifier sync report\nDuration: 1m 32s\nBranch: main\n\nPreview: Updated the Codex finished a job copy across the Codex Desktop default notification, CLI examples, tests, and docs."
         );
         assert_eq!(
             signal.metadata.get("session_id"),

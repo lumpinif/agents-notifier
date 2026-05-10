@@ -150,10 +150,11 @@ Codex Desktop finished a job.
 
 Project: agents-notifier
 Session: agents-notifier sync report
-Preview: Updated the Codex Desktop default notification text...
 Duration: 1m 32s
 Branch: main
 Time: 2026-05-10 01:35:42 +08:00
+
+Preview: Updated the Codex Desktop default notification text...
 ```
 
 Webhook providers receive the full `Signal` JSON. Only use webhook URLs you trust.

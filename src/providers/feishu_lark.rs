@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::config::{ProviderConfig, ProviderType};
+use crate::providers::formatting::body_with_local_time;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -214,12 +215,8 @@ fn format_signal_text(signal: &Signal) -> String {
 }
 
 fn format_signal_text_with_time(signal: &Signal, formatted_time: &str) -> String {
-    let body = signal.body.trim_end();
-    if body.is_empty() {
-        format!("{}\n\nTime: {}", signal.title, formatted_time)
-    } else {
-        format!("{}\n\n{}\nTime: {}", signal.title, body, formatted_time)
-    }
+    let body = body_with_local_time(&signal.body, formatted_time);
+    format!("{}\n\n{}", signal.title, body)
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
@@ -369,14 +366,14 @@ mod tests {
             "codex_desktop",
             "codex_desktop",
             "Codex Desktop finished a job.",
-            "Project: agents-notifier\nSession: agents-notifier sync report\nPreview: Updated the Codex Desktop default notification text...\nDuration: 1m 32s\nBranch: main",
+            "Project: agents-notifier\nSession: agents-notifier sync report\nDuration: 1m 32s\nBranch: main\n\nPreview: Updated the Codex Desktop default notification text...",
             timestamp,
             BTreeMap::new(),
         );
 
         assert_eq!(
             format_signal_text_with_time(&signal, "2026-05-10 01:35:42 +08:00"),
-            "Codex Desktop finished a job.\n\nProject: agents-notifier\nSession: agents-notifier sync report\nPreview: Updated the Codex Desktop default notification text...\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 01:35:42 +08:00"
+            "Codex Desktop finished a job.\n\nProject: agents-notifier\nSession: agents-notifier sync report\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 01:35:42 +08:00\n\nPreview: Updated the Codex Desktop default notification text..."
         );
     }
 

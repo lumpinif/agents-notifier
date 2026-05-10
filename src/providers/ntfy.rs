@@ -2,6 +2,7 @@ use anyhow::{Context, anyhow};
 use chrono::{DateTime, Local, Utc};
 
 use crate::config::{ProviderConfig, ProviderType};
+use crate::providers::formatting::body_with_local_time;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -82,13 +83,7 @@ fn required_field<'a>(
 }
 
 fn format_ntfy_body(signal: &Signal) -> String {
-    let body = signal.body.trim_end();
-    let time = format_local_timestamp(signal.timestamp);
-    if body.is_empty() {
-        format!("Time: {time}")
-    } else {
-        format!("{body}\nTime: {time}")
-    }
+    body_with_local_time(&signal.body, &format_local_timestamp(signal.timestamp))
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
