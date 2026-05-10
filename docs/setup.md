@@ -8,6 +8,12 @@ Use setup to create or replace the local config, start the service, and send a t
 agents-notifier setup
 ```
 
+If a config already exists, setup uses its current answers as defaults. Press Enter on any prompt
+to keep the shown default. Webhook URLs are shown by host only, and signing secrets are shown only
+as configured.
+
+For a Feishu/Lark signing secret, type `none` to clear the existing secret.
+
 ## Agent
 
 Choose the agent Agents Notifier should watch:

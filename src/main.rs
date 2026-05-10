@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use tokio::time::sleep;
 
 use agents_notifier::config::{
-    AnswerDetail, Config, ConfigError, ProviderType, SourceConfig, SourceType,
+    AnswerDetail, Config, ConfigError, ProviderConfig, ProviderType, SourceConfig, SourceType,
 };
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
@@ -91,10 +91,49 @@ enum GuidedSetup {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitialProvider {
     Ntfy,
     FeishuLark,
     Webhook,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SetupDefaults {
+    agent: Option<setup::AgentSelection>,
+    answer_detail: Option<AnswerDetail>,
+    provider: Option<InitialProvider>,
+    ntfy_topic: Option<String>,
+    feishu_lark_webhook_url: Option<String>,
+    feishu_lark_secret: Option<String>,
+    webhook_url: Option<String>,
+}
+
+impl SetupDefaults {
+    fn from_config(config: &Config) -> Self {
+        Self {
+            agent: first_configured_agent(config),
+            answer_detail: Some(config.notification.answer_detail),
+            provider: first_configured_provider(config),
+            ntfy_topic: first_provider_of_type(config, ProviderType::Ntfy)
+                .and_then(|provider| provider.topic.clone()),
+            feishu_lark_webhook_url: first_provider_of_type(config, ProviderType::FeishuLark)
+                .and_then(configured_provider_url),
+            feishu_lark_secret: first_provider_of_type(config, ProviderType::FeishuLark)
+                .and_then(configured_provider_secret),
+            webhook_url: first_provider_of_type(config, ProviderType::Webhook)
+                .and_then(configured_provider_url),
+        }
+    }
+
+    fn from_path(path: &Path) -> anyhow::Result<Self> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+
+        let config = Config::from_path(path)?;
+        Ok(Self::from_config(&config))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -108,6 +147,16 @@ impl ConfigWriteMode {
         match self {
             Self::Created => "Created",
             Self::Updated => "Updated",
+        }
+    }
+}
+
+impl InitialProvider {
+    fn display_name(self) -> &'static str {
+        match self {
+            Self::Ntfy => "ntfy",
+            Self::FeishuLark => "Feishu/Lark custom bot",
+            Self::Webhook => "Webhook",
         }
     }
 }
@@ -182,7 +231,7 @@ fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     println!("Setup connects one agent to one notification provider.");
     println!();
 
-    run_guided_provider_setup(path, ConfigWriteMode::Created)
+    run_guided_provider_setup(path, ConfigWriteMode::Created, SetupDefaults::default())
 }
 
 fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
@@ -205,16 +254,23 @@ fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     } else {
         ConfigWriteMode::Created
     };
-    run_guided_provider_setup(path, mode)
+    let defaults = SetupDefaults::from_path(path)?;
+    run_guided_provider_setup(path, mode, defaults)
 }
 
-fn run_guided_provider_setup(path: &Path, mode: ConfigWriteMode) -> anyhow::Result<LoadedConfig> {
-    let agent = prompt_for_agent()?;
-    let answer_detail = prompt_for_answer_detail()?;
-    match prompt_for_initial_provider()? {
-        InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent, answer_detail),
-        InitialProvider::FeishuLark => run_feishu_lark_setup(path, mode, agent, answer_detail),
-        InitialProvider::Webhook => run_webhook_setup(path, mode, agent, answer_detail),
+fn run_guided_provider_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    defaults: SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    let agent = prompt_for_agent(defaults.agent)?;
+    let answer_detail = prompt_for_answer_detail(defaults.answer_detail)?;
+    match prompt_for_initial_provider(defaults.provider)? {
+        InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent, answer_detail, &defaults),
+        InitialProvider::FeishuLark => {
+            run_feishu_lark_setup(path, mode, agent, answer_detail, &defaults)
+        }
+        InitialProvider::Webhook => run_webhook_setup(path, mode, agent, answer_detail, &defaults),
     }
 }
 
@@ -223,6 +279,7 @@ fn run_ntfy_setup(
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
+    defaults: &SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     let generated_topic = setup::generated_ntfy_topic();
 
@@ -231,7 +288,7 @@ fn run_ntfy_setup(
     println!("Install the ntfy app on your phone, then subscribe to the topic below.");
     println!();
 
-    let topic = prompt_for_ntfy_topic(&generated_topic)?;
+    let topic = prompt_for_ntfy_topic(&generated_topic, defaults.ntfy_topic.as_deref())?;
     let config = setup::build_ntfy_config(agent, answer_detail, &topic);
     setup::write_config(path, &config)?;
 
@@ -254,6 +311,7 @@ fn run_feishu_lark_setup(
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
+    defaults: &SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
     println!("Feishu/Lark sends notifications to a group through a custom bot webhook.");
@@ -263,8 +321,9 @@ fn run_feishu_lark_setup(
     );
     println!();
 
-    let webhook_url = prompt_for_feishu_lark_webhook_url()?;
-    let secret = prompt_for_feishu_lark_secret()?;
+    let webhook_url =
+        prompt_for_feishu_lark_webhook_url(defaults.feishu_lark_webhook_url.as_deref())?;
+    let secret = prompt_for_feishu_lark_secret(defaults.feishu_lark_secret.as_deref())?;
     let config = setup::build_feishu_lark_config(agent, answer_detail, &webhook_url, secret);
     setup::write_config(path, &config)?;
 
@@ -286,13 +345,14 @@ fn run_webhook_setup(
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
+    defaults: &SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
     println!("Webhook sends every signal as JSON to your HTTPS endpoint.");
     println!("Use this for internal tools, automation platforms, or your own notification bridge.");
     println!();
 
-    let webhook_url = prompt_for_webhook_url()?;
+    let webhook_url = prompt_for_webhook_url(defaults.webhook_url.as_deref())?;
     let config = setup::build_webhook_config(agent, answer_detail, &webhook_url);
     setup::write_config(path, &config)?;
 
@@ -309,13 +369,21 @@ fn run_webhook_setup(
     })
 }
 
-fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
+fn prompt_for_agent(
+    default: Option<setup::AgentSelection>,
+) -> anyhow::Result<setup::AgentSelection> {
     loop {
         println!("Which agent should Agents Notifier watch?");
         println!("1. Codex Desktop");
         println!("2. Codex CLI");
         println!("3. Claude Code");
-        print!("Choose an agent [1/2/3]: ");
+        if let Some(default) = default {
+            println!("Current: {}", default.display_name());
+        }
+        print!(
+            "Choose an agent [1/2/3, default: {}]: ",
+            agent_choice(default)
+        );
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -324,7 +392,8 @@ fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
             .context("failed to read agent choice")?;
 
         match input.trim() {
-            "" | "1" => return Ok(setup::AgentSelection::CodexDesktop),
+            "" => return Ok(default.unwrap_or(setup::AgentSelection::CodexDesktop)),
+            "1" => return Ok(setup::AgentSelection::CodexDesktop),
             "2" => return Ok(setup::AgentSelection::CodexCli),
             "3" => return Ok(setup::AgentSelection::ClaudeCode),
             _ => println!("Please enter 1, 2, or 3."),
@@ -333,12 +402,20 @@ fn prompt_for_agent() -> anyhow::Result<setup::AgentSelection> {
     }
 }
 
-fn prompt_for_answer_detail() -> anyhow::Result<AnswerDetail> {
+fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<AnswerDetail> {
     loop {
+        let effective_default = default.unwrap_or(AnswerDetail::Preview);
+
         println!("Answer detail?");
         println!("1. Preview (Recommended)");
         println!("2. Full Answer");
-        print!("Choose answer detail [1/2, default: 1]: ");
+        if let Some(default) = default {
+            println!("Current: {}", default.display_name());
+        }
+        print!(
+            "Choose answer detail [1/2, default: {}]: ",
+            answer_detail_choice(effective_default)
+        );
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -347,7 +424,8 @@ fn prompt_for_answer_detail() -> anyhow::Result<AnswerDetail> {
             .context("failed to read answer detail choice")?;
 
         match input.trim() {
-            "" | "1" => return Ok(AnswerDetail::Preview),
+            "" => return Ok(effective_default),
+            "1" => return Ok(AnswerDetail::Preview),
             "2" => return Ok(AnswerDetail::Full),
             _ => println!("Please enter 1 or 2."),
         }
@@ -355,13 +433,21 @@ fn prompt_for_answer_detail() -> anyhow::Result<AnswerDetail> {
     }
 }
 
-fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
+fn prompt_for_initial_provider(
+    default: Option<InitialProvider>,
+) -> anyhow::Result<InitialProvider> {
     loop {
         println!("Where should Agents Notifier send notifications?");
         println!("1. ntfy");
         println!("2. Feishu/Lark custom bot");
         println!("3. Webhook");
-        print!("Choose a provider [1/2/3]: ");
+        if let Some(default) = default {
+            println!("Current: {}", default.display_name());
+        }
+        print!(
+            "Choose a provider [1/2/3, default: {}]: ",
+            provider_choice(default)
+        );
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -370,7 +456,8 @@ fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
             .context("failed to read provider choice")?;
 
         match input.trim() {
-            "" | "1" => return Ok(InitialProvider::Ntfy),
+            "" => return Ok(default.unwrap_or(InitialProvider::Ntfy)),
+            "1" => return Ok(InitialProvider::Ntfy),
             "2" => return Ok(InitialProvider::FeishuLark),
             "3" => return Ok(InitialProvider::Webhook),
             _ => println!("Please enter 1, 2, or 3."),
@@ -379,9 +466,17 @@ fn prompt_for_initial_provider() -> anyhow::Result<InitialProvider> {
     }
 }
 
-fn prompt_for_ntfy_topic(generated_topic: &str) -> anyhow::Result<String> {
+fn prompt_for_ntfy_topic(
+    generated_topic: &str,
+    current_topic: Option<&str>,
+) -> anyhow::Result<String> {
     loop {
-        print!("Press Enter to use topic `{generated_topic}`, or type a different topic: ");
+        let default_topic = current_topic.unwrap_or(generated_topic);
+        if let Some(current_topic) = current_topic {
+            print!("Topic [{current_topic}]: ");
+        } else {
+            print!("Press Enter to use topic `{generated_topic}`, or type a different topic: ");
+        }
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -389,7 +484,7 @@ fn prompt_for_ntfy_topic(generated_topic: &str) -> anyhow::Result<String> {
             .read_line(&mut input)
             .context("failed to read topic")?;
 
-        match setup::resolve_ntfy_topic(&input, generated_topic) {
+        match setup::resolve_ntfy_topic(&input, default_topic) {
             Ok(topic) => return Ok(topic),
             Err(error) => {
                 println!("{error}");
@@ -398,9 +493,16 @@ fn prompt_for_ntfy_topic(generated_topic: &str) -> anyhow::Result<String> {
     }
 }
 
-fn prompt_for_feishu_lark_webhook_url() -> anyhow::Result<String> {
+fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        print!("Webhook URL: ");
+        if let Some(current_url) = current_url {
+            print!(
+                "Webhook URL [configured: {}, press Enter to keep]: ",
+                safe_url_host(current_url)
+            );
+        } else {
+            print!("Webhook URL: ");
+        }
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -408,7 +510,14 @@ fn prompt_for_feishu_lark_webhook_url() -> anyhow::Result<String> {
             .read_line(&mut input)
             .context("failed to read webhook URL")?;
 
-        match setup::resolve_feishu_lark_webhook_url(&input) {
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_url.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_feishu_lark_webhook_url(candidate) {
             Ok(url) => return Ok(url),
             Err(error) => {
                 println!("{error}");
@@ -417,8 +526,12 @@ fn prompt_for_feishu_lark_webhook_url() -> anyhow::Result<String> {
     }
 }
 
-fn prompt_for_feishu_lark_secret() -> anyhow::Result<Option<String>> {
-    print!("Signing secret, or press Enter if you did not enable Signature Verification: ");
+fn prompt_for_feishu_lark_secret(current_secret: Option<&str>) -> anyhow::Result<Option<String>> {
+    if current_secret.is_some() {
+        print!("Signing secret [configured, press Enter to keep, type `none` to clear]: ");
+    } else {
+        print!("Signing secret, or press Enter if you did not enable Signature Verification: ");
+    }
     io::stdout().flush().context("failed to flush stdout")?;
 
     let mut input = String::new();
@@ -426,12 +539,27 @@ fn prompt_for_feishu_lark_secret() -> anyhow::Result<Option<String>> {
         .read_line(&mut input)
         .context("failed to read signing secret")?;
 
-    Ok(setup::resolve_feishu_lark_secret(&input))
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(current_secret.map(ToOwned::to_owned));
+    }
+    if input.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+
+    Ok(setup::resolve_feishu_lark_secret(input))
 }
 
-fn prompt_for_webhook_url() -> anyhow::Result<String> {
+fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        print!("Webhook URL: ");
+        if let Some(current_url) = current_url {
+            print!(
+                "Webhook URL [configured: {}, press Enter to keep]: ",
+                safe_url_host(current_url)
+            );
+        } else {
+            print!("Webhook URL: ");
+        }
         io::stdout().flush().context("failed to flush stdout")?;
 
         let mut input = String::new();
@@ -439,7 +567,14 @@ fn prompt_for_webhook_url() -> anyhow::Result<String> {
             .read_line(&mut input)
             .context("failed to read webhook URL")?;
 
-        match setup::resolve_webhook_url(&input) {
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_url.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_webhook_url(candidate) {
             Ok(url) => return Ok(url),
             Err(error) => {
                 println!("{error}");
@@ -607,6 +742,74 @@ fn configured_agents(config: &Config) -> Vec<&'static str> {
             SourceType::AgentsNotifier => None,
         })
         .collect()
+}
+
+fn first_configured_agent(config: &Config) -> Option<setup::AgentSelection> {
+    config
+        .sources
+        .iter()
+        .find_map(|source| match &source.source_type {
+            SourceType::CodexDesktop => Some(setup::AgentSelection::CodexDesktop),
+            SourceType::CodexCli => Some(setup::AgentSelection::CodexCli),
+            SourceType::ClaudeCode => Some(setup::AgentSelection::ClaudeCode),
+            SourceType::AgentsNotifier => None,
+        })
+}
+
+fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
+    config
+        .providers
+        .first()
+        .map(|provider| match &provider.provider_type {
+            ProviderType::Ntfy => InitialProvider::Ntfy,
+            ProviderType::FeishuLark => InitialProvider::FeishuLark,
+            ProviderType::Webhook => InitialProvider::Webhook,
+        })
+}
+
+fn first_provider_of_type(config: &Config, provider_type: ProviderType) -> Option<&ProviderConfig> {
+    config
+        .providers
+        .iter()
+        .find(|provider| provider.provider_type.as_str() == provider_type.as_str())
+}
+
+fn configured_provider_url(provider: &ProviderConfig) -> Option<String> {
+    provider.url.clone()
+}
+
+fn configured_provider_secret(provider: &ProviderConfig) -> Option<String> {
+    provider.secret.clone()
+}
+
+fn agent_choice(agent: Option<setup::AgentSelection>) -> &'static str {
+    match agent.unwrap_or(setup::AgentSelection::CodexDesktop) {
+        setup::AgentSelection::CodexDesktop => "1",
+        setup::AgentSelection::CodexCli => "2",
+        setup::AgentSelection::ClaudeCode => "3",
+    }
+}
+
+fn answer_detail_choice(answer_detail: AnswerDetail) -> &'static str {
+    match answer_detail {
+        AnswerDetail::Preview => "1",
+        AnswerDetail::Full => "2",
+    }
+}
+
+fn provider_choice(provider: Option<InitialProvider>) -> &'static str {
+    match provider.unwrap_or(InitialProvider::Ntfy) {
+        InitialProvider::Ntfy => "1",
+        InitialProvider::FeishuLark => "2",
+        InitialProvider::Webhook => "3",
+    }
+}
+
+fn safe_url_host(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "configured".to_string())
 }
 
 fn print_status_notification_targets(config_path: &Path) {
@@ -1016,5 +1219,74 @@ mod tests {
         assert!(!should_remove_current_binary(Path::new(
             "/repo/target/release/agents-notifier"
         )));
+    }
+
+    #[test]
+    fn setup_defaults_preserve_existing_config_answers() {
+        let config = setup::build_feishu_lark_config(
+            setup::AgentSelection::ClaudeCode,
+            AnswerDetail::Full,
+            "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
+            Some("signing-secret".to_string()),
+        );
+
+        let defaults = SetupDefaults::from_config(&config);
+
+        assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
+        assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
+        assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
+        assert_eq!(
+            defaults.feishu_lark_webhook_url.as_deref(),
+            Some("https://open.larksuite.com/open-apis/bot/v2/hook/secret-token")
+        );
+        assert_eq!(
+            defaults.feishu_lark_secret.as_deref(),
+            Some("signing-secret")
+        );
+    }
+
+    #[test]
+    fn setup_defaults_do_not_inline_env_values() {
+        let config = Config::from_toml_str(
+            r#"
+schema_version = 1
+
+[notification]
+answer_detail = "preview"
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[sources]]
+id = "agents_notifier"
+type = "agents_notifier"
+
+[[providers]]
+id = "work_chat"
+type = "feishu_lark"
+url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
+secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
+
+[[routes]]
+sources = ["codex_desktop", "agents_notifier"]
+providers = ["work_chat"]
+"#,
+        )
+        .expect("test config should be valid");
+
+        let defaults = SetupDefaults::from_config(&config);
+
+        assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
+        assert_eq!(defaults.feishu_lark_webhook_url, None);
+        assert_eq!(defaults.feishu_lark_secret, None);
+    }
+
+    #[test]
+    fn safe_url_host_does_not_expose_webhook_token() {
+        assert_eq!(
+            safe_url_host("https://open.larksuite.com/open-apis/bot/v2/hook/secret-token"),
+            "open.larksuite.com"
+        );
     }
 }
