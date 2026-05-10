@@ -112,6 +112,24 @@ async fn version_flag_prints_package_version() {
     );
 }
 
+#[tokio::test]
+async fn help_lists_uninstall_command() {
+    let home = short_home();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .arg("--help")
+        .output()
+        .await
+        .expect("command should run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert!(stdout.contains("uninstall"));
+    assert!(stdout.contains("remove Agents Notifier local files"));
+}
+
 fn short_home() -> TempDir {
     tempdir_in("/tmp").expect("short temp home should be created")
 }

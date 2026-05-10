@@ -1,8 +1,12 @@
 # agents-notifier
 
+Set it up in 2-3 minutes and get local coding agent updates on your phone, Feishu/Lark, or webhook.
+
+---
+
 中文文档：[docs/README.zh-CN.md](docs/README.zh-CN.md)
 
-Set it up in 2-3 minutes and get local coding agent updates on your phone, Feishu/Lark, or webhook.
+[Quick start](#-install---step-1)
 
 > _"Imagine [Codex Desktop App](https://openai.com/codex/) keeps working while you make coffee or do laundry._
 >
@@ -59,9 +63,13 @@ For Codex Desktop, it reads only completion data needed for the notification:
 In Feishu/Lark, notifications are sent as Codex-colored interactive cards with a clickable Open in Codex button.
 The button opens a local browser URL first, then hands off to Codex Desktop.
 
-## ⚙️ Install
+## ⚙️ Install - Step 1
+
+Pick one install method. That is enough.
 
 Recommended:
+
+Copy this into your Terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
@@ -77,7 +85,7 @@ cargo install --path .
 agents-notifier setup
 ```
 
-## 🚀 Setup
+## 🚀 Setup - Step 2
 
 ```bash
 agents-notifier setup
@@ -90,13 +98,24 @@ It asks two questions:
 
 Then it writes config, starts the service, and sends a test notification.
 
+## 🎉 That's it
+
 On macOS, the service runs as a LaunchAgent.
+To stop using the service, run `agents-notifier stop`.
 
 Provider setup guides:
 
 - [Feishu/Lark Custom Bot](docs/providers/feishu-lark-custom-bot.md)
 - [ntfy](docs/providers/ntfy.md)
 - [Webhook](docs/providers/webhook.md)
+
+## 🧹 Uninstall
+
+Remove Agents Notifier cleanly:
+
+```bash
+agents-notifier uninstall
+```
 
 ## 🧭 Commands
 
@@ -105,6 +124,7 @@ agents-notifier setup    # set up or change agent/provider
 agents-notifier start    # start existing service
 agents-notifier status   # check service status
 agents-notifier stop     # stop service
+agents-notifier uninstall # remove service, config, logs, state, and binary
 agents-notifier watch    # foreground debug worker
 ```
 

@@ -11,8 +11,8 @@ use agents_notifier::config::{Config, ConfigError, ProviderType, SourceConfig, S
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
 use agents_notifier::paths::{
-    default_config_file_path, launch_agent_plist_path, log_file_path, pid_file_path,
-    service_metadata_path, socket_file_path,
+    app_support_dir_path, default_config_file_path, launch_agent_plist_path, log_file_path,
+    pid_file_path, service_metadata_path, socket_file_path,
 };
 use agents_notifier::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_notifier::providers::build_providers;
@@ -54,6 +54,8 @@ enum Command {
     },
     #[command(about = "Stop the local notification service")]
     Stop,
+    #[command(about = "Stop the service and remove Agents Notifier local files")]
+    Uninstall,
     #[command(about = "Show the local notification service status")]
     Status,
     #[command(about = "Print the agents-notifier version")]
@@ -133,6 +135,7 @@ async fn main() -> anyhow::Result<()> {
             run_watch(&loaded.config).await
         }
         Command::Stop => run_stop(),
+        Command::Uninstall => run_uninstall(),
         Command::Status => run_status(),
         Command::Version => {
             println!("agents-notifier {}", env!("CARGO_PKG_VERSION"));
@@ -744,6 +747,61 @@ fn run_stop() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn run_uninstall() -> anyhow::Result<()> {
+    run_stop()?;
+
+    remove_path_if_exists(&launch_agent_plist_path()?)?;
+    remove_path_if_exists(&app_support_dir_path()?)?;
+    if let Some(log_dir) = log_file_path()?.parent() {
+        remove_path_if_exists(log_dir)?;
+    }
+    if let Some(config_dir) = default_config_file_path()?.parent() {
+        remove_path_if_exists(config_dir)?;
+    }
+
+    let current_binary = std::env::current_exe().context("failed to locate current binary")?;
+    if should_remove_current_binary(&current_binary) {
+        remove_path_if_exists(&current_binary)?;
+    } else {
+        println!(
+            "left development binary in place: {}",
+            current_binary.display()
+        );
+    }
+
+    println!("agents-notifier uninstalled.");
+    Ok(())
+}
+
+fn remove_path_if_exists(path: &Path) -> anyhow::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("failed to inspect `{}`", path.display()))?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("failed to remove directory `{}`", path.display()))?;
+    } else {
+        fs::remove_file(path)
+            .with_context(|| format!("failed to remove file `{}`", path.display()))?;
+    }
+
+    println!("removed: {}", path.display());
+    Ok(())
+}
+
+fn should_remove_current_binary(path: &Path) -> bool {
+    if path.file_name().and_then(|name| name.to_str()) != Some("agents-notifier") {
+        return false;
+    }
+
+    !path
+        .components()
+        .any(|component| component.as_os_str() == "target")
+}
+
 fn remove_socket_file_if_exists() -> anyhow::Result<()> {
     let socket_file = socket_file_path()?;
     if socket_file.exists() {
@@ -817,4 +875,31 @@ fn init_tracing(level: &str) -> anyhow::Result<()> {
 
     let _ = tracing_subscriber::fmt().with_max_level(level).try_init();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn uninstall_removes_installed_binary_paths() {
+        assert!(should_remove_current_binary(Path::new(
+            "/Users/tester/.local/bin/agents-notifier"
+        )));
+        assert!(should_remove_current_binary(Path::new(
+            "/Users/tester/.cargo/bin/agents-notifier"
+        )));
+    }
+
+    #[test]
+    fn uninstall_keeps_development_binary_paths() {
+        assert!(!should_remove_current_binary(Path::new(
+            "/repo/target/debug/agents-notifier"
+        )));
+        assert!(!should_remove_current_binary(Path::new(
+            "/repo/target/release/agents-notifier"
+        )));
+    }
 }

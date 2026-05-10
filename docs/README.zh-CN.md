@@ -1,9 +1,13 @@
 # agents-notifier
 
-English documentation: [../README.md](../README.md)
-
 两三分钟就能 setup 好。
 然后你就可以在手机、飞书、Lark 或 Webhook 上收到本地 coding agents 的消息。
+
+---
+
+English documentation: [../README.md](../README.md)
+
+[快速开始](#-安装---step-1)
 
 > _想象一下：你的 [Codex Desktop App](https://openai.com/codex/) 在后台工作，你去煮咖啡或者洗衣服，或者暂时离开电脑。_
 >
@@ -60,9 +64,13 @@ Agents Notifier 在本地运行。
 在 Feishu/Lark 中，通知会以 Codex 风格的 interactive card 发送，并带有可点击的 Open in Codex 按钮。
 这个按钮会先打开一个本地浏览器 URL，然后再交给 Codex Desktop。
 
-## ⚙️ 安装
+## ⚙️ 安装 - Step 1
+
+安装方式二选一就够。
 
 推荐方式：
+
+复制到 Terminal 里运行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
@@ -78,7 +86,7 @@ cargo install --path .
 agents-notifier setup
 ```
 
-## 🚀 设置
+## 🚀 设置 - Step 2
 
 ```bash
 agents-notifier setup
@@ -91,13 +99,24 @@ agents-notifier setup
 
 然后它会写入配置、启动 service，并发送一条测试通知。
 
+## 🎉 就这样
+
 在 macOS 上，这个 service 会作为 LaunchAgent 运行。
+不想继续使用 service 时，运行 `agents-notifier stop` 关闭。
 
 Provider 设置教程：
 
 - [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
 - [ntfy](providers/ntfy.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
+
+## 🧹 卸载
+
+一行命令干净卸载：
+
+```bash
+agents-notifier uninstall
+```
 
 ## 🧭 命令
 
@@ -106,6 +125,7 @@ agents-notifier setup    # 设置或修改 agent/provider
 agents-notifier start    # 启动已有 service
 agents-notifier status   # 查看 service 状态
 agents-notifier stop     # 停止 service
+agents-notifier uninstall # 删除 service、配置、日志、状态和二进制
 agents-notifier watch    # 前台 debug worker
 ```
 
