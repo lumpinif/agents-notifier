@@ -10,4 +10,6 @@ Set up the provider first. Then run `agents-notifier setup`.
 - [Feishu/Lark Custom Bot](feishu-lark-custom-bot.md)
 - [ntfy](ntfy.md)
 - [Pushover](pushover.md)
+- [Slack](slack.md)
+- [Discord](discord.md)
 - [Webhook](webhook.md)

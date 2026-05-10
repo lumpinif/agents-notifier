@@ -5,6 +5,7 @@ pub mod local_machine;
 pub mod local_open_bridge;
 pub mod paths;
 pub mod process;
+pub mod provider_urls;
 pub mod providers;
 pub mod router;
 pub mod service;

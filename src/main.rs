@@ -155,6 +155,12 @@ enum GuidedSetup {
     Pushover {
         agent: setup::AgentSelection,
     },
+    Slack {
+        agent: setup::AgentSelection,
+    },
+    Discord {
+        agent: setup::AgentSelection,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +169,8 @@ enum InitialProvider {
     FeishuLark,
     Webhook,
     Pushover,
+    Slack,
+    Discord,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -179,6 +187,8 @@ struct SetupDefaults {
     pushover_user_key: Option<String>,
     pushover_device: Option<String>,
     pushover_sound: Option<String>,
+    slack_webhook_url: Option<String>,
+    discord_webhook_url: Option<String>,
 }
 
 impl SetupDefaults {
@@ -204,6 +214,10 @@ impl SetupDefaults {
                 .and_then(|provider| provider.device.clone()),
             pushover_sound: first_provider_of_type(config, ProviderType::Pushover)
                 .and_then(|provider| provider.sound.clone()),
+            slack_webhook_url: first_provider_of_type(config, ProviderType::Slack)
+                .and_then(configured_provider_url),
+            discord_webhook_url: first_provider_of_type(config, ProviderType::Discord)
+                .and_then(configured_provider_url),
         }
     }
 
@@ -239,6 +253,8 @@ impl InitialProvider {
             Self::FeishuLark => "Feishu/Lark custom bot",
             Self::Webhook => "Webhook",
             Self::Pushover => "Pushover",
+            Self::Slack => "Slack",
+            Self::Discord => "Discord",
         }
     }
 }
@@ -363,6 +379,12 @@ fn run_guided_provider_setup(
         InitialProvider::Pushover => {
             run_pushover_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
         }
+        InitialProvider::Slack => {
+            run_slack_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
+        InitialProvider::Discord => {
+            run_discord_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
     }
 }
 
@@ -382,6 +404,20 @@ fn answer_detail_for_provider(
             println!();
             println!(
                 "Answer detail is fixed to Preview for Pushover because Pushover messages are limited to 1024 characters. Agents Notifier will keep Pushover notifications short enough for reliable delivery."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::Slack => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for Slack because Slack has documented message length and truncation limits. Agents Notifier will keep Slack notifications short enough for reliable delivery."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::Discord => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for Discord because Discord webhook content is limited to 2000 characters. Agents Notifier will keep Discord notifications short enough for reliable delivery."
             );
             Ok(AnswerDetail::Preview)
         }
@@ -405,6 +441,20 @@ fn prompt_detail_for_provider(
             println!();
             println!(
                 "Prompt detail is disabled for Pushover because Pushover messages are limited to 1024 characters. Agents Notifier will keep prompts out of Pushover notifications for reliable delivery."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::Slack => {
+            println!();
+            println!(
+                "Prompt detail is disabled for Slack because Slack has documented message length and truncation limits. Agents Notifier will keep prompts out of Slack notifications for reliable delivery."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::Discord => {
+            println!();
+            println!(
+                "Prompt detail is disabled for Discord because Discord webhook content is limited to 2000 characters. Agents Notifier will keep prompts out of Discord notifications for reliable delivery."
             );
             Ok(PromptDetail::Off)
         }
@@ -554,6 +604,66 @@ fn run_pushover_setup(
     })
 }
 
+fn run_slack_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Slack sends notifications to one channel through an incoming webhook.");
+    println!("Create a Slack app, enable Incoming Webhooks, then paste the channel webhook URL.");
+    println!();
+
+    let webhook_url = prompt_for_slack_webhook_url(defaults.slack_webhook_url.as_deref())?;
+    let config = setup::build_slack_config(agent, answer_detail, prompt_detail, &webhook_url);
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("Slack: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Slack { agent }),
+    })
+}
+
+fn run_discord_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Discord sends notifications to one channel through a channel webhook.");
+    println!("Create a Discord channel webhook, then paste its webhook URL.");
+    println!();
+
+    let webhook_url = prompt_for_discord_webhook_url(defaults.discord_webhook_url.as_deref())?;
+    let config = setup::build_discord_config(agent, answer_detail, prompt_detail, &webhook_url);
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("Discord: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Discord { agent }),
+    })
+}
+
 fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
 ) -> anyhow::Result<setup::AgentSelection> {
@@ -665,14 +775,16 @@ fn prompt_for_initial_provider(
 
         println!("Where should Agents Notifier send notifications?");
         println!("1. ntfy");
-        println!("2. Feishu/Lark custom bot");
-        println!("3. Webhook");
+        println!("2. Slack");
+        println!("3. Discord");
         println!("4. Pushover");
+        println!("5. Feishu/Lark custom bot");
+        println!("6. Webhook");
         if let Some(default) = default {
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose a provider [1/2/3/4, {}]: ",
+            "Choose a provider [1/2/3/4/5/6, {}]: ",
             choice_prompt_hint(
                 default.map(provider_choice),
                 provider_choice(effective_default)
@@ -688,10 +800,12 @@ fn prompt_for_initial_provider(
         match input.trim() {
             "" => return Ok(effective_default),
             "1" => return Ok(InitialProvider::Ntfy),
-            "2" => return Ok(InitialProvider::FeishuLark),
-            "3" => return Ok(InitialProvider::Webhook),
+            "2" => return Ok(InitialProvider::Slack),
+            "3" => return Ok(InitialProvider::Discord),
             "4" => return Ok(InitialProvider::Pushover),
-            _ => println!("Please enter 1, 2, 3, or 4."),
+            "5" => return Ok(InitialProvider::FeishuLark),
+            "6" => return Ok(InitialProvider::Webhook),
+            _ => println!("Please enter 1, 2, 3, 4, 5, or 6."),
         }
         println!();
     }
@@ -806,6 +920,72 @@ fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
         };
 
         match setup::resolve_webhook_url(candidate) {
+            Ok(url) => return Ok(url),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_slack_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_url) = current_url {
+            print!(
+                "Slack webhook URL [configured: {}, press Enter to keep]: ",
+                safe_url_host(current_url)
+            );
+        } else {
+            print!("Slack webhook URL: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Slack webhook URL")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_url.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_slack_webhook_url(candidate) {
+            Ok(url) => return Ok(url),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_url) = current_url {
+            print!(
+                "Discord webhook URL [configured: {}, press Enter to keep]: ",
+                safe_url_host(current_url)
+            );
+        } else {
+            print!("Discord webhook URL: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Discord webhook URL")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_url.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_discord_webhook_url(candidate) {
             Ok(url) => return Ok(url),
             Err(error) => {
                 println!("{error}");
@@ -1039,6 +1219,8 @@ fn print_notification_targets(config: &Config) {
     let feishu_lark_targets = setup::feishu_lark_targets(config);
     let webhook_targets = setup::webhook_targets(config);
     let pushover_targets = setup::pushover_targets(config);
+    let slack_targets = setup::slack_targets(config);
+    let discord_targets = setup::discord_targets(config);
 
     println!();
     println!("Notification:");
@@ -1121,6 +1303,39 @@ fn print_notification_targets(config: &Config) {
             );
         }
     }
+
+    if !slack_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+            || !pushover_targets.is_empty()
+        {
+            println!();
+        }
+        println!("Slack:");
+        for target in &slack_targets {
+            println!("provider: {}", target.provider_id);
+            println!("webhook: {}", target.webhook_host);
+        }
+    }
+
+    if !discord_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+            || !pushover_targets.is_empty()
+            || !slack_targets.is_empty()
+        {
+            println!();
+        }
+        println!("Discord:");
+        for target in &discord_targets {
+            println!("provider: {}", target.provider_id);
+            println!("webhook: {}", target.webhook_host);
+        }
+    }
 }
 
 fn configured_agents(config: &Config) -> Vec<&'static str> {
@@ -1157,6 +1372,8 @@ fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
             ProviderType::FeishuLark => InitialProvider::FeishuLark,
             ProviderType::Webhook => InitialProvider::Webhook,
             ProviderType::Pushover => InitialProvider::Pushover,
+            ProviderType::Slack => InitialProvider::Slack,
+            ProviderType::Discord => InitialProvider::Discord,
         })
 }
 
@@ -1210,9 +1427,11 @@ fn prompt_detail_choice(prompt_detail: PromptDetail) -> &'static str {
 fn provider_choice(provider: InitialProvider) -> &'static str {
     match provider {
         InitialProvider::Ntfy => "1",
-        InitialProvider::FeishuLark => "2",
-        InitialProvider::Webhook => "3",
+        InitialProvider::Slack => "2",
+        InitialProvider::Discord => "3",
         InitialProvider::Pushover => "4",
+        InitialProvider::FeishuLark => "5",
+        InitialProvider::Webhook => "6",
     }
 }
 
@@ -1318,6 +1537,18 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             println!();
             println!("Next: check your Pushover devices.");
             wait_for_enter("Press Enter to send a test notification through Pushover.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::Slack { agent } => {
+            println!();
+            println!("Next: check your Slack channel.");
+            wait_for_enter("Press Enter to send a test notification through Slack.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::Discord { agent } => {
+            println!();
+            println!("Next: check your Discord channel.");
+            wait_for_enter("Press Enter to send a test notification through Discord.")?;
             print_agent_setup_note(agent);
         }
     }
@@ -1729,6 +1960,37 @@ providers = ["work_chat"]
     }
 
     #[test]
+    fn setup_defaults_preserve_existing_slack_and_discord_config() {
+        let slack_config = setup::build_slack_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            &slack_test_url(),
+        );
+        let slack_defaults = SetupDefaults::from_config(&slack_config);
+
+        assert_eq!(slack_defaults.provider, Some(InitialProvider::Slack));
+        assert_eq!(
+            slack_defaults.slack_webhook_url.as_deref(),
+            Some(slack_test_url().as_str())
+        );
+
+        let discord_config = setup::build_discord_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "https://discord.com/api/webhooks/123456789012345678/token",
+        );
+        let discord_defaults = SetupDefaults::from_config(&discord_config);
+
+        assert_eq!(discord_defaults.provider, Some(InitialProvider::Discord));
+        assert_eq!(
+            discord_defaults.discord_webhook_url.as_deref(),
+            Some("https://discord.com/api/webhooks/123456789012345678/token")
+        );
+    }
+
+    #[test]
     fn prompt_detail_is_forced_off_for_length_limited_providers() {
         assert_eq!(
             prompt_detail_for_provider(InitialProvider::Ntfy, Some(PromptDetail::On))
@@ -1738,6 +2000,16 @@ providers = ["work_chat"]
         assert_eq!(
             prompt_detail_for_provider(InitialProvider::Pushover, Some(PromptDetail::On))
                 .expect("Pushover prompt detail should resolve"),
+            PromptDetail::Off
+        );
+        assert_eq!(
+            prompt_detail_for_provider(InitialProvider::Slack, Some(PromptDetail::On))
+                .expect("Slack prompt detail should resolve"),
+            PromptDetail::Off
+        );
+        assert_eq!(
+            prompt_detail_for_provider(InitialProvider::Discord, Some(PromptDetail::On))
+                .expect("Discord prompt detail should resolve"),
             PromptDetail::Off
         );
     }
@@ -1752,6 +2024,16 @@ providers = ["work_chat"]
         assert_eq!(
             answer_detail_for_provider(InitialProvider::Pushover, Some(AnswerDetail::Full))
                 .expect("Pushover answer detail should resolve"),
+            AnswerDetail::Preview
+        );
+        assert_eq!(
+            answer_detail_for_provider(InitialProvider::Slack, Some(AnswerDetail::Full))
+                .expect("Slack answer detail should resolve"),
+            AnswerDetail::Preview
+        );
+        assert_eq!(
+            answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full))
+                .expect("Discord answer detail should resolve"),
             AnswerDetail::Preview
         );
     }
@@ -1771,5 +2053,12 @@ providers = ["work_chat"]
             safe_url_host("https://open.larksuite.com/open-apis/bot/v2/hook/secret-token"),
             "open.larksuite.com"
         );
+    }
+
+    fn slack_test_url() -> String {
+        format!(
+            "https://hooks.slack.com/services/{}/{}/{}",
+            "T00000000", "B00000000", "test-token"
+        )
     }
 }

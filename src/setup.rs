@@ -8,6 +8,10 @@ use crate::config::{
     AnswerDetail, CONFIG_SCHEMA_VERSION, Config, LogConfig, NotificationConfig, PromptDetail,
     ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
 };
+use crate::provider_urls::{
+    host_label, validate_custom_webhook_url, validate_discord_webhook_url,
+    validate_slack_webhook_url,
+};
 
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
 const FEISHU_WEBHOOK_PREFIX: &str = "https://open.feishu.cn/open-apis/bot/v2/hook/";
@@ -40,6 +44,18 @@ pub struct PushoverTarget {
     pub provider_id: String,
     pub device: Option<String>,
     pub sound: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlackTarget {
+    pub provider_id: String,
+    pub webhook_host: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscordTarget {
+    pub provider_id: String,
+    pub webhook_host: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,27 +137,15 @@ pub fn resolve_feishu_lark_secret(input: &str) -> Option<String> {
 }
 
 pub fn resolve_webhook_url(input: &str) -> anyhow::Result<String> {
-    let url = input.trim();
-    if url.is_empty() {
-        anyhow::bail!("webhook URL is required");
-    }
+    validate_custom_webhook_url(input)
+}
 
-    let parsed =
-        reqwest::Url::parse(url).map_err(|_| anyhow::anyhow!("webhook URL must be a valid URL"))?;
-    let Some(host) = parsed.host_str() else {
-        anyhow::bail!("webhook URL must include a host");
-    };
+pub fn resolve_slack_webhook_url(input: &str) -> anyhow::Result<String> {
+    validate_slack_webhook_url(input)
+}
 
-    let scheme = parsed.scheme();
-    let is_local_http = scheme == "http" && matches!(host, "localhost" | "127.0.0.1" | "::1");
-    if scheme != "https" && !is_local_http {
-        anyhow::bail!("webhook URL must use HTTPS, except localhost test URLs");
-    }
-    if !parsed.username().is_empty() || parsed.password().is_some() {
-        anyhow::bail!("webhook URL must not include username or password");
-    }
-
-    Ok(url.to_string())
+pub fn resolve_discord_webhook_url(input: &str) -> anyhow::Result<String> {
+    validate_discord_webhook_url(input)
 }
 
 pub fn resolve_pushover_app_token(input: &str) -> anyhow::Result<String> {
@@ -313,6 +317,64 @@ pub fn build_pushover_config(
     )
 }
 
+pub fn build_slack_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "slack".to_string(),
+            provider_type: ProviderType::Slack,
+            server: None,
+            topic: None,
+            url: Some(webhook_url.to_string()),
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+        }],
+    )
+}
+
+pub fn build_discord_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "discord".to_string(),
+            provider_type: ProviderType::Discord,
+            server: None,
+            topic: None,
+            url: Some(webhook_url.to_string()),
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+        }],
+    )
+}
+
 fn build_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
@@ -452,6 +514,34 @@ pub fn pushover_targets(config: &Config) -> Vec<PushoverTarget> {
         .collect()
 }
 
+pub fn slack_targets(config: &Config) -> Vec<SlackTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Slack)
+        .filter_map(|provider| {
+            provider_url_host(provider).map(|webhook_host| SlackTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn discord_targets(config: &Config) -> Vec<DiscordTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Discord)
+        .filter_map(|provider| {
+            provider_url_host(provider).map(|webhook_host| DiscordTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
 pub fn missing_config_message(path: &str) -> String {
     format!(
         r#"No agents-notifier config found at `{path}`.
@@ -474,13 +564,24 @@ fn is_pushover_identifier(value: &str) -> bool {
 }
 
 fn webhook_host(url: &str) -> String {
-    let without_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
-    without_scheme
-        .split('/')
-        .next()
-        .filter(|host| !host.trim().is_empty())
-        .unwrap_or("configured")
-        .to_string()
+    host_label(url)
+}
+
+fn provider_url_host(provider: &ProviderConfig) -> Option<String> {
+    match (
+        provider
+            .url
+            .as_deref()
+            .filter(|value| !value.trim().is_empty()),
+        provider
+            .url_env
+            .as_deref()
+            .filter(|value| !value.trim().is_empty()),
+    ) {
+        (Some(url), _) => Some(webhook_host(url)),
+        (None, Some(env_name)) => Some(format!("env:{env_name}")),
+        (None, None) => None,
+    }
 }
 
 #[cfg(test)]
@@ -708,6 +809,56 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_slack_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_slack_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            &slack_test_url(),
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("slack")
+                .and_then(|provider| provider.url.as_deref()),
+            Some(slack_test_url().as_str())
+        );
+        assert!(parsed.source("codex_desktop").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_cli").is_none());
+    }
+
+    #[test]
+    fn writes_parseable_discord_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_discord_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "https://discord.com/api/webhooks/123456789012345678/token",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("discord")
+                .and_then(|provider| provider.url.as_deref()),
+            Some("https://discord.com/api/webhooks/123456789012345678/token")
+        );
+        assert!(parsed.source("codex_desktop").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_cli").is_none());
+    }
+
+    #[test]
     fn accepts_feishu_and_lark_webhook_urls() {
         assert_eq!(
             resolve_feishu_lark_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/abc")
@@ -740,6 +891,21 @@ mod tests {
             resolve_webhook_url("http://127.0.0.1:8080/hook")
                 .expect("local HTTP webhook should be valid"),
             "http://127.0.0.1:8080/hook"
+        );
+    }
+
+    #[test]
+    fn accepts_official_slack_and_discord_webhook_urls() {
+        assert_eq!(
+            resolve_slack_webhook_url(&slack_test_url()).expect("Slack webhook should be valid"),
+            slack_test_url()
+        );
+        assert_eq!(
+            resolve_discord_webhook_url(
+                "https://discord.com/api/webhooks/123456789012345678/token"
+            )
+            .expect("Discord webhook should be valid"),
+            "https://discord.com/api/webhooks/123456789012345678/token"
         );
     }
 
@@ -880,8 +1046,46 @@ mod tests {
     }
 
     #[test]
+    fn extracts_slack_and_discord_targets_without_printing_webhook_tokens() {
+        let slack_config = build_slack_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            &slack_test_url(),
+        );
+        let discord_config = build_discord_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "https://discord.com/api/webhooks/123456789012345678/token",
+        );
+
+        assert_eq!(
+            slack_targets(&slack_config),
+            vec![SlackTarget {
+                provider_id: "slack".to_string(),
+                webhook_host: "hooks.slack.com".to_string(),
+            }]
+        );
+        assert_eq!(
+            discord_targets(&discord_config),
+            vec![DiscordTarget {
+                provider_id: "discord".to_string(),
+                webhook_host: "discord.com".to_string(),
+            }]
+        );
+    }
+
+    #[test]
     fn skipped_test_notification_message_confirms_running_service() {
         assert!(TEST_NOTIFICATION_SKIPPED_MESSAGE.contains("Service is running"));
         assert!(TEST_NOTIFICATION_SKIPPED_MESSAGE.contains("No test notification was sent"));
+    }
+
+    fn slack_test_url() -> String {
+        format!(
+            "https://hooks.slack.com/services/{}/{}/{}",
+            "T00000000", "B00000000", "test-token"
+        )
     }
 }

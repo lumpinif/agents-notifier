@@ -10,7 +10,7 @@ agents-notifier setup
 
 Without an existing config, setup shows recommended defaults. If a config already exists, setup
 prints `Current` for existing answers, and pressing Enter keeps the current value. Webhook URLs are
-shown by host only. Signing secrets and Pushover keys are shown only as configured.
+shown by host only. Signing secrets and private provider keys are shown only as configured.
 
 For a Feishu/Lark signing secret, type `none` to clear the existing secret.
 
@@ -30,9 +30,11 @@ Choose where notifications should go:
 
 ```text
 1. ntfy
-2. Feishu/Lark custom bot
-3. Webhook
+2. Slack
+3. Discord
 4. Pushover
+5. Feishu/Lark custom bot
+6. Webhook
 ```
 
 Provider guides:
@@ -40,6 +42,8 @@ Provider guides:
 - [Feishu/Lark Custom Bot](providers/feishu-lark-custom-bot.md)
 - [ntfy](providers/ntfy.md)
 - [Pushover](providers/pushover.md)
+- [Slack](providers/slack.md)
+- [Discord](providers/discord.md)
 - [Webhook](providers/webhook.md)
 
 ## Answer Detail
@@ -60,6 +64,8 @@ Agents Notifier fixes answer detail to `Preview` for:
 
 - ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
 - Pushover, because Pushover messages are limited to 1024 characters.
+- Slack, because Slack has documented message length and truncation limits.
+- Discord, because Discord webhook content is limited to 2000 characters.
 
 ## Prompt Detail
 
@@ -90,6 +96,8 @@ Agents Notifier disables prompt detail for:
 
 - ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
 - Pushover, because Pushover messages are limited to 1024 characters.
+- Slack, because Slack has documented message length and truncation limits.
+- Discord, because Discord webhook content is limited to 2000 characters.
 
 To include prompts:
 

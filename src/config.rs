@@ -154,6 +154,8 @@ pub enum ProviderType {
     Webhook,
     FeishuLark,
     Pushover,
+    Slack,
+    Discord,
 }
 
 impl ProviderType {
@@ -163,12 +165,14 @@ impl ProviderType {
             Self::Webhook => "webhook",
             Self::FeishuLark => "feishu_lark",
             Self::Pushover => "pushover",
+            Self::Slack => "slack",
+            Self::Discord => "discord",
         }
     }
 
     pub fn has_message_size_limit(&self) -> bool {
         match self {
-            Self::Ntfy | Self::Pushover => true,
+            Self::Ntfy | Self::Pushover | Self::Slack | Self::Discord => true,
             Self::Webhook | Self::FeishuLark => false,
         }
     }
@@ -222,6 +226,10 @@ pub enum ConfigError {
         "pushover provider `{provider_id}` must set exactly one of `user_key` or `user_key_env`"
     )]
     InvalidPushoverUserKeySource { provider_id: String },
+    #[error("slack provider `{provider_id}` must set exactly one of `url` or `url_env`")]
+    InvalidSlackUrlSource { provider_id: String },
+    #[error("discord provider `{provider_id}` must set exactly one of `url` or `url_env`")]
+    InvalidDiscordUrlSource { provider_id: String },
     #[error(
         "`prompt_detail = \"on\"` is not supported with `{provider_type}` provider `{provider_id}` because that provider has a message size limit"
     )]
@@ -394,6 +402,24 @@ impl ProviderConfig {
                     });
                 }
             }
+            ProviderType::Slack => {
+                let has_url = is_present(self.url.as_deref());
+                let has_url_env = is_present(self.url_env.as_deref());
+                if has_url == has_url_env {
+                    return Err(ConfigError::InvalidSlackUrlSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
+            ProviderType::Discord => {
+                let has_url = is_present(self.url.as_deref());
+                let has_url_env = is_present(self.url_env.as_deref());
+                if has_url == has_url_env {
+                    return Err(ConfigError::InvalidDiscordUrlSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -453,9 +479,19 @@ type = "pushover"
 app_token_env = "AGENTS_NOTIFIER_PUSHOVER_APP_TOKEN"
 user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
 
+[[providers]]
+id = "slack"
+type = "slack"
+url_env = "AGENTS_NOTIFIER_SLACK_WEBHOOK_URL"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
+
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug_webhook", "work_chat", "pushover"]
+providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord"]
 "#;
 
     #[test]
@@ -464,7 +500,7 @@ providers = ["phone", "debug_webhook", "work_chat", "pushover"]
 
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.sources.len(), 2);
-        assert_eq!(config.providers.len(), 4);
+        assert_eq!(config.providers.len(), 6);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
@@ -568,6 +604,72 @@ providers = ["pushover"]
     }
 
     #[test]
+    fn rejects_full_answer_detail_with_slack_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "slack"
+type = "slack"
+url = "https://example.com/slack"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["slack"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Slack should reject full answer detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::AnswerDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "slack" && provider_type == "slack"
+        ));
+    }
+
+    #[test]
+    fn rejects_full_answer_detail_with_discord_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url = "https://discord.com/api/webhooks/123456789012345678/token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["discord"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Discord should reject full answer detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::AnswerDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "discord" && provider_type == "discord"
+        ));
+    }
+
+    #[test]
     fn parses_on_prompt_detail() {
         let raw = r#"
 schema_version = 1
@@ -659,6 +761,72 @@ providers = ["pushover"]
                 provider_id,
                 provider_type
             } if provider_id == "pushover" && provider_type == "pushover"
+        ));
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_slack_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "slack"
+type = "slack"
+url = "https://example.com/slack"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["slack"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Slack should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "slack" && provider_type == "slack"
+        ));
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_discord_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url = "https://discord.com/api/webhooks/123456789012345678/token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["discord"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Discord should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "discord" && provider_type == "discord"
         ));
     }
 
@@ -831,6 +999,60 @@ providers = ["pushover"]
         assert!(matches!(
             err,
             ConfigError::InvalidPushoverUserKeySource { provider_id } if provider_id == "pushover"
+        ));
+    }
+
+    #[test]
+    fn rejects_slack_without_webhook_url() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "slack"
+type = "slack"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["slack"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing Slack webhook URL should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidSlackUrlSource { provider_id } if provider_id == "slack"
+        ));
+    }
+
+    #[test]
+    fn rejects_discord_with_both_url_sources() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url = "https://discord.com/api/webhooks/123456789012345678/token"
+url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["discord"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("ambiguous Discord URL should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidDiscordUrlSource { provider_id } if provider_id == "discord"
         ));
     }
 }

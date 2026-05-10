@@ -1,6 +1,6 @@
 # agents-notifier
 
-Set it up in 2-3 minutes and get local coding agent updates on your phone, Feishu/Lark, Pushover, or webhook.
+Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Feishu/Lark, Pushover, or webhook.
 
 ---
 
@@ -36,6 +36,8 @@ Agents:
 Providers (Where do you want to get the notification?):
 
 - ntfy
+- Slack
+- Discord
 - Feishu/Lark Custom Bot
 - Pushover
 - Webhook
@@ -112,6 +114,8 @@ Provider setup guides:
 - [Feishu/Lark Custom Bot](docs/providers/feishu-lark-custom-bot.md)
 - [ntfy](docs/providers/ntfy.md)
 - [Pushover](docs/providers/pushover.md)
+- [Slack](docs/providers/slack.md)
+- [Discord](docs/providers/discord.md)
 - [Webhook](docs/providers/webhook.md)
 
 Agent setup guides:
