@@ -1,6 +1,8 @@
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -27,6 +29,66 @@ use agents_notifier::sources::codex_desktop;
 
 const SERVICE_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const SERVICE_READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const START_PROGRESS_INTERVAL: Duration = Duration::from_millis(500);
+
+struct ProgressLine {
+    stop: Option<mpsc::Sender<()>>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+enum ProgressOutcome {
+    Ready,
+    Failed,
+}
+
+impl ProgressLine {
+    fn start(message: &'static str) -> anyhow::Result<Self> {
+        if !io::stdout().is_terminal() {
+            println!("{message}...");
+            return Ok(Self {
+                stop: None,
+                handle: None,
+            });
+        }
+
+        print!("{message}...");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let (stop, receiver) = mpsc::channel();
+        let handle = thread::spawn(move || {
+            loop {
+                match receiver.recv_timeout(START_PROGRESS_INTERVAL) {
+                    Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => {
+                        print!(".");
+                        let _ = io::stdout().flush();
+                    }
+                }
+            }
+        });
+
+        Ok(Self {
+            stop: Some(stop),
+            handle: Some(handle),
+        })
+    }
+
+    fn finish(mut self, outcome: ProgressOutcome) -> anyhow::Result<()> {
+        let Some(stop) = self.stop.take() else {
+            return Ok(());
+        };
+        let _ = stop.send(());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+
+        match outcome {
+            ProgressOutcome::Ready => println!(" ready."),
+            ProgressOutcome::Failed => println!(" failed."),
+        }
+        io::stdout().flush().context("failed to flush stdout")
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "agents-notifier")]
@@ -298,7 +360,6 @@ fn run_ntfy_setup(
     println!("answer detail: {}", answer_detail.display_name());
     println!("ntfy server: https://ntfy.sh");
     println!("ntfy topic: {topic}");
-    println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
@@ -332,7 +393,6 @@ fn run_feishu_lark_setup(
     println!("agent: {}", agent.display_name());
     println!("answer detail: {}", answer_detail.display_name());
     println!("Feishu/Lark custom bot: configured");
-    println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
@@ -361,7 +421,6 @@ fn run_webhook_setup(
     println!("agent: {}", agent.display_name());
     println!("answer detail: {}", answer_detail.display_name());
     println!("webhook: configured");
-    println!("Starting agents-notifier now.");
 
     Ok(LoadedConfig {
         config,
@@ -596,23 +655,40 @@ async fn run_start_service(
     force_restart: bool,
 ) -> anyhow::Result<()> {
     build_providers(&loaded.config).context("provider setup failed")?;
-    cleanup_legacy_background_service()?;
+    let progress = ProgressLine::start("Starting agents-notifier")?;
+    let start_result = async {
+        cleanup_legacy_background_service()?;
 
-    let manager = LaunchAgentManager::system()?;
-    let definition = build_service_definition(config_path)?;
-    let plist_path = launch_agent_plist_path()?;
-    let metadata_path = service_metadata_path()?;
-    let outcome = if force_restart {
-        manager.stop(&plist_path)?;
-        remove_socket_file_if_exists()?;
-        manager.install_or_update(&definition, &plist_path, &metadata_path)?
-    } else {
-        manager.install_or_update(&definition, &plist_path, &metadata_path)?
+        let manager = LaunchAgentManager::system()?;
+        let definition = build_service_definition(config_path)?;
+        let plist_path = launch_agent_plist_path()?;
+        let metadata_path = service_metadata_path()?;
+        let outcome = if force_restart {
+            manager.stop(&plist_path)?;
+            remove_socket_file_if_exists()?;
+            manager.install_or_update(&definition, &plist_path, &metadata_path)?
+        } else {
+            manager.install_or_update(&definition, &plist_path, &metadata_path)?
+        };
+        wait_for_service(&socket_file_path()?).await?;
+
+        let status = manager.status(&plist_path)?;
+        anyhow::Ok((outcome, status.pid, definition.log_file))
+    }
+    .await;
+
+    let (outcome, pid, log_file) = match start_result {
+        Ok(started) => {
+            progress.finish(ProgressOutcome::Ready)?;
+            started
+        }
+        Err(error) => {
+            progress.finish(ProgressOutcome::Failed)?;
+            return Err(error);
+        }
     };
-    wait_for_service(&socket_file_path()?).await?;
 
-    let status = manager.status(&plist_path)?;
-    print_service_start_outcome(outcome, status.pid, &definition.log_file);
+    print_service_start_outcome(outcome, pid, &log_file);
 
     if let Some(setup) = loaded.guided_setup {
         finish_guided_setup(setup).await?;
