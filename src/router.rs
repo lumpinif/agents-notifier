@@ -287,7 +287,7 @@ mod tests {
             source_id,
             source_id,
             "Codex",
-            "Codex finished a job.",
+            "Ready for review.",
             timestamp,
             BTreeMap::new(),
         )

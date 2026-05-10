@@ -76,7 +76,7 @@ mod tests {
             "codex_desktop",
             "codex_desktop",
             "Codex",
-            "Codex finished a job.",
+            "Ready for review.",
             timestamp,
             metadata,
         );
@@ -86,7 +86,7 @@ mod tests {
         assert_eq!(signal.source_id, "codex_desktop");
         assert_eq!(signal.source_type, "codex_desktop");
         assert_eq!(signal.title, "Codex");
-        assert_eq!(signal.body, "Codex finished a job.");
+        assert_eq!(signal.body, "Ready for review.");
         assert_eq!(signal.metadata.get("turn_id"), Some(&"turn-1".to_string()));
     }
 
@@ -100,7 +100,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "Codex finished a job.",
+            "Ready for review.",
             timestamp,
             BTreeMap::new(),
         );
@@ -115,7 +115,7 @@ mod tests {
                 "source_id": "codex_cli",
                 "source_type": "codex_cli",
                 "title": "Codex",
-                "body": "Codex finished a job.",
+                "body": "Ready for review.",
                 "timestamp": "2026-05-08T12:00:00Z",
                 "metadata": {}
             })

@@ -7,8 +7,9 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use tokio::time::sleep;
 
-use agents_notifier::config::{Config, ConfigError, SourceConfig, SourceType};
+use agents_notifier::config::{Config, ConfigError, ProviderType, SourceConfig, SourceType};
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
+use agents_notifier::local_open_bridge;
 use agents_notifier::paths::{
     default_config_file_path, launch_agent_plist_path, log_file_path, pid_file_path,
     service_metadata_path, socket_file_path,
@@ -27,6 +28,7 @@ const SERVICE_READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Parser)]
 #[command(name = "agents-notifier")]
+#[command(version)]
 #[command(about = "Local-first notification routing for coding agents")]
 struct Cli {
     #[command(subcommand)]
@@ -54,6 +56,8 @@ enum Command {
     Stop,
     #[command(about = "Show the local notification service status")]
     Status,
+    #[command(about = "Print the agents-notifier version")]
+    Version,
     #[command(about = "Submit a hook event to the running local service")]
     Emit {
         #[arg(long, help = "Configured source id for this event")]
@@ -130,6 +134,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Stop => run_stop(),
         Command::Status => run_status(),
+        Command::Version => {
+            println!("agents-notifier {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         Command::Emit {
             source,
             title,
@@ -754,11 +762,26 @@ async fn run_watch(config: &Config) -> anyhow::Result<()> {
         .collect();
     let socket_path = socket_file_path()?;
     let codex_desktop_source = codex_desktop_source(config);
+    let needs_local_open_bridge = config
+        .providers
+        .iter()
+        .any(|provider| provider.provider_type == ProviderType::FeishuLark);
 
-    if let Some(source) = codex_desktop_source {
+    if let (Some(source), true) = (codex_desktop_source, needs_local_open_bridge) {
         tokio::select! {
             result = codex_desktop::watch(config, source, &provider_refs) => result,
             result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+            result = local_open_bridge::serve() => result,
+        }
+    } else if let Some(source) = codex_desktop_source {
+        tokio::select! {
+            result = codex_desktop::watch(config, source, &provider_refs) => result,
+            result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+        }
+    } else if needs_local_open_bridge {
+        tokio::select! {
+            result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+            result = local_open_bridge::serve() => result,
         }
     } else {
         local_ingress::serve(config, &provider_refs, &socket_path).await

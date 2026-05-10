@@ -72,6 +72,46 @@ async fn configure_is_not_supported() {
     assert!(stderr.contains("configure"));
 }
 
+#[tokio::test]
+async fn version_command_prints_package_version() {
+    let home = short_home();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .arg("version")
+        .output()
+        .await
+        .expect("command should run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert_eq!(
+        stdout.trim(),
+        concat!("agents-notifier ", env!("CARGO_PKG_VERSION"))
+    );
+}
+
+#[tokio::test]
+async fn version_flag_prints_package_version() {
+    let home = short_home();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .arg("--version")
+        .output()
+        .await
+        .expect("command should run");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert_eq!(
+        stdout.trim(),
+        concat!("agents-notifier ", env!("CARGO_PKG_VERSION"))
+    );
+}
+
 fn short_home() -> TempDir {
     tempdir_in("/tmp").expect("short temp home should be created")
 }

@@ -112,7 +112,7 @@ mod tests {
             .and(header("Title", "Codex"))
             .and(header("Priority", "high"))
             .and(body_string(format!(
-                "Codex finished a job.\nTime: {}",
+                "Ready for review.\nTime: {}",
                 format_local_timestamp(test_timestamp())
             )))
             .respond_with(ResponseTemplate::new(200))
@@ -172,7 +172,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "Codex finished a job.",
+            "Ready for review.",
             test_timestamp(),
             BTreeMap::new(),
         )

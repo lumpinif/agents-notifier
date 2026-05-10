@@ -37,7 +37,7 @@ async fn emit_submits_event_to_local_service_socket() {
             "--title",
             "Codex",
             "--body",
-            "Codex finished a job.",
+            "Ready for review.",
         ])
         .output()
         .await
@@ -52,7 +52,7 @@ async fn emit_submits_event_to_local_service_socket() {
     let request = server.await.expect("server task should finish");
     assert_eq!(request["source_id"], "codex_cli");
     assert_eq!(request["title"], "Codex");
-    assert_eq!(request["body"], "Codex finished a job.");
+    assert_eq!(request["body"], "Ready for review.");
 }
 
 #[tokio::test]
@@ -84,7 +84,7 @@ async fn emit_fails_when_local_service_rejects_event() {
             "--title",
             "Codex",
             "--body",
-            "Codex finished a job.",
+            "Ready for review.",
         ])
         .output()
         .await
@@ -112,7 +112,7 @@ async fn emit_fails_when_local_service_is_not_running() {
             "--title",
             "Codex",
             "--body",
-            "Codex finished a job.",
+            "Ready for review.",
         ])
         .output()
         .await

@@ -43,16 +43,34 @@ Notifications go directly from your Mac to your provider.
 For Codex Desktop, it reads only completion data needed for the notification:
 
 - project
+- project path
 - session
+- Codex thread link
 - duration
 - branch
 - time
 - short preview
+- Mac computer name
+
+In Feishu/Lark, notifications are sent as Codex-colored interactive cards with a clickable Open in Codex button.
+The button opens a local browser URL first, then hands off to Codex Desktop.
 
 ## ⚙️ Install
 
+Recommended:
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
+agents-notifier setup
+```
+
+From source:
+
+```bash
+git clone https://github.com/lumpinif/agents-notifier.git
+cd agents-notifier
 cargo install --path .
+agents-notifier setup
 ```
 
 ## 🚀 Setup
@@ -86,7 +104,7 @@ Codex CLI hooks can submit events with:
 agents-notifier emit \
   --source codex_cli \
   --title "Codex" \
-  --body "Codex finished a job."
+  --body "Ready for review."
 ```
 
 `emit` only talks to the local service. Providers are sent by the service.
@@ -94,10 +112,11 @@ agents-notifier emit \
 ## ✨ Example
 
 ```text
-Codex Desktop finished a job.
+Codex Desktop
 
 Project: agents-notifier
 Session: README polish
+Open in Codex: codex://threads/019e1049-2d6d-7de2-bcdf-f47346930b71
 Duration: 1m 32s
 Branch: main
 Time: 2026-05-10 01:35:42 +08:00

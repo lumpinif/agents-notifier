@@ -273,7 +273,7 @@ mod tests {
             LocalSignalEvent {
                 source_id: "codex_cli".to_string(),
                 title: "Codex".to_string(),
-                body: "Codex finished a job.".to_string(),
+                body: "Ready for review.".to_string(),
             },
         )
         .await
@@ -281,7 +281,7 @@ mod tests {
 
         assert_eq!(
             *calls.lock().expect("calls lock should not be poisoned"),
-            vec!["codex_cli:Codex finished a job.".to_string()]
+            vec!["codex_cli:Ready for review.".to_string()]
         );
     }
 

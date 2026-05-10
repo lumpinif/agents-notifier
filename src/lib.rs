@@ -1,5 +1,7 @@
 pub mod config;
 pub mod local_ingress;
+pub mod local_machine;
+pub mod local_open_bridge;
 pub mod paths;
 pub mod process;
 pub mod providers;

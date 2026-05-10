@@ -13,7 +13,7 @@ use crate::config::SourceConfig;
 use crate::signal::Signal;
 
 const PREVIEW_LIMIT_CHARS: usize = 360;
-const DEFAULT_TITLE: &str = "Codex Desktop finished a job.";
+const DEFAULT_TITLE: &str = "Codex Desktop";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) struct SessionInfo {
@@ -58,6 +58,10 @@ impl SessionInfo {
             .and_then(|name| name.to_str())
             .filter(|name| !name.trim().is_empty())
             .map(ToOwned::to_owned)
+    }
+
+    fn project_path(&self) -> Option<String> {
+        present_owned(self.cwd.as_deref())
     }
 }
 
@@ -167,13 +171,21 @@ pub(super) fn signal_from_task_complete(
     let duration = task.duration_ms.map(format_duration);
     let branch = present_owned(session.branch.as_deref());
     let session_title = present_owned(session_title);
+    let thread_link = session.id.as_deref().and_then(codex_thread_deep_link);
+    let project_path = session.project_path();
 
     let mut lines = Vec::new();
     if let Some(project) = &project {
         lines.push(format!("Project: {project}"));
     }
+    if let Some(project_path) = &project_path {
+        lines.push(format!("Project Path: {project_path}"));
+    }
     if let Some(session_title) = &session_title {
         lines.push(format!("Session: {session_title}"));
+    }
+    if let Some(thread_link) = &thread_link {
+        lines.push(format!("Open in Codex: {thread_link}"));
     }
     if let Some(duration) = &duration {
         lines.push(format!("Duration: {duration}"));
@@ -198,6 +210,9 @@ pub(super) fn signal_from_task_complete(
     metadata.insert("turn_id".to_string(), turn_id.clone());
     if let Some(project) = project {
         metadata.insert("project".to_string(), project);
+    }
+    if let Some(project_path) = project_path {
+        metadata.insert("project_path".to_string(), project_path);
     }
     if let Some(duration_ms) = task.duration_ms {
         metadata.insert("duration_ms".to_string(), duration_ms.to_string());
@@ -437,6 +452,15 @@ fn present_owned(value: Option<&str>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn codex_thread_deep_link(session_id: &str) -> Option<String> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() {
+        return None;
+    }
+
+    Some(format!("codex://threads/{session_id}"))
+}
+
 #[derive(Debug, Deserialize)]
 struct SessionIndexRecord {
     id: String,
@@ -470,7 +494,7 @@ mod tests {
             completed_at: Some(1_778_348_142),
             duration_ms: Some(92_185),
             last_agent_message: Some(
-                "Updated the Codex finished a job copy across the Codex Desktop default notification, CLI examples, tests, and docs.".to_string(),
+                "Updated the Codex Desktop notification copy across the default notification, CLI examples, tests, and docs.".to_string(),
             ),
         };
 
@@ -480,10 +504,10 @@ mod tests {
 
         assert_eq!(signal.source_id, "codex_desktop");
         assert_eq!(signal.source_type, "codex_desktop");
-        assert_eq!(signal.title, "Codex Desktop finished a job.");
+        assert_eq!(signal.title, "Codex Desktop");
         assert_eq!(
             signal.body,
-            "Project: agents-notifier\nSession: agents-notifier sync report\nDuration: 1m 32s\nBranch: main\n\nPreview: Updated the Codex finished a job copy across the Codex Desktop default notification, CLI examples, tests, and docs."
+            "Project: agents-notifier\nProject Path: /Users/tester/projects/agents-notifier\nSession: agents-notifier sync report\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\n\nPreview: Updated the Codex Desktop notification copy across the default notification, CLI examples, tests, and docs."
         );
         assert_eq!(
             signal.metadata.get("session_id"),
@@ -493,6 +517,10 @@ mod tests {
         assert_eq!(
             signal.metadata.get("duration_ms"),
             Some(&"92185".to_string())
+        );
+        assert_eq!(
+            signal.metadata.get("project_path"),
+            Some(&"/Users/tester/projects/agents-notifier".to_string())
         );
     }
 

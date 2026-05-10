@@ -37,8 +37,8 @@ mod tests {
     #[test]
     fn appends_time_to_regular_body() {
         assert_eq!(
-            body_with_local_time("Codex finished a job.", "2026-05-10 10:31:43 +08:00"),
-            "Codex finished a job.\nTime: 2026-05-10 10:31:43 +08:00"
+            body_with_local_time("Ready for review.", "2026-05-10 10:31:43 +08:00"),
+            "Ready for review.\nTime: 2026-05-10 10:31:43 +08:00"
         );
     }
 
