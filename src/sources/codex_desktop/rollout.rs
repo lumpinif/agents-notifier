@@ -76,6 +76,7 @@ pub(super) struct TaskComplete {
 
 pub(super) enum RolloutItem {
     SessionMeta(SessionInfo),
+    UserMessage(String),
     TaskComplete(TaskComplete),
 }
 
@@ -88,6 +89,7 @@ pub(super) struct RolloutReadResult {
 pub(super) fn read_new_rollout_items(
     path: &Path,
     offset: u64,
+    include_user_messages: bool,
 ) -> anyhow::Result<RolloutReadResult> {
     let mut file =
         File::open(path).with_context(|| format!("failed to open rollout `{}`", path.display()))?;
@@ -118,7 +120,7 @@ pub(super) fn read_new_rollout_items(
             continue;
         }
 
-        match parse_rollout_line(line) {
+        match parse_rollout_line(line, include_user_messages) {
             Ok(Some(item)) => items.push(item),
             Ok(None) => {}
             Err(error) => {
@@ -144,7 +146,7 @@ pub(super) fn read_session_info(path: &Path) -> anyhow::Result<SessionInfo> {
 
     for line in reader.lines() {
         let line = line.with_context(|| format!("failed to read rollout `{}`", path.display()))?;
-        if let Some(RolloutItem::SessionMeta(session)) = parse_rollout_line(&line)? {
+        if let Some(RolloutItem::SessionMeta(session)) = parse_rollout_line(&line, false)? {
             return Ok(session);
         }
     }
@@ -158,6 +160,7 @@ pub(super) fn signal_from_task_complete(
     session_title: Option<&str>,
     task: TaskComplete,
     answer_detail: AnswerDetail,
+    prompt: Option<&str>,
 ) -> Option<Signal> {
     if !session.is_codex_desktop() {
         return None;
@@ -168,6 +171,7 @@ pub(super) fn signal_from_task_complete(
         .last_agent_message
         .as_deref()
         .and_then(|message| answer_block(message, answer_detail));
+    let prompt = prompt.and_then(prompt_block);
     let duration = task.duration_ms.map(format_duration);
     let branch = present_owned(session.branch.as_deref());
     let session_title = present_owned(session_title);
@@ -195,6 +199,13 @@ pub(super) fn signal_from_task_complete(
     }
 
     let mut body = lines.join("\n");
+    if let Some(prompt) = &prompt {
+        if !body.is_empty() {
+            body.push_str("\n\n");
+        }
+        body.push_str("Prompt: ");
+        body.push_str(prompt);
+    }
     if let Some(answer) = &answer {
         if !body.is_empty() {
             body.push_str("\n\n");
@@ -263,6 +274,11 @@ fn answer_block(value: &str, answer_detail: AnswerDetail) -> Option<AnswerBlock>
     } else {
         Some(AnswerBlock { label, content })
     }
+}
+
+fn prompt_block(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if value.is_empty() { None } else { Some(value) }
 }
 
 fn strip_codex_app_directive_lines(value: &str) -> String {
@@ -355,7 +371,10 @@ pub(super) fn path_key(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-fn parse_rollout_line(line: &str) -> anyhow::Result<Option<RolloutItem>> {
+fn parse_rollout_line(
+    line: &str,
+    include_user_messages: bool,
+) -> anyhow::Result<Option<RolloutItem>> {
     let value: serde_json::Value =
         serde_json::from_str(line).context("failed to parse rollout JSON line")?;
     let record_type = value
@@ -372,16 +391,30 @@ fn parse_rollout_line(line: &str) -> anyhow::Result<Option<RolloutItem>> {
             let Some(payload_type) = payload.get("type").and_then(serde_json::Value::as_str) else {
                 return Ok(None);
             };
-            if payload_type != "task_complete" {
-                return Ok(None);
+
+            if include_user_messages && payload_type == "user_message" {
+                return Ok(parse_user_message(&payload).map(RolloutItem::UserMessage));
             }
 
-            Ok(Some(RolloutItem::TaskComplete(parse_task_complete(
-                &value, &payload,
-            )?)))
+            if payload_type == "task_complete" {
+                return Ok(Some(RolloutItem::TaskComplete(parse_task_complete(
+                    &value, &payload,
+                )?)));
+            }
+
+            Ok(None)
         }
         _ => Ok(None),
     }
+}
+
+fn parse_user_message(payload: &serde_json::Value) -> Option<String> {
+    payload
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn parse_task_complete(
@@ -573,6 +606,7 @@ mod tests {
             Some("agents-notifier sync report"),
             task,
             AnswerDetail::Preview,
+            None,
         )
         .expect("Codex Desktop task should create a signal");
 
@@ -616,12 +650,49 @@ mod tests {
             last_agent_message: Some("Fixed the route.\n\nNext, run the tests.".to_string()),
         };
 
-        let signal = signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full)
-            .expect("Codex Desktop task should create a signal");
+        let signal =
+            signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full, None)
+                .expect("Codex Desktop task should create a signal");
 
         assert!(signal.body.contains("Answer: Fixed the route."));
         assert!(signal.body.contains("Next, run the tests."));
         assert!(!signal.body.contains("Preview:"));
+    }
+
+    #[test]
+    fn creates_signal_with_prompt_before_answer() {
+        let source = source_config();
+        let session = SessionInfo {
+            id: Some("session-1".to_string()),
+            originator: Some("Codex Desktop".to_string()),
+            cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+            branch: Some("main".to_string()),
+            ..SessionInfo::default()
+        };
+        let task = TaskComplete {
+            turn_id: "turn-1".to_string(),
+            timestamp: Utc::now(),
+            completed_at: None,
+            duration_ms: Some(1_000),
+            last_agent_message: Some("Fixed the route.".to_string()),
+        };
+
+        let signal = signal_from_task_complete(
+            &source,
+            &session,
+            None,
+            task,
+            AnswerDetail::Full,
+            Some("Please fix the route."),
+        )
+        .expect("Codex Desktop task should create a signal");
+
+        assert!(signal.body.contains("\n\nPrompt: Please fix the route."));
+        assert!(signal.body.contains("\n\nAnswer: Fixed the route."));
+        assert!(
+            signal.body.find("Prompt: Please fix the route.")
+                < signal.body.find("Answer: Fixed the route.")
+        );
     }
 
     #[test]
@@ -645,12 +716,37 @@ mod tests {
             ),
         };
 
-        let signal = signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full)
-            .expect("Codex Desktop task should create a signal");
+        let signal =
+            signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full, None)
+                .expect("Codex Desktop task should create a signal");
 
         assert!(signal.body.contains("Answer: Implemented the fix."));
         assert!(!signal.body.contains("::git-stage"));
         assert!(!signal.body.contains("::git-commit"));
+    }
+
+    #[test]
+    fn parses_user_message_without_logging_or_reading_extra_fields() {
+        let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"event_msg","payload":{"type":"user_message","message":"Please fix the route.","images":[]}}"#;
+
+        let Some(RolloutItem::UserMessage(message)) =
+            parse_rollout_line(line, true).expect("line should parse")
+        else {
+            panic!("expected user_message");
+        };
+
+        assert_eq!(message, "Please fix the route.");
+    }
+
+    #[test]
+    fn ignores_user_message_when_prompt_detail_is_off() {
+        let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"event_msg","payload":{"type":"user_message","message":"Please fix the route.","images":[]}}"#;
+
+        assert!(
+            parse_rollout_line(line, false)
+                .expect("line should parse")
+                .is_none()
+        );
     }
 
     #[test]
@@ -691,7 +787,7 @@ mod tests {
         };
 
         assert!(
-            signal_from_task_complete(&source, &session, None, task, AnswerDetail::Preview)
+            signal_from_task_complete(&source, &session, None, task, AnswerDetail::Preview, None)
                 .is_none()
         );
     }
@@ -701,7 +797,7 @@ mod tests {
         let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":1778348142,"duration_ms":92185,"last_agent_message":"done"}}"#;
 
         let Some(RolloutItem::TaskComplete(task)) =
-            parse_rollout_line(line).expect("line should parse")
+            parse_rollout_line(line, true).expect("line should parse")
         else {
             panic!("expected task_complete");
         };
@@ -721,7 +817,7 @@ mod tests {
         let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{"id":"session-1","originator":"Codex Desktop","source":{"kind":"desktop"},"cwd":"/Users/tester/projects/agents-notifier","cli_version":"0.130.0-alpha.5","git":{"branch":"main"}}}"#;
 
         let Some(RolloutItem::SessionMeta(session)) =
-            parse_rollout_line(line).expect("line should parse")
+            parse_rollout_line(line, true).expect("line should parse")
         else {
             panic!("expected session_meta");
         };

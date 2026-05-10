@@ -42,12 +42,15 @@ fn default_log_level() -> String {
 pub struct NotificationConfig {
     #[serde(default)]
     pub answer_detail: AnswerDetail,
+    #[serde(default)]
+    pub prompt_detail: PromptDetail,
 }
 
 impl Default for NotificationConfig {
     fn default() -> Self {
         Self {
             answer_detail: AnswerDetail::Preview,
+            prompt_detail: PromptDetail::Off,
         }
     }
 }
@@ -65,6 +68,23 @@ impl AnswerDetail {
         match self {
             Self::Preview => "Preview",
             Self::Full => "Full Answer",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptDetail {
+    #[default]
+    Off,
+    Full,
+}
+
+impl PromptDetail {
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Full => "Full Prompt",
         }
     }
 }
@@ -349,6 +369,7 @@ providers = ["phone", "debug_webhook", "work_chat"]
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
+        assert_eq!(config.notification.prompt_detail, PromptDetail::Off);
     }
 
     #[test]
@@ -362,6 +383,19 @@ providers = ["phone", "debug_webhook", "work_chat"]
         let config = Config::from_toml_str(&raw).expect("valid config should parse");
 
         assert_eq!(config.notification.answer_detail, AnswerDetail::Full);
+    }
+
+    #[test]
+    fn parses_full_prompt_detail() {
+        let raw = VALID_CONFIG.replacen(
+            "[[sources]]",
+            "[notification]\nprompt_detail = \"full\"\n\n[[sources]]",
+            1,
+        );
+
+        let config = Config::from_toml_str(&raw).expect("valid config should parse");
+
+        assert_eq!(config.notification.prompt_detail, PromptDetail::Full);
     }
 
     #[test]

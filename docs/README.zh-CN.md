@@ -59,6 +59,7 @@ Agents Notifier 在本地运行。
 - 分支
 - 时间
 - 默认发送最终回答 preview，也可以改成完整回答
+- 只有用户明确开启时才发送 prompt
 - Mac 电脑名称
 
 在 Feishu/Lark 中，通知会以 Codex 风格的 interactive card 发送，并带有可点击的 Open in Codex 按钮。
@@ -96,7 +97,8 @@ agents-notifier setup
 
 1. 要监听哪个 agent？
 2. Answer detail？
-3. 通知要发到哪里？
+3. Include your prompt？
+4. 通知要发到哪里？
 
 然后它会写入配置、启动 service，并发送一条测试通知。
 

@@ -36,11 +36,32 @@ Choose how much answer text notifications include:
 Press Enter to keep `Preview`.
 Full Answer includes the visible assistant answer and omits Codex App control directives.
 
+## Prompt Detail
+
+Choose whether notifications include your original prompt:
+
+```text
+1. No (Recommended)
+2. Yes, include full prompt
+```
+
+Press Enter to keep `No`. Prompt detail is off by default because prompts can contain private
+requirements, code, logs, paths, or secrets.
+If a source does not provide a prompt, no Prompt section is shown.
+
 Manual config:
 
 ```toml
 [notification]
 answer_detail = "preview"
+prompt_detail = "off"
+```
+
+To send full prompts:
+
+```toml
+[notification]
+prompt_detail = "full"
 ```
 
 To send full answers:
@@ -48,6 +69,14 @@ To send full answers:
 ```toml
 [notification]
 answer_detail = "full"
+```
+
+To send full answers and full prompts:
+
+```toml
+[notification]
+answer_detail = "full"
+prompt_detail = "full"
 ```
 
 After manual edits, restart the service:

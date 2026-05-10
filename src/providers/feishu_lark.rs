@@ -13,7 +13,7 @@ use crate::delivery::{
 };
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
-use crate::providers::formatting::{body_with_local_time, split_trailing_answer_block};
+use crate::providers::formatting::{body_with_local_time, split_trailing_notification_blocks};
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -381,8 +381,22 @@ fn format_signal_card_elements(card_body: FeishuLarkCardBody) -> Vec<FeishuLarkC
         });
     }
 
-    if let Some(answer) = card_body.answer {
+    let has_prompt = card_body.prompt.is_some();
+    let has_answer = card_body.answer.is_some();
+    if has_prompt || has_answer {
         elements.push(FeishuLarkCardElement::Divider);
+    }
+
+    if let Some(prompt) = card_body.prompt {
+        elements.push(FeishuLarkCardElement::Markdown {
+            content: format!("**Prompt**\n{prompt}"),
+        });
+    }
+
+    if let Some(answer) = card_body.answer {
+        if has_prompt {
+            elements.push(FeishuLarkCardElement::Divider);
+        }
         elements.push(FeishuLarkCardElement::Markdown {
             content: format!("**{}**\n{}", answer.label, answer.content),
         });
@@ -425,6 +439,7 @@ struct FeishuLarkCardBody {
     time: Option<String>,
     other_details: Vec<String>,
     open_url: Option<String>,
+    prompt: Option<String>,
     answer: Option<FeishuLarkAnswerBlock>,
 }
 
@@ -436,17 +451,21 @@ struct FeishuLarkAnswerBlock {
 
 impl FeishuLarkCardBody {
     fn from_body(body: &str) -> Self {
-        let (body, answer) = split_trailing_answer_block(body)
+        let (body, blocks) = split_trailing_notification_blocks(body)
             .map(|(details, block)| {
                 (
                     details,
-                    Some(FeishuLarkAnswerBlock {
-                        label: block.label,
-                        content: block.content.trim().to_string(),
-                    }),
+                    Some((
+                        block.prompt.map(ToOwned::to_owned),
+                        block.answer.map(|answer| FeishuLarkAnswerBlock {
+                            label: answer.label,
+                            content: answer.content.trim().to_string(),
+                        }),
+                    )),
                 )
             })
             .unwrap_or((body, None));
+        let (prompt, answer) = blocks.unwrap_or((None, None));
         let mut project = None;
         let mut project_path = None;
         let mut session = None;
@@ -455,11 +474,14 @@ impl FeishuLarkCardBody {
         let mut time = None;
         let mut other_details = Vec::new();
         let mut open_url = None;
+        let mut prompt = prompt;
         let mut answer = answer;
 
         for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
             if let Some(session_id) = codex_thread_line(line) {
                 open_url = codex_thread_bridge_url(session_id);
+            } else if let Some(prompt_text) = line.strip_prefix("Prompt:") {
+                prompt = Some(prompt_text.trim().to_string());
             } else if let Some(preview_text) = line.strip_prefix("Preview:") {
                 answer = Some(FeishuLarkAnswerBlock {
                     label: "Preview",
@@ -494,6 +516,7 @@ impl FeishuLarkCardBody {
             time,
             other_details,
             open_url,
+            prompt,
             answer,
         }
     }
@@ -804,6 +827,7 @@ mod tests {
                 time: None,
                 other_details: Vec::new(),
                 open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
+                prompt: None,
                 answer: Some(FeishuLarkAnswerBlock {
                     label: "Preview",
                     content: "done".to_string(),
@@ -827,12 +851,78 @@ mod tests {
                 time: None,
                 other_details: Vec::new(),
                 open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
+                prompt: None,
                 answer: Some(FeishuLarkAnswerBlock {
                     label: "Answer",
                     content: "Fixed the route.\n\nRun tests next.".to_string(),
                 }),
             }
         );
+    }
+
+    #[test]
+    fn builds_card_body_with_prompt_before_answer() {
+        assert_eq!(
+            FeishuLarkCardBody::from_body(
+                "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route."
+            ),
+            FeishuLarkCardBody {
+                project: Some("agents-notifier".to_string()),
+                project_path: None,
+                session: None,
+                duration: None,
+                branch: None,
+                time: None,
+                other_details: Vec::new(),
+                open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
+                prompt: Some("Fix the route.".to_string()),
+                answer: Some(FeishuLarkAnswerBlock {
+                    label: "Answer",
+                    content: "Fixed the route.".to_string(),
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn formats_prompt_before_answer() {
+        let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let signal = Signal::new_with_timestamp(
+            "signal-1",
+            "codex_desktop",
+            "codex_desktop",
+            "Codex Desktop",
+            "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route.",
+            timestamp,
+            BTreeMap::new(),
+        );
+
+        let elements = format_signal_card_elements_with_time(&signal, "2026-05-10 01:35:42 +08:00");
+
+        let prompt_index = elements
+            .iter()
+            .position(|element| {
+                matches!(
+                    element,
+                    FeishuLarkCardElement::Markdown { content }
+                        if content == "**Prompt**\nFix the route."
+                )
+            })
+            .expect("prompt should be rendered");
+        let answer_index = elements
+            .iter()
+            .position(|element| {
+                matches!(
+                    element,
+                    FeishuLarkCardElement::Markdown { content }
+                        if content == "**Answer**\nFixed the route."
+                )
+            })
+            .expect("answer should be rendered");
+
+        assert!(prompt_index < answer_index);
     }
 
     #[test]

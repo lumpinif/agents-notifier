@@ -10,7 +10,8 @@ use clap::{Parser, Subcommand};
 use tokio::time::sleep;
 
 use agents_notifier::config::{
-    AnswerDetail, Config, ConfigError, ProviderConfig, ProviderType, SourceConfig, SourceType,
+    AnswerDetail, Config, ConfigError, PromptDetail, ProviderConfig, ProviderType, SourceConfig,
+    SourceType,
 };
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
@@ -164,6 +165,7 @@ enum InitialProvider {
 struct SetupDefaults {
     agent: Option<setup::AgentSelection>,
     answer_detail: Option<AnswerDetail>,
+    prompt_detail: Option<PromptDetail>,
     provider: Option<InitialProvider>,
     ntfy_topic: Option<String>,
     feishu_lark_webhook_url: Option<String>,
@@ -176,6 +178,7 @@ impl SetupDefaults {
         Self {
             agent: first_configured_agent(config),
             answer_detail: Some(config.notification.answer_detail),
+            prompt_detail: Some(config.notification.prompt_detail),
             provider: first_configured_provider(config),
             ntfy_topic: first_provider_of_type(config, ProviderType::Ntfy)
                 .and_then(|provider| provider.topic.clone()),
@@ -305,7 +308,7 @@ fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
 
     println!("Set up agent notifications.");
     println!(
-        "This replaces the agent, provider, and route sections in `{}`.",
+        "This replaces the notification, agent, provider, and route sections in `{}`.",
         path.display()
     );
     println!("It does not change Codex or other agent settings.");
@@ -327,12 +330,17 @@ fn run_guided_provider_setup(
 ) -> anyhow::Result<LoadedConfig> {
     let agent = prompt_for_agent(defaults.agent)?;
     let answer_detail = prompt_for_answer_detail(defaults.answer_detail)?;
+    let prompt_detail = prompt_for_prompt_detail(defaults.prompt_detail)?;
     match prompt_for_initial_provider(defaults.provider)? {
-        InitialProvider::Ntfy => run_ntfy_setup(path, mode, agent, answer_detail, &defaults),
-        InitialProvider::FeishuLark => {
-            run_feishu_lark_setup(path, mode, agent, answer_detail, &defaults)
+        InitialProvider::Ntfy => {
+            run_ntfy_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
         }
-        InitialProvider::Webhook => run_webhook_setup(path, mode, agent, answer_detail, &defaults),
+        InitialProvider::FeishuLark => {
+            run_feishu_lark_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
+        InitialProvider::Webhook => {
+            run_webhook_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
     }
 }
 
@@ -341,6 +349,7 @@ fn run_ntfy_setup(
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     let generated_topic = setup::generated_ntfy_topic();
@@ -351,13 +360,14 @@ fn run_ntfy_setup(
     println!();
 
     let topic = prompt_for_ntfy_topic(&generated_topic, defaults.ntfy_topic.as_deref())?;
-    let config = setup::build_ntfy_config(agent, answer_detail, &topic);
+    let config = setup::build_ntfy_config(agent, answer_detail, prompt_detail, &topic);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
     println!("agent: {}", agent.display_name());
     println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
     println!("ntfy server: https://ntfy.sh");
     println!("ntfy topic: {topic}");
 
@@ -372,6 +382,7 @@ fn run_feishu_lark_setup(
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
@@ -385,13 +396,15 @@ fn run_feishu_lark_setup(
     let webhook_url =
         prompt_for_feishu_lark_webhook_url(defaults.feishu_lark_webhook_url.as_deref())?;
     let secret = prompt_for_feishu_lark_secret(defaults.feishu_lark_secret.as_deref())?;
-    let config = setup::build_feishu_lark_config(agent, answer_detail, &webhook_url, secret);
+    let config =
+        setup::build_feishu_lark_config(agent, answer_detail, prompt_detail, &webhook_url, secret);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
     println!("agent: {}", agent.display_name());
     println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
     println!("Feishu/Lark custom bot: configured");
 
     Ok(LoadedConfig {
@@ -405,6 +418,7 @@ fn run_webhook_setup(
     mode: ConfigWriteMode,
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
@@ -413,13 +427,14 @@ fn run_webhook_setup(
     println!();
 
     let webhook_url = prompt_for_webhook_url(defaults.webhook_url.as_deref())?;
-    let config = setup::build_webhook_config(agent, answer_detail, &webhook_url);
+    let config = setup::build_webhook_config(agent, answer_detail, prompt_detail, &webhook_url);
     setup::write_config(path, &config)?;
 
     println!();
     println!("{} config: {}", mode.past_tense(), path.display());
     println!("agent: {}", agent.display_name());
     println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
     println!("webhook: configured");
 
     Ok(LoadedConfig {
@@ -486,6 +501,37 @@ fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<Ans
             "" => return Ok(effective_default),
             "1" => return Ok(AnswerDetail::Preview),
             "2" => return Ok(AnswerDetail::Full),
+            _ => println!("Please enter 1 or 2."),
+        }
+        println!();
+    }
+}
+
+fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<PromptDetail> {
+    loop {
+        let effective_default = default.unwrap_or(PromptDetail::Off);
+
+        println!("Include your prompt?");
+        println!("1. No (Recommended)");
+        println!("2. Yes, include full prompt");
+        if let Some(default) = default {
+            println!("Current: {}", default.display_name());
+        }
+        print!(
+            "Choose prompt detail [1/2, default: {}]: ",
+            prompt_detail_choice(effective_default)
+        );
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read prompt detail choice")?;
+
+        match input.trim() {
+            "" => return Ok(effective_default),
+            "1" => return Ok(PromptDetail::Off),
+            "2" => return Ok(PromptDetail::Full),
             _ => println!("Please enter 1 or 2."),
         }
         println!();
@@ -756,6 +802,10 @@ fn print_notification_targets(config: &Config) {
         "answer detail: {}",
         config.notification.answer_detail.display_name()
     );
+    println!(
+        "prompt detail: {}",
+        config.notification.prompt_detail.display_name()
+    );
 
     if !agents.is_empty() {
         println!();
@@ -870,6 +920,13 @@ fn answer_detail_choice(answer_detail: AnswerDetail) -> &'static str {
     match answer_detail {
         AnswerDetail::Preview => "1",
         AnswerDetail::Full => "2",
+    }
+}
+
+fn prompt_detail_choice(prompt_detail: PromptDetail) -> &'static str {
+    match prompt_detail {
+        PromptDetail::Off => "1",
+        PromptDetail::Full => "2",
     }
 }
 
@@ -1302,6 +1359,7 @@ mod tests {
         let config = setup::build_feishu_lark_config(
             setup::AgentSelection::ClaudeCode,
             AnswerDetail::Full,
+            PromptDetail::Full,
             "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
             Some("signing-secret".to_string()),
         );
@@ -1310,6 +1368,7 @@ mod tests {
 
         assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
         assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
+        assert_eq!(defaults.prompt_detail, Some(PromptDetail::Full));
         assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
         assert_eq!(
             defaults.feishu_lark_webhook_url.as_deref(),

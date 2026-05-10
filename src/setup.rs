@@ -5,8 +5,8 @@ use anyhow::Context;
 use uuid::Uuid;
 
 use crate::config::{
-    AnswerDetail, CONFIG_SCHEMA_VERSION, Config, LogConfig, NotificationConfig, ProviderConfig,
-    ProviderType, RouteConfig, SourceConfig, SourceType,
+    AnswerDetail, CONFIG_SCHEMA_VERSION, Config, LogConfig, NotificationConfig, PromptDetail,
+    ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
 };
 
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
@@ -140,11 +140,13 @@ pub fn resolve_webhook_url(input: &str) -> anyhow::Result<String> {
 pub fn build_ntfy_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     topic: &str,
 ) -> Config {
     build_config(
         agent,
         answer_detail,
+        prompt_detail,
         vec![ProviderConfig {
             id: "phone".to_string(),
             provider_type: ProviderType::Ntfy,
@@ -161,12 +163,14 @@ pub fn build_ntfy_config(
 pub fn build_feishu_lark_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     webhook_url: &str,
     secret: Option<String>,
 ) -> Config {
     build_config(
         agent,
         answer_detail,
+        prompt_detail,
         vec![ProviderConfig {
             id: "work_chat".to_string(),
             provider_type: ProviderType::FeishuLark,
@@ -183,11 +187,13 @@ pub fn build_feishu_lark_config(
 pub fn build_webhook_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     webhook_url: &str,
 ) -> Config {
     build_config(
         agent,
         answer_detail,
+        prompt_detail,
         vec![ProviderConfig {
             id: "webhook".to_string(),
             provider_type: ProviderType::Webhook,
@@ -204,6 +210,7 @@ pub fn build_webhook_config(
 fn build_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
     providers: Vec<ProviderConfig>,
 ) -> Config {
     let provider_ids = providers
@@ -216,7 +223,10 @@ fn build_config(
     Config {
         schema_version: CONFIG_SCHEMA_VERSION,
         log: LogConfig::default(),
-        notification: NotificationConfig { answer_detail },
+        notification: NotificationConfig {
+            answer_detail,
+            prompt_detail,
+        },
         sources: vec![
             agent_source,
             SourceConfig {
@@ -379,6 +389,7 @@ mod tests {
         let config = build_ntfy_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "agents-notifier-test",
         );
 
@@ -408,6 +419,7 @@ mod tests {
         let config = build_ntfy_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Full,
+            PromptDetail::Off,
             "agents-notifier-test",
         );
 
@@ -418,12 +430,30 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_full_prompt_detail_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_ntfy_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Full,
+            "agents-notifier-test",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(parsed.notification.prompt_detail, PromptDetail::Full);
+    }
+
+    #[test]
     fn writes_parseable_codex_cli_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
         let config = build_ntfy_config(
             AgentSelection::CodexCli,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "agents-notifier-test",
         );
 
@@ -446,6 +476,7 @@ mod tests {
         let config = build_ntfy_config(
             AgentSelection::ClaudeCode,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "agents-notifier-test",
         );
 
@@ -469,6 +500,7 @@ mod tests {
         let config = build_feishu_lark_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "https://open.larksuite.com/open-apis/bot/v2/hook/test",
             Some("secret".to_string()),
         );
@@ -500,6 +532,7 @@ mod tests {
         let config = build_webhook_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "https://example.com/hook",
         );
 
@@ -574,6 +607,7 @@ mod tests {
         let config = build_ntfy_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "agents-notifier-test",
         );
 
@@ -594,6 +628,7 @@ mod tests {
         let config = build_feishu_lark_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
             Some("secret".to_string()),
         );
@@ -615,6 +650,7 @@ mod tests {
         let config = build_webhook_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
+            PromptDetail::Off,
             "https://example.com/secret-token",
         );
 

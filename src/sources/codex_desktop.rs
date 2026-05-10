@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time;
 use tracing::{debug, info, warn};
 
-use crate::config::{AnswerDetail, Config, SourceConfig};
+use crate::config::{AnswerDetail, Config, PromptDetail, SourceConfig};
 use crate::paths::{
     codex_desktop_source_state_path, codex_session_index_path, codex_sessions_dir_path,
 };
@@ -44,7 +44,11 @@ pub async fn watch(
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                let signals = watcher.poll(source, config.notification.answer_detail)?;
+                let signals = watcher.poll(
+                    source,
+                    config.notification.answer_detail,
+                    config.notification.prompt_detail,
+                )?;
                 for signal in signals {
                     info!(
                         signal.id = %signal.id,
@@ -80,6 +84,7 @@ struct CodexDesktopSessionWatcher {
     session_index_path: PathBuf,
     state_path: PathBuf,
     state: WatchState,
+    pending_prompts: BTreeMap<String, String>,
     bootstrap_existing_files: bool,
 }
 
@@ -96,6 +101,7 @@ impl CodexDesktopSessionWatcher {
             session_index_path,
             state_path,
             state,
+            pending_prompts: BTreeMap::new(),
             bootstrap_existing_files,
         };
         watcher.bootstrap()?;
@@ -106,6 +112,7 @@ impl CodexDesktopSessionWatcher {
         &mut self,
         source: &SourceConfig,
         answer_detail: AnswerDetail,
+        prompt_detail: PromptDetail,
     ) -> anyhow::Result<Vec<Signal>> {
         let titles = load_session_titles(&self.session_index_path)?;
         let mut signals = Vec::new();
@@ -137,6 +144,7 @@ impl CodexDesktopSessionWatcher {
                     .get(&path_key)
                     .expect("file state should exist after insertion")
                     .offset,
+                prompt_detail == PromptDetail::Full,
             )?;
 
             if result.offset_changed {
@@ -160,6 +168,11 @@ impl CodexDesktopSessionWatcher {
                             .merge(session);
                         changed = true;
                     }
+                    RolloutItem::UserMessage(prompt) => {
+                        if prompt_detail == PromptDetail::Full {
+                            self.pending_prompts.insert(path_key.clone(), prompt);
+                        }
+                    }
                     RolloutItem::TaskComplete(task) => {
                         let session = self
                             .state
@@ -180,6 +193,11 @@ impl CodexDesktopSessionWatcher {
                         if self.state.delivered_turns.contains(&delivery_key) {
                             continue;
                         }
+                        let prompt = if prompt_detail == PromptDetail::Full {
+                            self.pending_prompts.remove(&path_key)
+                        } else {
+                            None
+                        };
 
                         if let Some(signal) = signal_from_task_complete(
                             source,
@@ -187,6 +205,7 @@ impl CodexDesktopSessionWatcher {
                             titles.get(session_id).map(String::as_str),
                             task,
                             answer_detail,
+                            prompt.as_deref(),
                         ) {
                             self.state.delivered_turns.insert(delivery_key);
                             self.state.prune_delivered_turns();
@@ -321,7 +340,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::config::{AnswerDetail, SourceType};
+    use crate::config::{AnswerDetail, PromptDetail, SourceType};
 
     use super::*;
 
@@ -354,7 +373,7 @@ mod tests {
         )
         .expect("watcher should start");
         let first = watcher
-            .poll(&source_config(), AnswerDetail::Preview)
+            .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
             .expect("first poll should pass");
         assert!(first.is_empty());
 
@@ -363,7 +382,7 @@ mod tests {
             &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
         );
         let second = watcher
-            .poll(&source_config(), AnswerDetail::Preview)
+            .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
             .expect("second poll should pass");
 
         assert_eq!(second.len(), 1);
@@ -372,6 +391,49 @@ mod tests {
             Some(&"turn-new".to_string())
         );
         assert!(second[0].body.contains("Preview: new result"));
+    }
+
+    #[test]
+    fn prompt_detail_full_attaches_prompt_without_persisting_it() {
+        let dir = tempdir().expect("tempdir should be created");
+        let sessions_dir = dir.path().join("sessions");
+        let day_dir = sessions_dir.join("2026").join("05").join("10");
+        fs::create_dir_all(&day_dir).expect("session dir should be created");
+        let rollout_path = day_dir.join("rollout-2026-05-10T01-00-00-session-1.jsonl");
+        let index_path = dir.path().join("session_index.jsonl");
+        let state_path = dir.path().join("source-state.json");
+
+        write_lines(&rollout_path, &[session_meta_line("session-1")]);
+        write_lines(
+            &index_path,
+            &[r#"{"id":"session-1","thread_name":"agents-notifier sync report","updated_at":"2026-05-09T17:00:00Z"}"#.to_string()],
+        );
+
+        let mut watcher = CodexDesktopSessionWatcher::new(
+            sessions_dir.clone(),
+            index_path.clone(),
+            state_path.clone(),
+        )
+        .expect("watcher should start");
+        watcher
+            .poll(&source_config(), AnswerDetail::Full, PromptDetail::Full)
+            .expect("first poll should pass");
+
+        append_line(&rollout_path, &user_message_line("Please fix the route."));
+        append_line(
+            &rollout_path,
+            &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "fixed"),
+        );
+        let signals = watcher
+            .poll(&source_config(), AnswerDetail::Full, PromptDetail::Full)
+            .expect("second poll should pass");
+
+        assert_eq!(signals.len(), 1);
+        assert!(signals[0].body.contains("Prompt: Please fix the route."));
+        assert!(signals[0].body.contains("Answer: fixed"));
+
+        let state = fs::read_to_string(&state_path).expect("state file should exist");
+        assert!(!state.contains("Please fix the route."));
     }
 
     fn source_config() -> SourceConfig {
@@ -390,6 +452,12 @@ mod tests {
     fn task_complete_line(turn_id: &str, timestamp: &str, last_agent_message: &str) -> String {
         format!(
             r#"{{"timestamp":"{timestamp}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"{turn_id}","completed_at":1778348142,"duration_ms":92185,"time_to_first_token_ms":1200,"last_agent_message":"{last_agent_message}"}}}}"#
+        )
+    }
+
+    fn user_message_line(message: &str) -> String {
+        format!(
+            r#"{{"timestamp":"2026-05-09T17:01:00.000Z","type":"event_msg","payload":{{"type":"user_message","message":"{message}","images":[]}}}}"#
         )
     }
 
