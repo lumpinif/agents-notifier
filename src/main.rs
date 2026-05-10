@@ -513,7 +513,7 @@ fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<Pro
 
         println!("Include your prompt?");
         println!("1. No (Recommended)");
-        println!("2. Yes, include full prompt");
+        println!("2. Yes");
         if let Some(default) = default {
             println!("Current: {}", default.display_name());
         }
@@ -531,7 +531,7 @@ fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<Pro
         match input.trim() {
             "" => return Ok(effective_default),
             "1" => return Ok(PromptDetail::Off),
-            "2" => return Ok(PromptDetail::Full),
+            "2" => return Ok(PromptDetail::On),
             _ => println!("Please enter 1 or 2."),
         }
         println!();
@@ -926,7 +926,7 @@ fn answer_detail_choice(answer_detail: AnswerDetail) -> &'static str {
 fn prompt_detail_choice(prompt_detail: PromptDetail) -> &'static str {
     match prompt_detail {
         PromptDetail::Off => "1",
-        PromptDetail::Full => "2",
+        PromptDetail::On => "2",
     }
 }
 
@@ -1359,7 +1359,7 @@ mod tests {
         let config = setup::build_feishu_lark_config(
             setup::AgentSelection::ClaudeCode,
             AnswerDetail::Full,
-            PromptDetail::Full,
+            PromptDetail::On,
             "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
             Some("signing-secret".to_string()),
         );
@@ -1368,7 +1368,7 @@ mod tests {
 
         assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
         assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
-        assert_eq!(defaults.prompt_detail, Some(PromptDetail::Full));
+        assert_eq!(defaults.prompt_detail, Some(PromptDetail::On));
         assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
         assert_eq!(
             defaults.feishu_lark_webhook_url.as_deref(),

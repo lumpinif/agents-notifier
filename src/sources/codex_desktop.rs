@@ -144,7 +144,7 @@ impl CodexDesktopSessionWatcher {
                     .get(&path_key)
                     .expect("file state should exist after insertion")
                     .offset,
-                prompt_detail == PromptDetail::Full,
+                prompt_detail == PromptDetail::On,
             )?;
 
             if result.offset_changed {
@@ -169,7 +169,7 @@ impl CodexDesktopSessionWatcher {
                         changed = true;
                     }
                     RolloutItem::UserMessage(prompt) => {
-                        if prompt_detail == PromptDetail::Full {
+                        if prompt_detail == PromptDetail::On {
                             self.pending_prompts.insert(path_key.clone(), prompt);
                         }
                     }
@@ -193,7 +193,7 @@ impl CodexDesktopSessionWatcher {
                         if self.state.delivered_turns.contains(&delivery_key) {
                             continue;
                         }
-                        let prompt = if prompt_detail == PromptDetail::Full {
+                        let prompt = if prompt_detail == PromptDetail::On {
                             self.pending_prompts.remove(&path_key)
                         } else {
                             None
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn prompt_detail_full_attaches_prompt_without_persisting_it() {
+    fn prompt_detail_on_attaches_prompt_without_persisting_it() {
         let dir = tempdir().expect("tempdir should be created");
         let sessions_dir = dir.path().join("sessions");
         let day_dir = sessions_dir.join("2026").join("05").join("10");
@@ -416,7 +416,7 @@ mod tests {
         )
         .expect("watcher should start");
         watcher
-            .poll(&source_config(), AnswerDetail::Full, PromptDetail::Full)
+            .poll(&source_config(), AnswerDetail::Full, PromptDetail::On)
             .expect("first poll should pass");
 
         append_line(&rollout_path, &user_message_line("Please fix the route."));
@@ -425,7 +425,7 @@ mod tests {
             &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "fixed"),
         );
         let signals = watcher
-            .poll(&source_config(), AnswerDetail::Full, PromptDetail::Full)
+            .poll(&source_config(), AnswerDetail::Full, PromptDetail::On)
             .expect("second poll should pass");
 
         assert_eq!(signals.len(), 1);

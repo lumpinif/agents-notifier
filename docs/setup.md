@@ -42,7 +42,7 @@ Choose whether notifications include your original prompt:
 
 ```text
 1. No (Recommended)
-2. Yes, include full prompt
+2. Yes
 ```
 
 Press Enter to keep `No`. Prompt detail is off by default because prompts can contain private
@@ -57,11 +57,11 @@ answer_detail = "preview"
 prompt_detail = "off"
 ```
 
-To send full prompts:
+To include prompts:
 
 ```toml
 [notification]
-prompt_detail = "full"
+prompt_detail = "on"
 ```
 
 To send full answers:
@@ -71,12 +71,12 @@ To send full answers:
 answer_detail = "full"
 ```
 
-To send full answers and full prompts:
+To send full answers and include prompts:
 
 ```toml
 [notification]
 answer_detail = "full"
-prompt_detail = "full"
+prompt_detail = "on"
 ```
 
 After manual edits, restart the service:

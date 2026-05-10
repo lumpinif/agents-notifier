@@ -430,20 +430,20 @@ mod tests {
     }
 
     #[test]
-    fn writes_parseable_full_prompt_detail_config() {
+    fn writes_parseable_on_prompt_detail_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
         let config = build_ntfy_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
-            PromptDetail::Full,
+            PromptDetail::On,
             "agents-notifier-test",
         );
 
         write_config(&path, &config).expect("config should be written");
 
         let parsed = Config::from_path(&path).expect("written config should parse");
-        assert_eq!(parsed.notification.prompt_detail, PromptDetail::Full);
+        assert_eq!(parsed.notification.prompt_detail, PromptDetail::On);
     }
 
     #[test]

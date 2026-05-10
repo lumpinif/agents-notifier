@@ -77,14 +77,14 @@ impl AnswerDetail {
 pub enum PromptDetail {
     #[default]
     Off,
-    Full,
+    On,
 }
 
 impl PromptDetail {
     pub fn display_name(self) -> &'static str {
         match self {
             Self::Off => "Off",
-            Self::Full => "Full Prompt",
+            Self::On => "On",
         }
     }
 }
@@ -386,16 +386,16 @@ providers = ["phone", "debug_webhook", "work_chat"]
     }
 
     #[test]
-    fn parses_full_prompt_detail() {
+    fn parses_on_prompt_detail() {
         let raw = VALID_CONFIG.replacen(
             "[[sources]]",
-            "[notification]\nprompt_detail = \"full\"\n\n[[sources]]",
+            "[notification]\nprompt_detail = \"on\"\n\n[[sources]]",
             1,
         );
 
         let config = Config::from_toml_str(&raw).expect("valid config should parse");
 
-        assert_eq!(config.notification.prompt_detail, PromptDetail::Full);
+        assert_eq!(config.notification.prompt_detail, PromptDetail::On);
     }
 
     #[test]
