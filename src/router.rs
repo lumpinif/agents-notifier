@@ -6,9 +6,11 @@ use thiserror::Error;
 use tracing::{info, warn};
 
 use crate::config::Config;
+use crate::delivery::{DeliveryError, DeliveryErrorKind, ProviderSendResult};
 use crate::signal::Signal;
 
-pub type ProviderFuture<'a> = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>>;
+pub type ProviderFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<ProviderSendResult, DeliveryError>> + Send + 'a>>;
 
 pub trait Provider: Send + Sync {
     fn id(&self) -> &str;
@@ -25,9 +27,15 @@ pub struct DeliveryReport {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderFailure {
+    pub signal_id: String,
+    pub source_id: String,
     pub provider_id: String,
     pub provider_type: String,
-    pub error: String,
+    pub kind: DeliveryErrorKind,
+    pub message: String,
+    pub http_status: Option<u16>,
+    pub provider_code: Option<String>,
+    pub retriable: bool,
 }
 
 #[derive(Debug, Error)]
@@ -81,7 +89,7 @@ impl<'a> Router<'a> {
             for provider_id in &route.providers {
                 attempted += 1;
                 let Some(provider) = providers_by_id.get(provider_id.as_str()) else {
-                    failures.push(self.missing_provider_failure(provider_id));
+                    failures.push(self.missing_provider_failure(signal, provider_id));
                     continue;
                 };
 
@@ -94,13 +102,15 @@ impl<'a> Router<'a> {
                 );
 
                 match provider.send(signal).await {
-                    Ok(()) => {
+                    Ok(result) => {
                         succeeded += 1;
                         info!(
                             signal.id = %signal.id,
                             source.id = %signal.source_id,
                             provider.id = %provider.id(),
                             provider.type = %provider.provider_type(),
+                            provider.status = %result.status.as_str(),
+                            http.status = result.http_status,
                             event = "provider.send.succeeded",
                         );
                     }
@@ -110,13 +120,24 @@ impl<'a> Router<'a> {
                             source.id = %signal.source_id,
                             provider.id = %provider.id(),
                             provider.type = %provider.provider_type(),
-                            error = %error,
+                            error.kind = %error.kind.as_str(),
+                            error.phase = %error.context.phase.as_str(),
+                            error.retriable = error.retriable,
+                            http.status = error.http_status,
+                            provider.code = error.provider_code.as_deref(),
+                            error = %error.message,
                             event = "provider.send.failed",
                         );
                         failures.push(ProviderFailure {
+                            signal_id: error.context.signal_id,
+                            source_id: error.context.source_id,
                             provider_id: provider.id().to_string(),
                             provider_type: provider.provider_type().to_string(),
-                            error: error.to_string(),
+                            kind: error.kind,
+                            message: error.message,
+                            http_status: error.http_status,
+                            provider_code: error.provider_code,
+                            retriable: error.retriable,
                         });
                     }
                 }
@@ -134,7 +155,7 @@ impl<'a> Router<'a> {
         }
     }
 
-    fn missing_provider_failure(&self, provider_id: &str) -> ProviderFailure {
+    fn missing_provider_failure(&self, signal: &Signal, provider_id: &str) -> ProviderFailure {
         let provider_type = self
             .config
             .provider(provider_id)
@@ -142,9 +163,15 @@ impl<'a> Router<'a> {
             .unwrap_or("unknown");
 
         ProviderFailure {
+            signal_id: signal.id.clone(),
+            source_id: signal.source_id.clone(),
             provider_id: provider_id.to_string(),
             provider_type: provider_type.to_string(),
-            error: "provider adapter is not registered".to_string(),
+            kind: DeliveryErrorKind::Config,
+            message: "provider adapter is not registered".to_string(),
+            http_status: None,
+            provider_code: None,
+            retriable: false,
         }
     }
 }
@@ -154,19 +181,19 @@ mod tests {
     use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex};
 
-    use anyhow::anyhow;
     use chrono::{DateTime, Utc};
 
     use super::*;
     use crate::config::{
         Config, LogConfig, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
     };
+    use crate::delivery::DeliveryErrorContext;
 
     struct TestProvider {
         id: String,
         provider_type: String,
         calls: Arc<Mutex<Vec<String>>>,
-        result: anyhow::Result<()>,
+        result: Result<(), DeliveryErrorKind>,
     }
 
     impl TestProvider {
@@ -179,12 +206,12 @@ mod tests {
             }
         }
 
-        fn failing(id: &str, calls: Arc<Mutex<Vec<String>>>) -> Self {
+        fn failing(id: &str, calls: Arc<Mutex<Vec<String>>>, kind: DeliveryErrorKind) -> Self {
             Self {
                 id: id.to_string(),
                 provider_type: "test".to_string(),
                 calls,
-                result: Err(anyhow!("send failed")),
+                result: Err(kind),
             }
         }
     }
@@ -202,8 +229,16 @@ mod tests {
             Box::pin(async move {
                 self.calls.lock().unwrap().push(signal.id.clone());
                 match &self.result {
-                    Ok(()) => Ok(()),
-                    Err(error) => Err(anyhow!(error.to_string())),
+                    Ok(()) => Ok(ProviderSendResult::sent(
+                        &self.id,
+                        &self.provider_type,
+                        signal,
+                    )),
+                    Err(kind) => Err(DeliveryError::new(
+                        *kind,
+                        DeliveryErrorContext::provider_send(signal, &self.id, &self.provider_type),
+                        "send failed",
+                    )),
                 }
             })
         }
@@ -257,7 +292,11 @@ mod tests {
             providers: vec!["phone".to_string(), "debug".to_string()],
         }]);
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let phone = TestProvider::failing("phone", Arc::clone(&calls));
+        let phone = TestProvider::failing(
+            "phone",
+            Arc::clone(&calls),
+            DeliveryErrorKind::ProviderRejected,
+        );
         let debug = TestProvider::succeeding("debug", Arc::clone(&calls));
 
         let err = Router::new(&config)
@@ -270,9 +309,15 @@ mod tests {
         assert_eq!(
             failures,
             vec![ProviderFailure {
+                signal_id: "signal-1".to_string(),
+                source_id: "codex_cli".to_string(),
                 provider_id: "phone".to_string(),
                 provider_type: "test".to_string(),
-                error: "send failed".to_string(),
+                kind: DeliveryErrorKind::ProviderRejected,
+                message: "send failed".to_string(),
+                http_status: None,
+                provider_code: None,
+                retriable: false,
             }]
         );
     }

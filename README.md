@@ -1,5 +1,9 @@
 # agents-notifier
 
+中文文档：[docs/README.zh-CN.md](docs/README.zh-CN.md)
+
+Set it up in 2-3 minutes and get local coding agent updates on your phone, Feishu/Lark, or webhook.
+
 > _"Imagine your coding agent is working while you do laundry or handle chores._
 >
 > _The moment the job finishes, you get a notification and know it is time to come back."_

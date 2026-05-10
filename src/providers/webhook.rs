@@ -1,6 +1,10 @@
 use anyhow::{Context, anyhow};
 
 use crate::config::{ProviderConfig, ProviderType};
+use crate::delivery::{
+    DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
+    is_retriable_http_status, provider_request_error,
+};
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -58,25 +62,42 @@ impl Provider for WebhookProvider {
 
     fn send<'a>(&'a self, signal: &'a Signal) -> ProviderFuture<'a> {
         Box::pin(async move {
+            let provider_type = ProviderType::Webhook.as_str();
             let response = self
                 .client
                 .post(&self.url)
                 .json(signal)
                 .send()
                 .await
-                .map_err(reqwest::Error::without_url)
-                .with_context(|| format!("webhook provider `{}` request failed", self.id))?;
+                .map_err(|error| {
+                    let is_timeout = error.is_timeout();
+                    provider_request_error(
+                        signal,
+                        &self.id,
+                        provider_type,
+                        "webhook",
+                        is_timeout,
+                        error.without_url(),
+                    )
+                })?;
 
             let status = response.status();
             if !status.is_success() {
-                return Err(anyhow!(
-                    "webhook provider `{}` returned HTTP status {}",
-                    self.id,
-                    status
-                ));
+                let status_code = status.as_u16();
+                return Err(DeliveryError::new(
+                    DeliveryErrorKind::ProviderRejected,
+                    DeliveryErrorContext::provider_send(signal, &self.id, provider_type),
+                    format!(
+                        "webhook provider `{}` returned HTTP status {}",
+                        self.id, status
+                    ),
+                )
+                .with_http_status(status_code)
+                .with_retriable(is_retriable_http_status(status_code)));
             }
 
-            Ok(())
+            Ok(ProviderSendResult::sent(&self.id, provider_type, signal)
+                .with_http_status(status.as_u16()))
         })
     }
 }
@@ -95,6 +116,7 @@ mod tests {
 
     use super::*;
     use crate::config::ProviderType;
+    use crate::delivery::DeliveryErrorKind;
 
     #[tokio::test]
     async fn posts_complete_signal_json() {
@@ -169,6 +191,13 @@ mod tests {
             .expect_err("HTTP 500 should fail");
 
         assert!(err.to_string().contains("HTTP status 500"));
+        assert_eq!(err.kind, DeliveryErrorKind::ProviderRejected);
+        assert_eq!(err.context.signal_id, "signal-1");
+        assert_eq!(err.context.provider_id.as_deref(), Some("debug"));
+        assert_eq!(err.context.provider_type.as_deref(), Some("webhook"));
+        assert_eq!(err.http_status, Some(500));
+        assert_eq!(err.provider_code, None);
+        assert!(err.retriable);
     }
 
     fn test_signal() -> Signal {

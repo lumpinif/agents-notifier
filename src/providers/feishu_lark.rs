@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
 use crate::config::{ProviderConfig, ProviderType};
+use crate::delivery::{
+    DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
+    is_retriable_http_status, provider_request_error,
+};
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
 use crate::providers::formatting::body_with_local_time;
@@ -59,6 +63,7 @@ impl Provider for FeishuLarkProvider {
 
     fn send<'a>(&'a self, signal: &'a Signal) -> ProviderFuture<'a> {
         Box::pin(async move {
+            let provider_type = ProviderType::FeishuLark.as_str();
             let request = FeishuLarkInteractiveRequest::from_signal(
                 signal,
                 self.secret.as_deref(),
@@ -70,41 +75,77 @@ impl Provider for FeishuLarkProvider {
                 .json(&request)
                 .send()
                 .await
-                .map_err(reqwest::Error::without_url)
-                .with_context(|| format!("feishu_lark provider `{}` request failed", self.id))?;
-
-            let status = response.status();
-            if !status.is_success() {
-                return Err(anyhow!(
-                    "feishu_lark provider `{}` returned HTTP status {}",
-                    self.id,
-                    status
-                ));
-            }
-
-            let response_body = response.text().await.with_context(|| {
-                format!("feishu_lark provider `{}` failed to read response", self.id)
-            })?;
-            let provider_response: FeishuLarkResponse = serde_json::from_str(&response_body)
-                .with_context(|| {
-                    format!(
-                        "feishu_lark provider `{}` returned invalid response JSON",
-                        self.id
+                .map_err(|error| {
+                    let is_timeout = error.is_timeout();
+                    provider_request_error(
+                        signal,
+                        &self.id,
+                        provider_type,
+                        "feishu_lark",
+                        is_timeout,
+                        error.without_url(),
                     )
                 })?;
 
-            if provider_response.code != 0 {
-                return Err(anyhow!(
-                    "feishu_lark provider `{}` returned code {}: {}",
-                    self.id,
-                    provider_response.code,
-                    provider_response
-                        .msg
-                        .unwrap_or_else(|| "unknown error".to_string())
-                ));
+            let status = response.status();
+            let status_code = status.as_u16();
+            if !status.is_success() {
+                return Err(DeliveryError::new(
+                    DeliveryErrorKind::ProviderRejected,
+                    DeliveryErrorContext::provider_send(signal, &self.id, provider_type),
+                    format!(
+                        "feishu_lark provider `{}` returned HTTP status {}",
+                        self.id, status
+                    ),
+                )
+                .with_http_status(status_code)
+                .with_retriable(is_retriable_http_status(status_code)));
             }
 
-            Ok(())
+            let response_body = response.text().await.map_err(|error| {
+                DeliveryError::new(
+                    DeliveryErrorKind::Network,
+                    DeliveryErrorContext::provider_send(signal, &self.id, provider_type),
+                    format!("feishu_lark provider `{}` failed to read response", self.id),
+                )
+                .with_http_status(status_code)
+                .with_retriable(true)
+                .with_source(error.without_url())
+            })?;
+            let provider_response: FeishuLarkResponse = serde_json::from_str(&response_body)
+                .map_err(|error| {
+                    DeliveryError::new(
+                        DeliveryErrorKind::ProviderResponse,
+                        DeliveryErrorContext::provider_send(signal, &self.id, provider_type),
+                        format!(
+                            "feishu_lark provider `{}` returned invalid response JSON",
+                            self.id
+                        ),
+                    )
+                    .with_http_status(status_code)
+                    .with_source(error)
+                })?;
+
+            if provider_response.code != 0 {
+                let provider_code = provider_response.code.to_string();
+                return Err(DeliveryError::new(
+                    DeliveryErrorKind::ProviderRejected,
+                    DeliveryErrorContext::provider_send(signal, &self.id, provider_type),
+                    format!(
+                        "feishu_lark provider `{}` returned code {}: {}",
+                        self.id,
+                        provider_response.code,
+                        provider_response
+                            .msg
+                            .unwrap_or_else(|| "unknown error".to_string())
+                    ),
+                )
+                .with_http_status(status_code)
+                .with_provider_code(provider_code));
+            }
+
+            Ok(ProviderSendResult::sent(&self.id, provider_type, signal)
+                .with_http_status(status_code))
         })
     }
 }
@@ -547,6 +588,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+    use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
 
     #[tokio::test]
     async fn sends_interactive_card_to_custom_bot_webhook() {
@@ -566,10 +608,16 @@ mod tests {
 
         let provider = test_provider(format!("{}/open-apis/bot/v2/hook/test", server.uri()), None);
 
-        provider
+        let result = provider
             .send(&test_signal())
             .await
             .expect("feishu_lark send should succeed");
+
+        assert_eq!(result.provider_id, "work_chat");
+        assert_eq!(result.provider_type, "feishu_lark");
+        assert_eq!(result.signal_id, "signal-1");
+        assert_eq!(result.status, ProviderSendStatus::Sent);
+        assert_eq!(result.http_status, Some(200));
 
         let requests = server
             .received_requests()
@@ -840,6 +888,13 @@ mod tests {
 
         assert!(err.to_string().contains("returned code 19021"));
         assert!(err.to_string().contains("sign match fail"));
+        assert_eq!(err.kind, DeliveryErrorKind::ProviderRejected);
+        assert_eq!(err.context.signal_id, "signal-1");
+        assert_eq!(err.context.provider_id.as_deref(), Some("work_chat"));
+        assert_eq!(err.context.provider_type.as_deref(), Some("feishu_lark"));
+        assert_eq!(err.http_status, Some(200));
+        assert_eq!(err.provider_code.as_deref(), Some("19021"));
+        assert!(!err.retriable);
     }
 
     fn test_signal() -> Signal {

@@ -14,3 +14,6 @@ check:
     cargo fmt --check
     cargo clippy -- -D warnings
     cargo test
+
+release version:
+    ./scripts/release.sh {{version}}

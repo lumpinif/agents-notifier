@@ -231,6 +231,7 @@ mod tests {
     use crate::config::{
         Config, LogConfig, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
     };
+    use crate::delivery::ProviderSendResult;
     use crate::router::{Provider, ProviderFuture};
     use crate::signal::Signal;
 
@@ -255,7 +256,11 @@ mod tests {
                     .lock()
                     .expect("calls lock should not be poisoned")
                     .push(format!("{}:{}", signal.source_id, signal.body));
-                Ok(())
+                Ok(ProviderSendResult::sent(
+                    self.id(),
+                    self.provider_type(),
+                    signal,
+                ))
             })
         }
     }
