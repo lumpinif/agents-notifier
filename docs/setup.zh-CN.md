@@ -8,7 +8,7 @@ English documentation: [setup.md](setup.md)
 agents-notifier setup
 ```
 
-如果已经有配置，setup 会把现有答案作为默认值。任何问题直接按 Enter，都会保留当前显示的默认值。
+如果还没有配置，setup 会显示推荐默认值。如果已经有配置，setup 会用 `Current` 显示当前答案，直接按 Enter 会保留当前值。
 Webhook URL 只显示 host，签名 secret 只显示已配置状态，不会把完整敏感内容打印到终端里。
 
 如果要清空飞书/Lark 签名 secret，输入 `none`。

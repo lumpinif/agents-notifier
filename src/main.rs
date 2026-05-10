@@ -447,6 +447,8 @@ fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
 ) -> anyhow::Result<setup::AgentSelection> {
     loop {
+        let effective_default = default.unwrap_or(setup::AgentSelection::CodexDesktop);
+
         println!("Which agent should Agents Notifier watch?");
         println!("1. Codex Desktop");
         println!("2. Codex CLI");
@@ -455,8 +457,8 @@ fn prompt_for_agent(
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose an agent [1/2/3, default: {}]: ",
-            agent_choice(default)
+            "Choose an agent [1/2/3, {}]: ",
+            choice_prompt_hint(default.map(agent_choice), agent_choice(effective_default))
         );
         io::stdout().flush().context("failed to flush stdout")?;
 
@@ -466,7 +468,7 @@ fn prompt_for_agent(
             .context("failed to read agent choice")?;
 
         match input.trim() {
-            "" => return Ok(default.unwrap_or(setup::AgentSelection::CodexDesktop)),
+            "" => return Ok(effective_default),
             "1" => return Ok(setup::AgentSelection::CodexDesktop),
             "2" => return Ok(setup::AgentSelection::CodexCli),
             "3" => return Ok(setup::AgentSelection::ClaudeCode),
@@ -487,8 +489,11 @@ fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<Ans
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose answer detail [1/2, default: {}]: ",
-            answer_detail_choice(effective_default)
+            "Choose answer detail [1/2, {}]: ",
+            choice_prompt_hint(
+                default.map(answer_detail_choice),
+                answer_detail_choice(effective_default)
+            )
         );
         io::stdout().flush().context("failed to flush stdout")?;
 
@@ -518,8 +523,11 @@ fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<Pro
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose prompt detail [1/2, default: {}]: ",
-            prompt_detail_choice(effective_default)
+            "Choose prompt detail [1/2, {}]: ",
+            choice_prompt_hint(
+                default.map(prompt_detail_choice),
+                prompt_detail_choice(effective_default)
+            )
         );
         io::stdout().flush().context("failed to flush stdout")?;
 
@@ -542,6 +550,8 @@ fn prompt_for_initial_provider(
     default: Option<InitialProvider>,
 ) -> anyhow::Result<InitialProvider> {
     loop {
+        let effective_default = default.unwrap_or(InitialProvider::Ntfy);
+
         println!("Where should Agents Notifier send notifications?");
         println!("1. ntfy");
         println!("2. Feishu/Lark custom bot");
@@ -550,8 +560,11 @@ fn prompt_for_initial_provider(
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose a provider [1/2/3, default: {}]: ",
-            provider_choice(default)
+            "Choose a provider [1/2/3, {}]: ",
+            choice_prompt_hint(
+                default.map(provider_choice),
+                provider_choice(effective_default)
+            )
         );
         io::stdout().flush().context("failed to flush stdout")?;
 
@@ -561,7 +574,7 @@ fn prompt_for_initial_provider(
             .context("failed to read provider choice")?;
 
         match input.trim() {
-            "" => return Ok(default.unwrap_or(InitialProvider::Ntfy)),
+            "" => return Ok(effective_default),
             "1" => return Ok(InitialProvider::Ntfy),
             "2" => return Ok(InitialProvider::FeishuLark),
             "3" => return Ok(InitialProvider::Webhook),
@@ -908,8 +921,18 @@ fn configured_provider_secret(provider: &ProviderConfig) -> Option<String> {
     provider.secret.clone()
 }
 
-fn agent_choice(agent: Option<setup::AgentSelection>) -> &'static str {
-    match agent.unwrap_or(setup::AgentSelection::CodexDesktop) {
+fn choice_prompt_hint(
+    current_choice: Option<&'static str>,
+    default_choice: &'static str,
+) -> String {
+    match current_choice {
+        Some(choice) => format!("current: {choice}, press Enter to keep"),
+        None => format!("default: {default_choice}"),
+    }
+}
+
+fn agent_choice(agent: setup::AgentSelection) -> &'static str {
+    match agent {
         setup::AgentSelection::CodexDesktop => "1",
         setup::AgentSelection::CodexCli => "2",
         setup::AgentSelection::ClaudeCode => "3",
@@ -930,8 +953,8 @@ fn prompt_detail_choice(prompt_detail: PromptDetail) -> &'static str {
     }
 }
 
-fn provider_choice(provider: Option<InitialProvider>) -> &'static str {
-    match provider.unwrap_or(InitialProvider::Ntfy) {
+fn provider_choice(provider: InitialProvider) -> &'static str {
+    match provider {
         InitialProvider::Ntfy => "1",
         InitialProvider::FeishuLark => "2",
         InitialProvider::Webhook => "3",
@@ -1415,6 +1438,15 @@ providers = ["work_chat"]
         assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
         assert_eq!(defaults.feishu_lark_webhook_url, None);
         assert_eq!(defaults.feishu_lark_secret, None);
+    }
+
+    #[test]
+    fn choice_prompt_hint_distinguishes_defaults_from_current_values() {
+        assert_eq!(choice_prompt_hint(None, "1"), "default: 1");
+        assert_eq!(
+            choice_prompt_hint(Some("2"), "1"),
+            "current: 2, press Enter to keep"
+        );
     }
 
     #[test]
