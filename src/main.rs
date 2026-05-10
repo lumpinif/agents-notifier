@@ -152,6 +152,9 @@ enum GuidedSetup {
     Webhook {
         agent: setup::AgentSelection,
     },
+    Pushover {
+        agent: setup::AgentSelection,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,6 +162,7 @@ enum InitialProvider {
     Ntfy,
     FeishuLark,
     Webhook,
+    Pushover,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -171,6 +175,10 @@ struct SetupDefaults {
     feishu_lark_webhook_url: Option<String>,
     feishu_lark_secret: Option<String>,
     webhook_url: Option<String>,
+    pushover_app_token: Option<String>,
+    pushover_user_key: Option<String>,
+    pushover_device: Option<String>,
+    pushover_sound: Option<String>,
 }
 
 impl SetupDefaults {
@@ -188,6 +196,14 @@ impl SetupDefaults {
                 .and_then(configured_provider_secret),
             webhook_url: first_provider_of_type(config, ProviderType::Webhook)
                 .and_then(configured_provider_url),
+            pushover_app_token: first_provider_of_type(config, ProviderType::Pushover)
+                .and_then(|provider| provider.app_token.clone()),
+            pushover_user_key: first_provider_of_type(config, ProviderType::Pushover)
+                .and_then(|provider| provider.user_key.clone()),
+            pushover_device: first_provider_of_type(config, ProviderType::Pushover)
+                .and_then(|provider| provider.device.clone()),
+            pushover_sound: first_provider_of_type(config, ProviderType::Pushover)
+                .and_then(|provider| provider.sound.clone()),
         }
     }
 
@@ -222,6 +238,7 @@ impl InitialProvider {
             Self::Ntfy => "ntfy",
             Self::FeishuLark => "Feishu/Lark custom bot",
             Self::Webhook => "Webhook",
+            Self::Pushover => "Pushover",
         }
     }
 }
@@ -329,9 +346,11 @@ fn run_guided_provider_setup(
     defaults: SetupDefaults,
 ) -> anyhow::Result<LoadedConfig> {
     let agent = prompt_for_agent(defaults.agent)?;
-    let answer_detail = prompt_for_answer_detail(defaults.answer_detail)?;
-    let prompt_detail = prompt_for_prompt_detail(defaults.prompt_detail)?;
-    match prompt_for_initial_provider(defaults.provider)? {
+    let provider = prompt_for_initial_provider(defaults.provider)?;
+    let answer_detail = answer_detail_for_provider(provider, defaults.answer_detail)?;
+    let prompt_detail = prompt_detail_for_provider(provider, defaults.prompt_detail)?;
+
+    match provider {
         InitialProvider::Ntfy => {
             run_ntfy_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
         }
@@ -341,6 +360,55 @@ fn run_guided_provider_setup(
         InitialProvider::Webhook => {
             run_webhook_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
         }
+        InitialProvider::Pushover => {
+            run_pushover_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
+    }
+}
+
+fn answer_detail_for_provider(
+    provider: InitialProvider,
+    default: Option<AnswerDetail>,
+) -> anyhow::Result<AnswerDetail> {
+    match provider {
+        InitialProvider::Ntfy => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for ntfy because ntfy has a documented message size limit. Agents Notifier will keep ntfy notifications short enough for reliable delivery."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::Pushover => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for Pushover because Pushover messages are limited to 1024 characters. Agents Notifier will keep Pushover notifications short enough for reliable delivery."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::FeishuLark | InitialProvider::Webhook => prompt_for_answer_detail(default),
+    }
+}
+
+fn prompt_detail_for_provider(
+    provider: InitialProvider,
+    default: Option<PromptDetail>,
+) -> anyhow::Result<PromptDetail> {
+    match provider {
+        InitialProvider::Ntfy => {
+            println!();
+            println!(
+                "Prompt detail is disabled for ntfy because ntfy has a documented message size limit. Agents Notifier will keep prompts out of ntfy notifications for reliable delivery."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::Pushover => {
+            println!();
+            println!(
+                "Prompt detail is disabled for Pushover because Pushover messages are limited to 1024 characters. Agents Notifier will keep prompts out of Pushover notifications for reliable delivery."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::FeishuLark | InitialProvider::Webhook => prompt_for_prompt_detail(default),
     }
 }
 
@@ -440,6 +508,49 @@ fn run_webhook_setup(
     Ok(LoadedConfig {
         config,
         guided_setup: Some(GuidedSetup::Webhook { agent }),
+    })
+}
+
+fn run_pushover_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!(
+        "Pushover sends notifications to your phone and desktop through your Pushover account."
+    );
+    println!("Create a Pushover application, then paste its API token and your user or group key.");
+    println!();
+
+    let app_token = prompt_for_pushover_app_token(defaults.pushover_app_token.as_deref())?;
+    let user_key = prompt_for_pushover_user_key(defaults.pushover_user_key.as_deref())?;
+    let device = prompt_for_pushover_device(defaults.pushover_device.as_deref())?;
+    let sound = prompt_for_pushover_sound(defaults.pushover_sound.as_deref())?;
+    let config = setup::build_pushover_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        &app_token,
+        &user_key,
+        device,
+        sound,
+    );
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("Pushover: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Pushover { agent }),
     })
 }
 
@@ -556,11 +667,12 @@ fn prompt_for_initial_provider(
         println!("1. ntfy");
         println!("2. Feishu/Lark custom bot");
         println!("3. Webhook");
+        println!("4. Pushover");
         if let Some(default) = default {
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose a provider [1/2/3, {}]: ",
+            "Choose a provider [1/2/3/4, {}]: ",
             choice_prompt_hint(
                 default.map(provider_choice),
                 provider_choice(effective_default)
@@ -578,7 +690,8 @@ fn prompt_for_initial_provider(
             "1" => return Ok(InitialProvider::Ntfy),
             "2" => return Ok(InitialProvider::FeishuLark),
             "3" => return Ok(InitialProvider::Webhook),
-            _ => println!("Please enter 1, 2, or 3."),
+            "4" => return Ok(InitialProvider::Pushover),
+            _ => println!("Please enter 1, 2, 3, or 4."),
         }
         println!();
     }
@@ -701,6 +814,123 @@ fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     }
 }
 
+fn prompt_for_pushover_app_token(current_token: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if current_token.is_some() {
+            print!("Pushover application API token [configured, press Enter to keep]: ");
+        } else {
+            print!("Pushover application API token: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Pushover application API token")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_token.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_pushover_app_token(candidate) {
+            Ok(token) => return Ok(token),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_pushover_user_key(current_user_key: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if current_user_key.is_some() {
+            print!("Pushover user or group key [configured, press Enter to keep]: ");
+        } else {
+            print!("Pushover user or group key: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Pushover user or group key")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_user_key.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_pushover_user_key(candidate) {
+            Ok(user_key) => return Ok(user_key),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_pushover_device(current_device: Option<&str>) -> anyhow::Result<Option<String>> {
+    loop {
+        if let Some(current_device) = current_device {
+            print!(
+                "Pushover device [{current_device}, press Enter to keep, type `none` to clear]: "
+            );
+        } else {
+            print!("Pushover device, or press Enter to send to all devices: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Pushover device")?;
+
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(current_device.map(ToOwned::to_owned));
+        }
+        if input.eq_ignore_ascii_case("none") {
+            return Ok(None);
+        }
+
+        match setup::resolve_pushover_device(input) {
+            Ok(device) => return Ok(device),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_pushover_sound(current_sound: Option<&str>) -> anyhow::Result<Option<String>> {
+    if let Some(current_sound) = current_sound {
+        print!("Pushover sound [{current_sound}, press Enter to keep, type `none` to clear]: ");
+    } else {
+        print!("Pushover sound, or press Enter to use your account default: ");
+    }
+    io::stdout().flush().context("failed to flush stdout")?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("failed to read Pushover sound")?;
+
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(current_sound.map(ToOwned::to_owned));
+    }
+    if input.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+
+    Ok(setup::resolve_pushover_sound(input))
+}
+
 fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     match config {
         Some(path) => Ok(path),
@@ -808,6 +1038,7 @@ fn print_notification_targets(config: &Config) {
     let subscriptions = setup::ntfy_subscriptions(config);
     let feishu_lark_targets = setup::feishu_lark_targets(config);
     let webhook_targets = setup::webhook_targets(config);
+    let pushover_targets = setup::pushover_targets(config);
 
     println!();
     println!("Notification:");
@@ -868,6 +1099,28 @@ fn print_notification_targets(config: &Config) {
             println!("endpoint: {}", target.webhook_host);
         }
     }
+
+    if !pushover_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+        {
+            println!();
+        }
+        println!("Pushover:");
+        for target in &pushover_targets {
+            println!("provider: {}", target.provider_id);
+            println!(
+                "device: {}",
+                target.device.as_deref().unwrap_or("all devices")
+            );
+            println!(
+                "sound: {}",
+                target.sound.as_deref().unwrap_or("account default")
+            );
+        }
+    }
 }
 
 fn configured_agents(config: &Config) -> Vec<&'static str> {
@@ -903,6 +1156,7 @@ fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
             ProviderType::Ntfy => InitialProvider::Ntfy,
             ProviderType::FeishuLark => InitialProvider::FeishuLark,
             ProviderType::Webhook => InitialProvider::Webhook,
+            ProviderType::Pushover => InitialProvider::Pushover,
         })
 }
 
@@ -958,6 +1212,7 @@ fn provider_choice(provider: InitialProvider) -> &'static str {
         InitialProvider::Ntfy => "1",
         InitialProvider::FeishuLark => "2",
         InitialProvider::Webhook => "3",
+        InitialProvider::Pushover => "4",
     }
 }
 
@@ -1057,6 +1312,12 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             println!();
             println!("Next: check your webhook receiver.");
             wait_for_enter("Press Enter to send a test JSON payload to the webhook.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::Pushover { agent } => {
+            println!();
+            println!("Next: check your Pushover devices.");
+            wait_for_enter("Press Enter to send a test notification through Pushover.")?;
             print_agent_setup_note(agent);
         }
     }
@@ -1438,6 +1699,61 @@ providers = ["work_chat"]
         assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
         assert_eq!(defaults.feishu_lark_webhook_url, None);
         assert_eq!(defaults.feishu_lark_secret, None);
+    }
+
+    #[test]
+    fn setup_defaults_preserve_existing_pushover_config() {
+        let config = setup::build_pushover_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456789012345678901234567890",
+            "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ",
+            Some("iphone".to_string()),
+            Some("pushover".to_string()),
+        );
+
+        let defaults = SetupDefaults::from_config(&config);
+
+        assert_eq!(defaults.provider, Some(InitialProvider::Pushover));
+        assert_eq!(
+            defaults.pushover_app_token.as_deref(),
+            Some("123456789012345678901234567890")
+        );
+        assert_eq!(
+            defaults.pushover_user_key.as_deref(),
+            Some("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ")
+        );
+        assert_eq!(defaults.pushover_device.as_deref(), Some("iphone"));
+        assert_eq!(defaults.pushover_sound.as_deref(), Some("pushover"));
+    }
+
+    #[test]
+    fn prompt_detail_is_forced_off_for_length_limited_providers() {
+        assert_eq!(
+            prompt_detail_for_provider(InitialProvider::Ntfy, Some(PromptDetail::On))
+                .expect("ntfy prompt detail should resolve"),
+            PromptDetail::Off
+        );
+        assert_eq!(
+            prompt_detail_for_provider(InitialProvider::Pushover, Some(PromptDetail::On))
+                .expect("Pushover prompt detail should resolve"),
+            PromptDetail::Off
+        );
+    }
+
+    #[test]
+    fn answer_detail_is_forced_to_preview_for_length_limited_providers() {
+        assert_eq!(
+            answer_detail_for_provider(InitialProvider::Ntfy, Some(AnswerDetail::Full))
+                .expect("ntfy answer detail should resolve"),
+            AnswerDetail::Preview
+        );
+        assert_eq!(
+            answer_detail_for_provider(InitialProvider::Pushover, Some(AnswerDetail::Full))
+                .expect("Pushover answer detail should resolve"),
+            AnswerDetail::Preview
+        );
     }
 
     #[test]

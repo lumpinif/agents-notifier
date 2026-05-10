@@ -35,6 +35,13 @@ pub struct WebhookTarget {
     pub webhook_host: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PushoverTarget {
+    pub provider_id: String,
+    pub device: Option<String>,
+    pub sound: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSelection {
     CodexDesktop,
@@ -137,6 +144,55 @@ pub fn resolve_webhook_url(input: &str) -> anyhow::Result<String> {
     Ok(url.to_string())
 }
 
+pub fn resolve_pushover_app_token(input: &str) -> anyhow::Result<String> {
+    let token = input.trim();
+    if !is_pushover_identifier(token) {
+        anyhow::bail!("Pushover app token must be 30 letters or numbers");
+    }
+
+    Ok(token.to_string())
+}
+
+pub fn resolve_pushover_user_key(input: &str) -> anyhow::Result<String> {
+    let user_key = input.trim();
+    if !is_pushover_identifier(user_key) {
+        anyhow::bail!("Pushover user or group key must be 30 letters or numbers");
+    }
+
+    Ok(user_key.to_string())
+}
+
+pub fn resolve_pushover_device(input: &str) -> anyhow::Result<Option<String>> {
+    let device = input.trim();
+    if device.is_empty() {
+        return Ok(None);
+    }
+
+    let valid = device.split(',').all(|name| {
+        !name.is_empty()
+            && name.len() <= 25
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    });
+    if !valid {
+        anyhow::bail!(
+            "Pushover device must be one or more comma-separated device names using letters, numbers, hyphens, and underscores"
+        );
+    }
+
+    Ok(Some(device.to_string()))
+}
+
+pub fn resolve_pushover_sound(input: &str) -> Option<String> {
+    let sound = input.trim();
+    if sound.is_empty() {
+        None
+    } else {
+        Some(sound.to_string())
+    }
+}
+
 pub fn build_ntfy_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
@@ -156,6 +212,12 @@ pub fn build_ntfy_config(
             url_env: None,
             secret: None,
             secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
         }],
     )
 }
@@ -180,6 +242,12 @@ pub fn build_feishu_lark_config(
             url_env: None,
             secret,
             secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
         }],
     )
 }
@@ -203,6 +271,44 @@ pub fn build_webhook_config(
             url_env: None,
             secret: None,
             secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+        }],
+    )
+}
+
+pub fn build_pushover_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    app_token: &str,
+    user_key: &str,
+    device: Option<String>,
+    sound: Option<String>,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "pushover".to_string(),
+            provider_type: ProviderType::Pushover,
+            server: None,
+            topic: None,
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: Some(app_token.to_string()),
+            app_token_env: None,
+            user_key: Some(user_key.to_string()),
+            user_key_env: None,
+            device,
+            sound,
         }],
     )
 }
@@ -333,6 +439,19 @@ pub fn webhook_targets(config: &Config) -> Vec<WebhookTarget> {
         .collect()
 }
 
+pub fn pushover_targets(config: &Config) -> Vec<PushoverTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Pushover)
+        .map(|provider| PushoverTarget {
+            provider_id: provider.id.clone(),
+            device: provider.device.clone(),
+            sound: provider.sound.clone(),
+        })
+        .collect()
+}
+
 pub fn missing_config_message(path: &str) -> String {
     format!(
         r#"No agents-notifier config found at `{path}`.
@@ -348,6 +467,10 @@ fn is_valid_ntfy_topic(topic: &str) -> bool {
         && topic
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+fn is_pushover_identifier(value: &str) -> bool {
+    value.len() == 30 && value.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
 fn webhook_host(url: &str) -> String {
@@ -416,11 +539,11 @@ mod tests {
     fn writes_parseable_full_answer_detail_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_ntfy_config(
+        let config = build_webhook_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Full,
             PromptDetail::Off,
-            "agents-notifier-test",
+            "https://example.com/hook",
         );
 
         write_config(&path, &config).expect("config should be written");
@@ -433,11 +556,11 @@ mod tests {
     fn writes_parseable_on_prompt_detail_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
-        let config = build_ntfy_config(
+        let config = build_webhook_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
             PromptDetail::On,
-            "agents-notifier-test",
+            "https://example.com/hook",
         );
 
         write_config(&path, &config).expect("config should be written");
@@ -551,6 +674,40 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_pushover_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_pushover_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456789012345678901234567890",
+            "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ",
+            Some("iphone".to_string()),
+            Some("pushover".to_string()),
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("pushover")
+                .and_then(|provider| provider.app_token.as_deref()),
+            Some("123456789012345678901234567890")
+        );
+        assert_eq!(
+            parsed
+                .provider("pushover")
+                .and_then(|provider| provider.user_key.as_deref()),
+            Some("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ")
+        );
+        assert!(parsed.source("codex_desktop").is_some());
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_cli").is_none());
+    }
+
+    #[test]
     fn accepts_feishu_and_lark_webhook_urls() {
         assert_eq!(
             resolve_feishu_lark_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/abc")
@@ -583,6 +740,39 @@ mod tests {
             resolve_webhook_url("http://127.0.0.1:8080/hook")
                 .expect("local HTTP webhook should be valid"),
             "http://127.0.0.1:8080/hook"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_pushover_identifiers_and_device() {
+        assert_eq!(
+            resolve_pushover_app_token("123456789012345678901234567890")
+                .expect("app token should be valid"),
+            "123456789012345678901234567890"
+        );
+        assert_eq!(
+            resolve_pushover_user_key("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ")
+                .expect("user key should be valid"),
+            "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+        );
+        assert_eq!(
+            resolve_pushover_device("iphone,work_mac").expect("device should be valid"),
+            Some("iphone,work_mac".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_pushover_identifier_and_device() {
+        let token_err =
+            resolve_pushover_app_token("too-short").expect_err("short app token should fail");
+        assert!(token_err.to_string().contains("30 letters or numbers"));
+
+        let device_err =
+            resolve_pushover_device("bad/device").expect_err("bad device name should fail");
+        assert!(
+            device_err
+                .to_string()
+                .contains("comma-separated device names")
         );
     }
 
@@ -661,6 +851,30 @@ mod tests {
             vec![WebhookTarget {
                 provider_id: "webhook".to_string(),
                 webhook_host: "example.com".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn extracts_pushover_targets_without_printing_private_keys() {
+        let config = build_pushover_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456789012345678901234567890",
+            "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ",
+            Some("iphone".to_string()),
+            None,
+        );
+
+        let targets = pushover_targets(&config);
+
+        assert_eq!(
+            targets,
+            vec![PushoverTarget {
+                provider_id: "pushover".to_string(),
+                device: Some("iphone".to_string()),
+                sound: None,
             }]
         );
     }

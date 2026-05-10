@@ -94,6 +94,12 @@ mod tests {
                 url_env: None,
                 secret: None,
                 secret_env: None,
+                app_token: None,
+                app_token_env: None,
+                user_key: None,
+                user_key_env: None,
+                device: None,
+                sound: None,
             }],
             routes: vec![RouteConfig {
                 sources: vec!["codex_cli".to_string()],

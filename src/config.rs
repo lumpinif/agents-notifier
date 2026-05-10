@@ -133,6 +133,18 @@ pub struct ProviderConfig {
     pub secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secret_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_token_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_key_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sound: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -141,6 +153,7 @@ pub enum ProviderType {
     Ntfy,
     Webhook,
     FeishuLark,
+    Pushover,
 }
 
 impl ProviderType {
@@ -149,6 +162,14 @@ impl ProviderType {
             Self::Ntfy => "ntfy",
             Self::Webhook => "webhook",
             Self::FeishuLark => "feishu_lark",
+            Self::Pushover => "pushover",
+        }
+    }
+
+    pub fn has_message_size_limit(&self) -> bool {
+        match self {
+            Self::Ntfy | Self::Pushover => true,
+            Self::Webhook | Self::FeishuLark => false,
         }
     }
 }
@@ -193,6 +214,28 @@ pub enum ConfigError {
         "feishu_lark provider `{provider_id}` must set at most one of `secret` or `secret_env`"
     )]
     InvalidFeishuLarkSecretSource { provider_id: String },
+    #[error(
+        "pushover provider `{provider_id}` must set exactly one of `app_token` or `app_token_env`"
+    )]
+    InvalidPushoverAppTokenSource { provider_id: String },
+    #[error(
+        "pushover provider `{provider_id}` must set exactly one of `user_key` or `user_key_env`"
+    )]
+    InvalidPushoverUserKeySource { provider_id: String },
+    #[error(
+        "`prompt_detail = \"on\"` is not supported with `{provider_type}` provider `{provider_id}` because that provider has a message size limit"
+    )]
+    PromptDetailNotSupportedForProvider {
+        provider_id: String,
+        provider_type: &'static str,
+    },
+    #[error(
+        "`answer_detail = \"full\"` is not supported with `{provider_type}` provider `{provider_id}` because that provider has a message size limit"
+    )]
+    AnswerDetailNotSupportedForProvider {
+        provider_id: String,
+        provider_type: &'static str,
+    },
 }
 
 impl Config {
@@ -264,6 +307,39 @@ impl Config {
             }
         }
 
+        self.validate_notification_provider_compatibility()?;
+
+        Ok(())
+    }
+
+    fn validate_notification_provider_compatibility(&self) -> Result<(), ConfigError> {
+        if self.notification.answer_detail != AnswerDetail::Full
+            && self.notification.prompt_detail != PromptDetail::On
+        {
+            return Ok(());
+        }
+
+        for route in &self.routes {
+            for provider_id in &route.providers {
+                let Some(provider) = self.provider(provider_id) else {
+                    continue;
+                };
+                if provider.provider_type.has_message_size_limit() {
+                    if self.notification.answer_detail == AnswerDetail::Full {
+                        return Err(ConfigError::AnswerDetailNotSupportedForProvider {
+                            provider_id: provider.id.clone(),
+                            provider_type: provider.provider_type.as_str(),
+                        });
+                    }
+
+                    return Err(ConfigError::PromptDetailNotSupportedForProvider {
+                        provider_id: provider.id.clone(),
+                        provider_type: provider.provider_type.as_str(),
+                    });
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -297,6 +373,23 @@ impl ProviderConfig {
                 let has_secret_env = is_present(self.secret_env.as_deref());
                 if has_secret && has_secret_env {
                     return Err(ConfigError::InvalidFeishuLarkSecretSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
+            ProviderType::Pushover => {
+                let has_app_token = is_present(self.app_token.as_deref());
+                let has_app_token_env = is_present(self.app_token_env.as_deref());
+                if has_app_token == has_app_token_env {
+                    return Err(ConfigError::InvalidPushoverAppTokenSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+
+                let has_user_key = is_present(self.user_key.as_deref());
+                let has_user_key_env = is_present(self.user_key_env.as_deref());
+                if has_user_key == has_user_key_env {
+                    return Err(ConfigError::InvalidPushoverUserKeySource {
                         provider_id: self.id.clone(),
                     });
                 }
@@ -354,9 +447,15 @@ type = "feishu_lark"
 url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
 secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
 
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token_env = "AGENTS_NOTIFIER_PUSHOVER_APP_TOKEN"
+user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
+
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug_webhook", "work_chat"]
+providers = ["phone", "debug_webhook", "work_chat", "pushover"]
 "#;
 
     #[test]
@@ -365,7 +464,7 @@ providers = ["phone", "debug_webhook", "work_chat"]
 
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.sources.len(), 2);
-        assert_eq!(config.providers.len(), 3);
+        assert_eq!(config.providers.len(), 4);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
@@ -374,28 +473,193 @@ providers = ["phone", "debug_webhook", "work_chat"]
 
     #[test]
     fn parses_full_answer_detail() {
-        let raw = VALID_CONFIG.replacen(
-            "[[sources]]",
-            "[notification]\nanswer_detail = \"full\"\n\n[[sources]]",
-            1,
-        );
+        let raw = r#"
+schema_version = 1
 
-        let config = Config::from_toml_str(&raw).expect("valid config should parse");
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+        let config = Config::from_toml_str(raw).expect("valid config should parse");
 
         assert_eq!(config.notification.answer_detail, AnswerDetail::Full);
     }
 
     #[test]
-    fn parses_on_prompt_detail() {
-        let raw = VALID_CONFIG.replacen(
-            "[[sources]]",
-            "[notification]\nprompt_detail = \"on\"\n\n[[sources]]",
-            1,
-        );
+    fn rejects_full_answer_detail_with_ntfy_provider() {
+        let raw = r#"
+schema_version = 1
 
-        let config = Config::from_toml_str(&raw).expect("valid config should parse");
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["phone"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("ntfy should reject full answer detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::AnswerDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "phone" && provider_type == "ntfy"
+        ));
+    }
+
+    #[test]
+    fn rejects_full_answer_detail_with_pushover_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token = "123456789012345678901234567890"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+        let err =
+            Config::from_toml_str(raw).expect_err("Pushover should reject full answer detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::AnswerDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "pushover" && provider_type == "pushover"
+        ));
+    }
+
+    #[test]
+    fn parses_on_prompt_detail() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+        let config = Config::from_toml_str(raw).expect("valid config should parse");
 
         assert_eq!(config.notification.prompt_detail, PromptDetail::On);
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_ntfy_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["phone"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("ntfy should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "phone" && provider_type == "ntfy"
+        ));
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_pushover_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token = "123456789012345678901234567890"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Pushover should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "pushover" && provider_type == "pushover"
+        ));
     }
 
     #[test]
@@ -511,6 +775,62 @@ providers = ["work_chat"]
         assert!(matches!(
             err,
             ConfigError::InvalidFeishuLarkSecretSource { provider_id } if provider_id == "work_chat"
+        ));
+    }
+
+    #[test]
+    fn rejects_pushover_without_app_token_source() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing app token should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidPushoverAppTokenSource { provider_id } if provider_id == "pushover"
+        ));
+    }
+
+    #[test]
+    fn rejects_pushover_with_both_user_key_sources() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token = "123456789012345678901234567890"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("ambiguous user key should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidPushoverUserKeySource { provider_id } if provider_id == "pushover"
         ));
     }
 }

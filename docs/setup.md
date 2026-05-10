@@ -10,7 +10,7 @@ agents-notifier setup
 
 Without an existing config, setup shows recommended defaults. If a config already exists, setup
 prints `Current` for existing answers, and pressing Enter keeps the current value. Webhook URLs are
-shown by host only, and signing secrets are shown only as configured.
+shown by host only. Signing secrets and Pushover keys are shown only as configured.
 
 For a Feishu/Lark signing secret, type `none` to clear the existing secret.
 
@@ -24,6 +24,24 @@ Choose the agent Agents Notifier should watch:
 3. Claude Code
 ```
 
+## Provider
+
+Choose where notifications should go:
+
+```text
+1. ntfy
+2. Feishu/Lark custom bot
+3. Webhook
+4. Pushover
+```
+
+Provider guides:
+
+- [Feishu/Lark Custom Bot](providers/feishu-lark-custom-bot.md)
+- [ntfy](providers/ntfy.md)
+- [Pushover](providers/pushover.md)
+- [Webhook](providers/webhook.md)
+
 ## Answer Detail
 
 Choose how much answer text notifications include:
@@ -35,6 +53,13 @@ Choose how much answer text notifications include:
 
 Press Enter to keep `Preview`.
 Full Answer includes the visible assistant answer and omits Codex App control directives.
+
+Answer detail is only configurable for providers without a small documented message size limit.
+
+Agents Notifier fixes answer detail to `Preview` for:
+
+- ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
+- Pushover, because Pushover messages are limited to 1024 characters.
 
 ## Prompt Detail
 
@@ -58,6 +83,13 @@ Manual config:
 answer_detail = "preview"
 prompt_detail = "off"
 ```
+
+Prompt detail is only configurable for providers without a small documented message size limit.
+
+Agents Notifier disables prompt detail for:
+
+- ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
+- Pushover, because Pushover messages are limited to 1024 characters.
 
 To include prompts:
 
@@ -87,22 +119,6 @@ After manual edits, restart the service:
 agents-notifier stop
 agents-notifier start
 ```
-
-## Provider
-
-Choose where notifications should go:
-
-```text
-1. ntfy
-2. Feishu/Lark custom bot
-3. Webhook
-```
-
-Provider guides:
-
-- [Feishu/Lark Custom Bot](providers/feishu-lark-custom-bot.md)
-- [ntfy](providers/ntfy.md)
-- [Webhook](providers/webhook.md)
 
 ## Result
 

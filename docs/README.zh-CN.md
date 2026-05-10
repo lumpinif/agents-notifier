@@ -1,7 +1,7 @@
 # agents-notifier
 
 两三分钟就能 setup 好。
-然后你就可以在手机、飞书、Lark 或 Webhook 上收到本地 coding agents 的消息。
+然后你就可以在手机、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
 
 ---
 
@@ -38,6 +38,7 @@ Providers（你想在哪里收到通知？）：
 
 - ntfy
 - Feishu/Lark Custom Bot
+- Pushover
 - Webhook
 - 更多 providers 即将支持
 
@@ -111,6 +112,7 @@ Provider 设置教程：
 
 - [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
 - [ntfy](providers/ntfy.zh-CN.md)
+- [Pushover](providers/pushover.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
 Agent 设置教程：

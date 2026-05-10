@@ -151,6 +151,12 @@ mod tests {
             url_env: None,
             secret: None,
             secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
         })
         .expect("provider config should be valid");
 
@@ -184,6 +190,12 @@ mod tests {
             url_env: None,
             secret: None,
             secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
         })
         .expect("provider config should be valid");
 

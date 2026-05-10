@@ -15,6 +15,7 @@ For Agents Notifier, ntfy is the fastest phone setup.
 ## Official Links
 
 - [ntfy Getting Started](https://docs.ntfy.sh/)
+- [ntfy Server Config](https://docs.ntfy.sh/config/)
 - [Subscribe from the web app](https://docs.ntfy.sh/subscribe/web/)
 - [ntfy GitHub](https://github.com/binwiederhier/ntfy)
 - [ntfy iOS App Store](https://apps.apple.com/us/app/ntfy/id1625396347)
@@ -65,6 +66,18 @@ ntfy
 
 Press Enter to use the generated topic, or paste your own topic.
 
+## Answer Detail
+
+Agents Notifier fixes answer detail to `Preview` for ntfy.
+
+ntfy has a documented message body size limit. The default server limit is 4K. Full answers can be long, so Agents Notifier keeps ntfy notifications short for reliable delivery.
+
+## Prompt Detail
+
+Agents Notifier disables prompt detail for ntfy.
+
+ntfy has a documented message body size limit. The default server limit is 4K. Prompts can be long, so Agents Notifier keeps prompts out of ntfy notifications to avoid unreliable delivery.
+
 ## 4. Confirm
 
 Agents Notifier starts the local service and sends a test notification.
@@ -95,4 +108,3 @@ type = "ntfy"
 server = "https://ntfy.example.com"
 topic = "agents-notifier"
 ```
-

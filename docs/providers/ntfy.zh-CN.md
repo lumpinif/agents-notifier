@@ -15,6 +15,7 @@ English documentation: [ntfy.md](ntfy.md)
 ## 官方链接
 
 - [ntfy Getting Started](https://docs.ntfy.sh/)
+- [ntfy Server Config](https://docs.ntfy.sh/config/)
 - [ntfy Web App 订阅说明](https://docs.ntfy.sh/subscribe/web/)
 - [ntfy GitHub](https://github.com/binwiederhier/ntfy)
 - [ntfy iOS App Store](https://apps.apple.com/us/app/ntfy/id1625396347)
@@ -65,6 +66,18 @@ ntfy
 
 直接按 Enter 使用自动生成的 topic，或者粘贴你自己的 topic。
 
+## Answer Detail
+
+Agents Notifier 会对 ntfy 固定使用 `Preview` answer detail。
+
+ntfy 有官方文档记录的 message body size limit，默认 server 限制是 4K。完整回答可能很长，所以 Agents Notifier 会让 ntfy 通知保持短小，保证投递更可靠。
+
+## Prompt Detail
+
+Agents Notifier 会对 ntfy 禁用 prompt detail。
+
+ntfy 有官方文档记录的 message body size limit，默认 server 限制是 4K。Prompt 可能很长，所以 Agents Notifier 不会把 prompt 放进 ntfy 通知里，避免投递变得不可靠。
+
 ## 4. 确认成功
 
 Agents Notifier 会启动本地 service，并发送一条测试通知。
@@ -95,4 +108,3 @@ type = "ntfy"
 server = "https://ntfy.example.com"
 topic = "agents-notifier"
 ```
-
