@@ -5,7 +5,7 @@ English documentation: [../README.md](../README.md)
 两三分钟就能 setup 好。
 然后你就可以在手机、飞书、Lark 或 Webhook 上收到本地 coding agents 的消息。
 
-> _想象一下：你的 coding agent 在后台工作，你去洗衣服、处理杂事，或者暂时离开电脑。_
+> _想象一下：你的 [Codex Desktop App](https://openai.com/codex/) 在后台工作，你去煮咖啡或者洗衣服，或者暂时离开电脑。_
 >
 > _任务完成的那一刻，你会收到通知，然后知道现在该回来了。_
 
@@ -25,7 +25,7 @@ English documentation: [../README.md](../README.md)
 
 Agents：
 
-- macOS 上的 [Codex Desktop](https://openai.com/codex/)
+- macOS 上的 [Codex Desktop App](https://openai.com/codex/)
 - 通过 hooks 接入的 [Codex CLI](https://github.com/openai/codex)
 - [Claude Code](https://claude.com/product/claude-code) 即将支持
 - 更多本地 agents 即将支持
