@@ -92,7 +92,7 @@ agents-notifier setup
 agents-notifier setup
 ```
 
-The required choices are:
+Setup only requires two choices:
 
 1. Which agent should it watch?
 2. Where should notifications go?
