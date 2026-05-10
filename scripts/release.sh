@@ -58,6 +58,13 @@ fi
 
 just check
 
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Release checks changed the working tree."
+  echo "Commit generated changes before tagging."
+  git status --short
+  exit 1
+fi
+
 git tag "$tag"
 git push origin "$tag"
 

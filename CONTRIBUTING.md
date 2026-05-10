@@ -53,7 +53,20 @@ Releases are tag-driven.
 
 Normal code pushes do not publish a release. A release starts only when a `v*.*.*` tag is pushed.
 
-Before releasing, update `Cargo.toml` to the target version and commit the change.
+Before releasing, update `Cargo.toml` to the target version, refresh `Cargo.lock`, and commit both files.
+
+Recommended version bump flow:
+
+```bash
+# edit Cargo.toml
+cargo check
+git diff -- Cargo.toml Cargo.lock
+git add Cargo.toml Cargo.lock
+git commit -m "chore: bump version to 0.1.1"
+git push origin main
+```
+
+Do not tag a release with a stale `Cargo.lock`. GitHub Actions builds with `--locked`, so `Cargo.toml` and `Cargo.lock` must agree before the tag is created.
 
 Then run:
 
