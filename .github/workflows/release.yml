@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without v, for example 0.7.2"
+        required: true
+        type: string
   push:
     tags:
       - "v*.*.*"
@@ -10,9 +16,66 @@ permissions:
   id-token: write
 
 jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - name: Resolve release version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must look like 0.7.2"
+            exit 2
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout main for manual release
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Rust for manual release
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup component add rustfmt clippy
+
+      - name: Configure Git for manual release
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B main origin/main
+
+      - name: Create release commit and tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: ./scripts/release.sh "${VERSION}"
+
   build-unix:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    needs:
+      - prepare
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +90,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Install Rust
         run: |
@@ -60,10 +125,14 @@ jobs:
   build-windows:
     name: Build x86_64-pc-windows-msvc
     runs-on: windows-latest
+    needs:
+      - prepare
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Install Rust
         shell: pwsh
@@ -98,12 +167,15 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs:
+      - prepare
       - build-unix
       - build-windows
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Download artifacts
         uses: actions/download-artifact@v8
@@ -121,7 +193,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           set -euo pipefail
           if gh release view "${TAG}" >/dev/null 2>&1; then

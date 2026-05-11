@@ -16,6 +16,17 @@ fi
 
 tag="v${version}"
 
+run_release_checks() {
+  if command -v just >/dev/null 2>&1; then
+    just check
+    return
+  fi
+
+  cargo fmt --check
+  cargo clippy -- -D warnings
+  cargo test
+}
+
 if [[ "$(git rev-parse --abbrev-ref HEAD)" != "main" ]]; then
   echo "Release must run from the main branch."
   exit 1
@@ -91,7 +102,7 @@ if [[ "$package_version" != "$version" ]]; then
   fi
 fi
 
-just check
+run_release_checks
 
 changed_files="$(git status --porcelain)"
 if [[ -n "$changed_files" ]]; then
