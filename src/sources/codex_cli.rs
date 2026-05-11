@@ -1,9 +1,6 @@
-use std::collections::BTreeMap;
-
-use anyhow::{Context, anyhow};
-
 use crate::config::{Config, SourceType};
 use crate::signal::Signal;
+use crate::sources::agent_hook;
 
 pub fn create_signal(
     config: &Config,
@@ -11,25 +8,7 @@ pub fn create_signal(
     title: impl Into<String>,
     body: impl Into<String>,
 ) -> anyhow::Result<Signal> {
-    let source = config
-        .source(source_id)
-        .with_context(|| format!("source `{source_id}` is not configured"))?;
-
-    if source.source_type != SourceType::CodexCli {
-        return Err(anyhow!(
-            "source `{}` has type `{}`; expected `codex_cli`",
-            source.id,
-            source.source_type.as_str()
-        ));
-    }
-
-    Ok(Signal::new(
-        source.id.clone(),
-        source.source_type.as_str(),
-        title,
-        body,
-        BTreeMap::new(),
-    ))
+    agent_hook::create_signal_for_type(config, source_id, SourceType::CodexCli, title, body)
 }
 
 #[cfg(test)]

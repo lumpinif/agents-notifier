@@ -9,3 +9,7 @@ Set up the agent after Agents Notifier is installed.
 
 - [Codex CLI](codex-cli.md)
 - [Claude Code](claude-code.md)
+- [Cursor CLI](cursor-cli.md)
+- [OpenCode CLI](opencode-cli.md)
+- [OpenClaw](openclaw.md)
+- [Hermes Agent CLI](hermes-agent-cli.md)

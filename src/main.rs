@@ -722,12 +722,20 @@ fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
         ("1", setup::AgentSelection::CodexDesktop),
         ("2", setup::AgentSelection::CodexCli),
         ("3", setup::AgentSelection::ClaudeCode),
+        ("4", setup::AgentSelection::CursorCli),
+        ("5", setup::AgentSelection::OpenCodeCli),
+        ("6", setup::AgentSelection::OpenClaw),
+        ("7", setup::AgentSelection::HermesAgentCli),
     ];
 
     #[cfg(not(target_os = "macos"))]
     return vec![
         ("1", setup::AgentSelection::CodexCli),
         ("2", setup::AgentSelection::ClaudeCode),
+        ("3", setup::AgentSelection::CursorCli),
+        ("4", setup::AgentSelection::OpenCodeCli),
+        ("5", setup::AgentSelection::OpenClaw),
+        ("6", setup::AgentSelection::HermesAgentCli),
     ];
 }
 
@@ -1407,14 +1415,19 @@ fn print_notification_targets(config: &Config) {
     }
 }
 
-fn configured_agents(config: &Config) -> Vec<&'static str> {
+fn configured_agents(config: &Config) -> Vec<String> {
     config
         .sources
         .iter()
         .filter_map(|source| match source.source_type {
-            SourceType::CodexDesktop => Some("Codex Desktop"),
-            SourceType::CodexCli => Some("Codex CLI"),
-            SourceType::ClaudeCode => Some("Claude Code"),
+            SourceType::CodexDesktop => Some("Codex Desktop".to_string()),
+            SourceType::CodexCli => Some("Codex CLI".to_string()),
+            SourceType::ClaudeCode => Some("Claude Code".to_string()),
+            SourceType::AgentHook => Some(
+                setup::AgentSelection::from_hook_source_id(&source.id)
+                    .map(|agent| agent.display_name().to_string())
+                    .unwrap_or_else(|| format!("Agent hook ({})", source.id)),
+            ),
             SourceType::AgentsNotifier => None,
         })
         .collect()
@@ -1428,6 +1441,7 @@ fn first_configured_agent(config: &Config) -> Option<setup::AgentSelection> {
             SourceType::CodexDesktop => Some(setup::AgentSelection::CodexDesktop),
             SourceType::CodexCli => Some(setup::AgentSelection::CodexCli),
             SourceType::ClaudeCode => Some(setup::AgentSelection::ClaudeCode),
+            SourceType::AgentHook => setup::AgentSelection::from_hook_source_id(&source.id),
             SourceType::AgentsNotifier => None,
         })
 }
@@ -1679,6 +1693,30 @@ fn print_agent_setup_note(agent: setup::AgentSelection) {
             println!("Agents Notifier is ready for Claude Code hook events.");
             println!(
                 "Configure your Claude Code hook to call `agents-notifier emit --source claude_code`."
+            );
+        }
+        setup::AgentSelection::CursorCli => {
+            println!("Agents Notifier is ready for Cursor CLI hook events.");
+            println!(
+                "Configure your Cursor CLI wrapper to call `agents-notifier emit --source cursor_cli` after the CLI exits successfully."
+            );
+        }
+        setup::AgentSelection::OpenCodeCli => {
+            println!("Agents Notifier is ready for OpenCode CLI hook events.");
+            println!(
+                "Configure your OpenCode plugin to call `agents-notifier emit --source opencode_cli` when the session becomes idle."
+            );
+        }
+        setup::AgentSelection::OpenClaw => {
+            println!("Agents Notifier is ready for OpenClaw hook events.");
+            println!(
+                "Configure your OpenClaw plugin hook to call `agents-notifier emit --source openclaw` from agent_end."
+            );
+        }
+        setup::AgentSelection::HermesAgentCli => {
+            println!("Agents Notifier is ready for Hermes Agent CLI hook events.");
+            println!(
+                "Configure your Hermes plugin hook to call `agents-notifier emit --source hermes_agent_cli` from post_llm_call."
             );
         }
     }

@@ -4,6 +4,12 @@
 
 Use Codex CLI integration when you want a terminal Codex workflow to submit completion events to the running Agents Notifier service.
 
+Official Codex CLI references:
+
+- <https://developers.openai.com/codex/config-reference/>
+- <https://developers.openai.com/codex/hooks/>
+- <https://github.com/openai/codex>
+
 ## What Agents Notifier Needs
 
 Agents Notifier only needs Codex CLI to run one command from its notification or hook mechanism:
@@ -36,6 +42,21 @@ Then choose a provider.
 ## 2. Connect Codex CLI
 
 Configure your Codex CLI notification or hook command to run the `agents-notifier emit` command above.
+
+For Codex CLI's `notify` setting, add this to `~/.codex/config.toml`:
+
+```toml
+notify = [
+  "agents-notifier",
+  "emit",
+  "--source",
+  "codex_cli",
+  "--title",
+  "Codex CLI",
+  "--body",
+  "Codex CLI finished a task.",
+]
+```
 
 Keep this command in the runtime hook configuration. Do not ask the agent model to run it manually.
 

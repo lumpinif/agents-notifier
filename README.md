@@ -14,7 +14,7 @@ Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack
 
 ⚡ Local-only notifications for AI coding agents.
 
-Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex CLI](https://github.com/openai/codex), and [Claude Code](https://claude.com/product/claude-code).
+Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex CLI](https://github.com/openai/codex), [Claude Code](https://claude.com/product/claude-code), Cursor CLI, OpenCode CLI, OpenClaw, and Hermes Agent CLI.
 
 Built in Rust 🦀. Fast, small, and quiet in the background.
 
@@ -31,7 +31,10 @@ Agents:
 - [Codex Desktop](https://openai.com/codex/) on macOS
 - [Codex CLI](https://github.com/openai/codex) through hooks on macOS, Linux, and Windows
 - [Claude Code](https://claude.com/product/claude-code) through hooks on macOS, Linux, and Windows
-- More local agents soon
+- Cursor CLI through a completion wrapper on macOS, Linux, and Windows
+- OpenCode CLI through plugins on macOS, Linux, and Windows
+- OpenClaw through plugin hooks on macOS, Linux, and Windows
+- Hermes Agent CLI through plugin hooks on macOS, Linux, and Windows
 
 Providers (Where do you want to get the notification?):
 
@@ -134,6 +137,10 @@ Agent setup guides:
 
 - [Codex CLI](docs/agents/codex-cli.md)
 - [Claude Code](docs/agents/claude-code.md)
+- [Cursor CLI](docs/agents/cursor-cli.md)
+- [OpenCode CLI](docs/agents/opencode-cli.md)
+- [OpenClaw](docs/agents/openclaw.md)
+- [Hermes Agent CLI](docs/agents/hermes-agent-cli.md)
 
 ## 🧹 Uninstall
 
@@ -168,6 +175,13 @@ agents-notifier emit \
   --source claude_code \
   --title "Claude Code" \
   --body "Claude Code finished a task."
+```
+
+```bash
+agents-notifier emit \
+  --source opencode_cli \
+  --title "OpenCode CLI" \
+  --body "OpenCode CLI finished a task."
 ```
 
 `emit` only talks to the local service. Providers are sent by the service.

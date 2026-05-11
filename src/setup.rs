@@ -63,6 +63,10 @@ pub enum AgentSelection {
     CodexDesktop,
     CodexCli,
     ClaudeCode,
+    CursorCli,
+    OpenCodeCli,
+    OpenClaw,
+    HermesAgentCli,
 }
 
 impl AgentSelection {
@@ -71,23 +75,55 @@ impl AgentSelection {
             Self::CodexDesktop => "Codex Desktop",
             Self::CodexCli => "Codex CLI",
             Self::ClaudeCode => "Claude Code",
+            Self::CursorCli => "Cursor CLI",
+            Self::OpenCodeCli => "OpenCode CLI",
+            Self::OpenClaw => "OpenClaw",
+            Self::HermesAgentCli => "Hermes Agent CLI",
+        }
+    }
+
+    pub fn source_id(self) -> &'static str {
+        match self {
+            Self::CodexDesktop => "codex_desktop",
+            Self::CodexCli => "codex_cli",
+            Self::ClaudeCode => "claude_code",
+            Self::CursorCli => "cursor_cli",
+            Self::OpenCodeCli => "opencode_cli",
+            Self::OpenClaw => "openclaw",
+            Self::HermesAgentCli => "hermes_agent_cli",
+        }
+    }
+
+    pub fn from_hook_source_id(source_id: &str) -> Option<Self> {
+        match source_id {
+            "cursor_cli" => Some(Self::CursorCli),
+            "opencode_cli" => Some(Self::OpenCodeCli),
+            "openclaw" => Some(Self::OpenClaw),
+            "hermes_agent_cli" => Some(Self::HermesAgentCli),
+            _ => None,
         }
     }
 
     fn source_config(self) -> SourceConfig {
         match self {
             Self::CodexDesktop => SourceConfig {
-                id: "codex_desktop".to_string(),
+                id: self.source_id().to_string(),
                 source_type: SourceType::CodexDesktop,
             },
             Self::CodexCli => SourceConfig {
-                id: "codex_cli".to_string(),
+                id: self.source_id().to_string(),
                 source_type: SourceType::CodexCli,
             },
             Self::ClaudeCode => SourceConfig {
-                id: "claude_code".to_string(),
+                id: self.source_id().to_string(),
                 source_type: SourceType::ClaudeCode,
             },
+            Self::CursorCli | Self::OpenCodeCli | Self::OpenClaw | Self::HermesAgentCli => {
+                SourceConfig {
+                    id: self.source_id().to_string(),
+                    source_type: SourceType::AgentHook,
+                }
+            }
         }
     }
 }
@@ -714,6 +750,33 @@ mod tests {
         assert_eq!(
             parsed.routes[0].sources,
             vec!["claude_code".to_string(), "agents_notifier".to_string()]
+        );
+    }
+
+    #[test]
+    fn writes_parseable_agent_hook_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_ntfy_config(
+            AgentSelection::OpenCodeCli,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "agents-notifier-test",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        let source = parsed
+            .source("opencode_cli")
+            .expect("OpenCode CLI source should be configured");
+        assert_eq!(source.source_type, SourceType::AgentHook);
+        assert!(parsed.source("agents_notifier").is_some());
+        assert!(parsed.source("codex_desktop").is_none());
+        assert!(parsed.source("codex_cli").is_none());
+        assert_eq!(
+            parsed.routes[0].sources,
+            vec!["opencode_cli".to_string(), "agents_notifier".to_string()]
         );
     }
 

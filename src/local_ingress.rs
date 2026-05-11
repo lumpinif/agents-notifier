@@ -16,7 +16,7 @@ use crate::config::{Config, SourceType};
 use crate::paths::IngressEndpoint;
 use crate::router::{Provider, Router};
 use crate::signal::Signal;
-use crate::sources::{agents_notifier, claude_code, codex_cli};
+use crate::sources::{agent_hook, agents_notifier, claude_code, codex_cli};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSignalEvent {
@@ -256,11 +256,12 @@ fn create_signal(
         SourceType::AgentsNotifier => {
             agents_notifier::create_signal(config, source_id, title, body)
         }
+        SourceType::AgentHook => agent_hook::create_signal(config, source_id, title, body),
         SourceType::ClaudeCode => claude_code::create_signal(config, source_id, title, body),
         SourceType::CodexCli => codex_cli::create_signal(config, source_id, title, body),
         SourceType::CodexDesktop => {
             anyhow::bail!(
-                "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier`, `codex_cli`, and `claude_code` events",
+                "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier`, `agent_hook`, `codex_cli`, and `claude_code` events",
                 source.id
             )
         }
@@ -567,6 +568,31 @@ mod tests {
         assert_eq!(
             *calls.lock().expect("calls lock should not be poisoned"),
             vec!["claude_code:Claude Code finished a task.".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn route_event_creates_generic_agent_hook_signal_and_uses_service_router() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let provider = TestProvider {
+            calls: Arc::clone(&calls),
+        };
+
+        route_event(
+            &test_config("opencode_cli", SourceType::AgentHook),
+            &[&provider],
+            LocalSignalEvent {
+                source_id: "opencode_cli".to_string(),
+                title: "OpenCode CLI".to_string(),
+                body: "OpenCode CLI finished a task.".to_string(),
+            },
+        )
+        .await
+        .expect("generic agent hook event should route through service router");
+
+        assert_eq!(
+            *calls.lock().expect("calls lock should not be poisoned"),
+            vec!["opencode_cli:OpenCode CLI finished a task.".to_string()]
         );
     }
 

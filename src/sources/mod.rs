@@ -1,3 +1,4 @@
+pub mod agent_hook;
 pub mod agents_notifier;
 pub mod claude_code;
 pub mod codex_cli;
