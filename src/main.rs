@@ -50,6 +50,26 @@ enum ProgressOutcome {
     Failed,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SetupProviderSummary {
+    provider_name: &'static str,
+    fields: Vec<SetupProviderSummaryField>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SetupProviderSummaryField {
+    label: &'static str,
+    value: String,
+    tone: SetupProviderSummaryTone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SetupProviderSummaryTone {
+    Plain,
+    Success,
+    Warning,
+}
+
 impl ProgressLine {
     fn start(message: &'static str) -> anyhow::Result<Self> {
         if !io::stderr().is_terminal() {
@@ -534,6 +554,318 @@ fn print_provider_configured(provider: &str) {
     println!("{provider}: {}", style("configured").green());
 }
 
+fn print_setup_provider_summary(config: &Config) {
+    for summary in setup_provider_summaries(config) {
+        print_provider_configured(summary.provider_name);
+        for field in &summary.fields {
+            print_setup_provider_summary_field(field);
+        }
+    }
+}
+
+fn print_setup_provider_summary_field(field: &SetupProviderSummaryField) {
+    match field.tone {
+        SetupProviderSummaryTone::Plain => print_field(field.label, &field.value),
+        SetupProviderSummaryTone::Success => print_success_field(field.label, &field.value),
+        SetupProviderSummaryTone::Warning => print_field(field.label, style(&field.value).yellow()),
+    }
+}
+
+fn setup_provider_summaries(config: &Config) -> Vec<SetupProviderSummary> {
+    config
+        .providers
+        .iter()
+        .map(setup_provider_summary)
+        .collect()
+}
+
+fn setup_provider_summary(provider: &ProviderConfig) -> SetupProviderSummary {
+    match &provider.provider_type {
+        ProviderType::Ntfy => SetupProviderSummary {
+            provider_name: "ntfy",
+            fields: vec![
+                plain_summary_field("server", required_summary_string(provider, "server")),
+                plain_summary_field("topic", required_summary_string(provider, "topic")),
+            ],
+        },
+        ProviderType::FeishuLark => SetupProviderSummary {
+            provider_name: "Feishu/Lark custom bot",
+            fields: vec![
+                plain_summary_field("webhook", provider_url_summary(provider)),
+                configured_or_not_summary_field(
+                    "signature verification",
+                    provider_secret_configured(&provider.secret, &provider.secret_env),
+                ),
+            ],
+        },
+        ProviderType::Webhook => SetupProviderSummary {
+            provider_name: "Webhook",
+            fields: vec![plain_summary_field(
+                "endpoint",
+                provider_url_summary(provider),
+            )],
+        },
+        ProviderType::Pushover => SetupProviderSummary {
+            provider_name: "Pushover",
+            fields: vec![
+                configured_or_not_summary_field(
+                    "application token",
+                    provider_secret_configured(&provider.app_token, &provider.app_token_env),
+                ),
+                configured_or_not_summary_field(
+                    "user or group key",
+                    provider_secret_configured(&provider.user_key, &provider.user_key_env),
+                ),
+                plain_summary_field(
+                    "device",
+                    provider
+                        .device
+                        .as_deref()
+                        .unwrap_or("all devices")
+                        .to_string(),
+                ),
+                plain_summary_field(
+                    "sound",
+                    provider
+                        .sound
+                        .as_deref()
+                        .unwrap_or("account default")
+                        .to_string(),
+                ),
+            ],
+        },
+        ProviderType::Slack => SetupProviderSummary {
+            provider_name: "Slack",
+            fields: vec![plain_summary_field(
+                "webhook",
+                provider_url_summary(provider),
+            )],
+        },
+        ProviderType::Discord => SetupProviderSummary {
+            provider_name: "Discord",
+            fields: vec![plain_summary_field(
+                "webhook",
+                provider_url_summary(provider),
+            )],
+        },
+        ProviderType::Telegram => SetupProviderSummary {
+            provider_name: "Telegram",
+            fields: vec![
+                configured_or_not_summary_field(
+                    "bot token",
+                    provider_secret_configured(&provider.bot_token, &provider.bot_token_env),
+                ),
+                plain_summary_field("chat id", required_summary_string(provider, "chat_id")),
+            ],
+        },
+        ProviderType::Whatsapp => SetupProviderSummary {
+            provider_name: "WhatsApp",
+            fields: vec![
+                configured_or_not_summary_field(
+                    "access token",
+                    provider_secret_configured(&provider.access_token, &provider.access_token_env),
+                ),
+                plain_summary_field(
+                    "phone number id",
+                    required_summary_string(provider, "phone_number_id"),
+                ),
+                plain_summary_field(
+                    "recipient",
+                    required_summary_string(provider, "recipient_phone_number"),
+                ),
+            ],
+        },
+        ProviderType::Weixin => SetupProviderSummary {
+            provider_name: "Weixin",
+            fields: vec![
+                configured_or_not_summary_field(
+                    "iLink token",
+                    provider_secret_configured(&provider.token, &provider.token_env),
+                ),
+                configured_or_not_summary_field(
+                    "context token",
+                    provider_secret_configured(
+                        &provider.context_token,
+                        &provider.context_token_env,
+                    ),
+                ),
+                plain_summary_field("endpoint", required_summary_host(provider, "base_url")),
+                plain_summary_field(
+                    "recipient",
+                    required_summary_string(provider, "recipient_user_id"),
+                ),
+            ],
+        },
+        ProviderType::MicrosoftTeams => SetupProviderSummary {
+            provider_name: "Microsoft Teams",
+            fields: vec![plain_summary_field(
+                "webhook",
+                provider_url_summary(provider),
+            )],
+        },
+        ProviderType::EmailSmtp => {
+            let mut fields = vec![
+                plain_summary_field("server", email_smtp_server_summary(provider)),
+                plain_summary_field("security", email_smtp_security_summary(provider)),
+                email_smtp_authentication_summary_field(provider),
+                plain_summary_field("from", required_summary_string(provider, "from")),
+                plain_summary_field("to", required_summary_recipients(provider)),
+            ];
+
+            if let Some(reply_to) = present_summary_str(provider.reply_to.as_deref()) {
+                fields.push(plain_summary_field("reply-to", reply_to.to_string()));
+            }
+
+            SetupProviderSummary {
+                provider_name: "Email SMTP",
+                fields,
+            }
+        }
+    }
+}
+
+fn plain_summary_field(label: &'static str, value: String) -> SetupProviderSummaryField {
+    SetupProviderSummaryField {
+        label,
+        value,
+        tone: SetupProviderSummaryTone::Plain,
+    }
+}
+
+fn configured_or_not_summary_field(
+    label: &'static str,
+    configured: bool,
+) -> SetupProviderSummaryField {
+    SetupProviderSummaryField {
+        label,
+        value: if configured {
+            "configured".to_string()
+        } else {
+            "not configured".to_string()
+        },
+        tone: if configured {
+            SetupProviderSummaryTone::Success
+        } else {
+            SetupProviderSummaryTone::Warning
+        },
+    }
+}
+
+fn provider_secret_configured(inline: &Option<String>, env: &Option<String>) -> bool {
+    present_summary_str(inline.as_deref()).is_some()
+        || present_summary_str(env.as_deref()).is_some()
+}
+
+fn provider_url_summary(provider: &ProviderConfig) -> String {
+    if let Some(url) = present_summary_str(provider.url.as_deref()) {
+        return safe_url_host(url);
+    }
+    if let Some(env_name) = present_summary_str(provider.url_env.as_deref()) {
+        return format!("env:{env_name}");
+    }
+
+    panic!(
+        "{} provider `{}` is missing a webhook URL source",
+        provider.provider_type.as_str(),
+        provider.id
+    );
+}
+
+fn required_summary_host(provider: &ProviderConfig, field: &'static str) -> String {
+    safe_url_host(&required_summary_string(provider, field))
+}
+
+fn required_summary_string(provider: &ProviderConfig, field: &'static str) -> String {
+    let value = match field {
+        "base_url" => provider.base_url.as_deref(),
+        "server" => provider.server.as_deref(),
+        "topic" => provider.topic.as_deref(),
+        "chat_id" => provider.chat_id.as_deref(),
+        "phone_number_id" => provider.phone_number_id.as_deref(),
+        "recipient_phone_number" => provider.recipient_phone_number.as_deref(),
+        "recipient_user_id" => provider.recipient_user_id.as_deref(),
+        "from" => provider.from.as_deref(),
+        _ => panic!("unsupported setup summary field `{field}`"),
+    };
+
+    present_summary_str(value)
+        .unwrap_or_else(|| {
+            panic!(
+                "{} provider `{}` is missing `{field}`",
+                provider.provider_type.as_str(),
+                provider.id
+            )
+        })
+        .to_string()
+}
+
+fn required_summary_recipients(provider: &ProviderConfig) -> String {
+    provider
+        .to
+        .as_ref()
+        .filter(|recipients| !recipients.is_empty())
+        .unwrap_or_else(|| {
+            panic!(
+                "{} provider `{}` is missing `to`",
+                provider.provider_type.as_str(),
+                provider.id
+            )
+        })
+        .join(", ")
+}
+
+fn email_smtp_server_summary(provider: &ProviderConfig) -> String {
+    let host = provider.host.as_deref().unwrap_or_else(|| {
+        panic!(
+            "{} provider `{}` is missing `host`",
+            provider.provider_type.as_str(),
+            provider.id
+        )
+    });
+    let port = provider.port.unwrap_or_else(|| {
+        panic!(
+            "{} provider `{}` is missing `port`",
+            provider.provider_type.as_str(),
+            provider.id
+        )
+    });
+
+    format!("{host}:{port}")
+}
+
+fn email_smtp_security_summary(provider: &ProviderConfig) -> String {
+    provider
+        .security
+        .map(email_smtp_security_display)
+        .unwrap_or_else(|| {
+            panic!(
+                "{} provider `{}` is missing `security`",
+                provider.provider_type.as_str(),
+                provider.id
+            )
+        })
+        .to_string()
+}
+
+fn email_smtp_authentication_summary_field(provider: &ProviderConfig) -> SetupProviderSummaryField {
+    match (
+        provider_secret_configured(&provider.username, &provider.username_env),
+        provider_secret_configured(&provider.password, &provider.password_env),
+    ) {
+        (true, true) => configured_or_not_summary_field("authentication", true),
+        (false, false) => plain_summary_field("authentication", "not used".to_string()),
+        _ => panic!(
+            "{} provider `{}` must configure both username and password, or neither",
+            provider.provider_type.as_str(),
+            provider.id
+        ),
+    }
+}
+
+fn present_summary_str(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
 async fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     println!("No Agents Notifier config found at `{}`.", path.display());
     println!();
@@ -770,8 +1102,7 @@ fn run_ntfy_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    println!("ntfy server: {}", style("https://ntfy.sh").cyan());
-    println!("ntfy topic: {}", style(&topic).cyan());
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -804,7 +1135,7 @@ fn run_feishu_lark_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Feishu/Lark custom bot");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -831,7 +1162,7 @@ fn run_webhook_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("webhook");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -871,7 +1202,7 @@ fn run_pushover_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Pushover");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -898,7 +1229,7 @@ fn run_slack_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Slack");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -925,7 +1256,7 @@ fn run_discord_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Discord");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -956,7 +1287,7 @@ fn run_telegram_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Telegram");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -997,7 +1328,7 @@ fn run_whatsapp_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("WhatsApp");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -1081,11 +1412,7 @@ async fn run_weixin_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    println!(
-        "Weixin recipient: {}",
-        style(&linked_recipient.recipient_user_id).cyan()
-    );
-    print_provider_configured("Weixin");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -1116,7 +1443,7 @@ fn run_microsoft_teams_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Microsoft Teams");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -1174,7 +1501,7 @@ fn run_email_smtp_setup(
 
     println!();
     print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_provider_configured("Email SMTP");
+    print_setup_provider_summary(&config);
 
     Ok(LoadedConfig {
         config,
@@ -3382,11 +3709,164 @@ providers = ["work_chat"]
     }
 
     #[test]
+    fn setup_provider_summary_reports_feishu_lark_without_exposing_webhook_token() {
+        let config = setup::build_feishu_lark_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Full,
+            PromptDetail::On,
+            "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
+            None,
+        );
+
+        let summary = single_setup_provider_summary(&config);
+
+        assert_eq!(
+            summary,
+            SetupProviderSummary {
+                provider_name: "Feishu/Lark custom bot",
+                fields: vec![
+                    plain_summary_field("webhook", "open.larksuite.com".to_string()),
+                    SetupProviderSummaryField {
+                        label: "signature verification",
+                        value: "not configured".to_string(),
+                        tone: SetupProviderSummaryTone::Warning,
+                    },
+                ],
+            }
+        );
+        assert!(!format!("{summary:?}").contains("secret-token"));
+    }
+
+    #[test]
+    fn setup_provider_summary_reports_signature_without_exposing_secret() {
+        let config = setup::build_feishu_lark_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Full,
+            PromptDetail::On,
+            "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
+            Some("signing-secret".to_string()),
+        );
+
+        let summary = single_setup_provider_summary(&config);
+
+        assert_eq!(
+            summary.fields[1],
+            SetupProviderSummaryField {
+                label: "signature verification",
+                value: "configured".to_string(),
+                tone: SetupProviderSummaryTone::Success,
+            }
+        );
+        let rendered = format!("{summary:?}");
+        assert!(!rendered.contains("secret-token"));
+        assert!(!rendered.contains("signing-secret"));
+    }
+
+    #[test]
+    fn setup_provider_summary_reports_hidden_credentials_without_printing_values() {
+        let telegram_config = setup::build_telegram_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456:test-token",
+            "-1001234567890",
+        );
+        let telegram = single_setup_provider_summary(&telegram_config);
+
+        assert_eq!(
+            telegram.fields,
+            vec![
+                SetupProviderSummaryField {
+                    label: "bot token",
+                    value: "configured".to_string(),
+                    tone: SetupProviderSummaryTone::Success,
+                },
+                plain_summary_field("chat id", "-1001234567890".to_string()),
+            ]
+        );
+        assert!(!format!("{telegram:?}").contains("123456:test-token"));
+
+        let pushover_config = setup::build_pushover_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456789012345678901234567890",
+            "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ",
+            Some("iphone".to_string()),
+            Some("pushover".to_string()),
+        );
+        let pushover = single_setup_provider_summary(&pushover_config);
+
+        assert_eq!(
+            pushover.fields,
+            vec![
+                SetupProviderSummaryField {
+                    label: "application token",
+                    value: "configured".to_string(),
+                    tone: SetupProviderSummaryTone::Success,
+                },
+                SetupProviderSummaryField {
+                    label: "user or group key",
+                    value: "configured".to_string(),
+                    tone: SetupProviderSummaryTone::Success,
+                },
+                plain_summary_field("device", "iphone".to_string()),
+                plain_summary_field("sound", "pushover".to_string()),
+            ]
+        );
+        let rendered = format!("{pushover:?}");
+        assert!(!rendered.contains("123456789012345678901234567890"));
+        assert!(!rendered.contains("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"));
+    }
+
+    #[test]
+    fn setup_provider_summary_reports_email_without_printing_password() {
+        let config = setup::build_email_smtp_config(
+            setup::AgentSelection::CodexDesktop,
+            AnswerDetail::Full,
+            PromptDetail::On,
+            "smtp.example.com",
+            587,
+            EmailSmtpSecurity::Starttls,
+            Some("alerts@example.com".to_string()),
+            Some("smtp-password".to_string()),
+            "Agents Notifier <alerts@example.com>",
+            vec!["team@example.com".to_string()],
+            Some("reply@example.com".to_string()),
+        );
+
+        let summary = single_setup_provider_summary(&config);
+
+        assert_eq!(
+            summary.fields,
+            vec![
+                plain_summary_field("server", "smtp.example.com:587".to_string()),
+                plain_summary_field("security", "STARTTLS".to_string()),
+                SetupProviderSummaryField {
+                    label: "authentication",
+                    value: "configured".to_string(),
+                    tone: SetupProviderSummaryTone::Success,
+                },
+                plain_summary_field("from", "Agents Notifier <alerts@example.com>".to_string()),
+                plain_summary_field("to", "team@example.com".to_string()),
+                plain_summary_field("reply-to", "reply@example.com".to_string()),
+            ]
+        );
+        assert!(!format!("{summary:?}").contains("smtp-password"));
+    }
+
+    #[test]
     fn safe_url_host_does_not_expose_webhook_token() {
         assert_eq!(
             safe_url_host("https://open.larksuite.com/open-apis/bot/v2/hook/secret-token"),
             "open.larksuite.com"
         );
+    }
+
+    fn single_setup_provider_summary(config: &Config) -> SetupProviderSummary {
+        let mut summaries = setup_provider_summaries(config);
+        assert_eq!(summaries.len(), 1);
+        summaries.remove(0)
     }
 
     fn slack_test_url() -> String {
