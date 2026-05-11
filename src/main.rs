@@ -1,12 +1,14 @@
+use std::fmt::Display;
 use std::fs;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, RecvTimeoutError};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use console::style;
+use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::time::sleep;
 
 use agents_notifier::config::{
@@ -37,8 +39,8 @@ const SERVICE_READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const START_PROGRESS_INTERVAL: Duration = Duration::from_millis(500);
 
 struct ProgressLine {
-    stop: Option<mpsc::Sender<()>>,
-    handle: Option<thread::JoinHandle<()>>,
+    message: &'static str,
+    spinner: Option<ProgressBar>,
 }
 
 enum ProgressOutcome {
@@ -48,50 +50,41 @@ enum ProgressOutcome {
 
 impl ProgressLine {
     fn start(message: &'static str) -> anyhow::Result<Self> {
-        if !io::stdout().is_terminal() {
+        if !io::stderr().is_terminal() {
             println!("{message}...");
             return Ok(Self {
-                stop: None,
-                handle: None,
+                message,
+                spinner: None,
             });
         }
 
-        print!("{message}...");
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let (stop, receiver) = mpsc::channel();
-        let handle = thread::spawn(move || {
-            loop {
-                match receiver.recv_timeout(START_PROGRESS_INTERVAL) {
-                    Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
-                    Err(RecvTimeoutError::Timeout) => {
-                        print!(".");
-                        let _ = io::stdout().flush();
-                    }
-                }
-            }
-        });
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::with_template("{spinner} {msg}")
+                .context("failed to build progress style")?
+                .tick_strings(&["-", "\\", "|", "/"]),
+        );
+        spinner.set_message(message);
+        spinner.enable_steady_tick(START_PROGRESS_INTERVAL);
 
         Ok(Self {
-            stop: Some(stop),
-            handle: Some(handle),
+            message,
+            spinner: Some(spinner),
         })
     }
 
-    fn finish(mut self, outcome: ProgressOutcome) -> anyhow::Result<()> {
-        let Some(stop) = self.stop.take() else {
+    fn finish(self, outcome: ProgressOutcome) -> anyhow::Result<()> {
+        let Some(spinner) = self.spinner else {
             return Ok(());
         };
-        let _ = stop.send(());
-        if let Some(handle) = self.handle.take() {
-            let _ = handle.join();
-        }
+
+        spinner.finish_and_clear();
 
         match outcome {
-            ProgressOutcome::Ready => println!(" ready."),
-            ProgressOutcome::Failed => println!(" failed."),
+            ProgressOutcome::Ready => println!("{} ready.", self.message),
+            ProgressOutcome::Failed => println!("{} failed.", self.message),
         }
-        io::stdout().flush().context("failed to flush stdout")
+        Ok(())
     }
 }
 
@@ -391,8 +384,61 @@ fn is_interactive_terminal() -> bool {
     io::stdin().is_terminal() && io::stdout().is_terminal()
 }
 
+fn prompt_theme() -> ColorfulTheme {
+    ColorfulTheme::default()
+}
+
+fn prompt_text(
+    prompt: impl Into<String>,
+    read_context: impl Into<String>,
+) -> anyhow::Result<String> {
+    let theme = prompt_theme();
+    let read_context = read_context.into();
+    Input::<String>::with_theme(&theme)
+        .with_prompt(prompt.into())
+        .allow_empty(true)
+        .interact()
+        .with_context(|| read_context)
+}
+
+fn prompt_secret(
+    prompt: impl Into<String>,
+    read_context: impl Into<String>,
+) -> anyhow::Result<String> {
+    let theme = prompt_theme();
+    let read_context = read_context.into();
+    Password::with_theme(&theme)
+        .with_prompt(prompt.into())
+        .allow_empty_password(true)
+        .report(false)
+        .interact()
+        .with_context(|| read_context)
+}
+
+fn prompt_confirm(prompt: &str, default: bool) -> anyhow::Result<bool> {
+    let theme = prompt_theme();
+    Confirm::with_theme(&theme)
+        .with_prompt(prompt)
+        .default(default)
+        .interact()
+        .context("failed to read confirmation")
+}
+
+fn print_heading(title: &str) {
+    println!("{}", style(title).bold());
+}
+
+fn print_section(title: &str) {
+    println!();
+    print_heading(title);
+}
+
+fn print_field(label: &str, value: impl Display) {
+    println!("  {} {}", style(format!("{label}:")).dim(), value);
+}
+
 fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
-    println!("No agents-notifier config found at `{}`.", path.display());
+    println!("No Agents Notifier config found at `{}`.", path.display());
     println!();
     println!("Starting setup now.");
     println!("Setup connects one agent to one notification provider.");
@@ -408,7 +454,7 @@ fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
         );
     }
 
-    println!("Set up agent notifications.");
+    print_heading("Set up agent notifications");
     println!(
         "This replaces the notification, agent, provider, and route sections in `{}`.",
         path.display()
@@ -967,49 +1013,35 @@ fn run_email_smtp_setup(
 fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
 ) -> anyhow::Result<setup::AgentSelection> {
-    loop {
-        let options = supported_agent_options();
-        let supported_default =
-            default.filter(|agent| options.iter().any(|(_, candidate)| candidate == agent));
-        let effective_default = supported_default.unwrap_or_else(default_agent_for_platform);
-
-        println!("Which agent should Agents Notifier watch?");
-        for (choice, agent) in &options {
-            println!("{choice}. {}", agent.display_name());
-        }
-        if let Some(default) = supported_default {
-            println!("Current: {}", default.display_name());
-        }
-        let choices = options
-            .iter()
-            .map(|(choice, _)| choice.to_string())
-            .collect::<Vec<_>>()
-            .join("/");
-        print!(
-            "Choose an agent [{choices}, {}]: ",
-            choice_prompt_hint(
-                supported_default.map(agent_choice),
-                agent_choice(effective_default)
-            )
-        );
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read agent choice")?;
-
-        match input.trim() {
-            "" => return Ok(effective_default),
-            value => {
-                if let Some((_, agent)) = options.iter().find(|(choice, _)| *choice == value) {
-                    return Ok(*agent);
-                }
-                println!("Please enter one of: {choices}.");
+    let options = supported_agent_options();
+    let supported_default =
+        default.filter(|agent| options.iter().any(|(_, candidate)| candidate == agent));
+    let effective_default = supported_default.unwrap_or_else(default_agent_for_platform);
+    let default_index = options
+        .iter()
+        .position(|(_, agent)| *agent == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|(_, agent)| {
+            let mut label = agent.display_name().to_string();
+            if Some(*agent) == supported_default {
+                label.push_str(" (Current)");
+            } else if supported_default.is_none() && *agent == effective_default {
+                label.push_str(" (Recommended)");
             }
-        }
-        println!();
-    }
+            label
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Which agent should Agents Notifier watch?")
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read agent choice")?;
+
+    Ok(options[selection].1)
 }
 
 fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
@@ -1050,123 +1082,106 @@ fn default_agent_for_platform() -> setup::AgentSelection {
 }
 
 fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<AnswerDetail> {
-    loop {
-        let effective_default = default.unwrap_or(AnswerDetail::Preview);
+    let effective_default = default.unwrap_or(AnswerDetail::Preview);
+    let options = [AnswerDetail::Preview, AnswerDetail::Full];
+    let default_index = options
+        .iter()
+        .position(|answer_detail| *answer_detail == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|answer_detail| {
+            let mut label = answer_detail.display_name().to_string();
+            if Some(*answer_detail) == default {
+                label.push_str(" (Current)");
+            } else if default.is_none() && *answer_detail == AnswerDetail::Preview {
+                label.push_str(" (Recommended)");
+            }
+            label
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Answer detail")
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read answer detail choice")?;
 
-        println!("Answer detail?");
-        println!("1. Preview (Recommended)");
-        println!("2. Full Answer");
-        if let Some(default) = default {
-            println!("Current: {}", default.display_name());
-        }
-        print!(
-            "Choose answer detail [1/2, {}]: ",
-            choice_prompt_hint(
-                default.map(answer_detail_choice),
-                answer_detail_choice(effective_default)
-            )
-        );
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read answer detail choice")?;
-
-        match input.trim() {
-            "" => return Ok(effective_default),
-            "1" => return Ok(AnswerDetail::Preview),
-            "2" => return Ok(AnswerDetail::Full),
-            _ => println!("Please enter 1 or 2."),
-        }
-        println!();
-    }
+    Ok(options[selection])
 }
 
 fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<PromptDetail> {
-    loop {
-        let effective_default = default.unwrap_or(PromptDetail::Off);
+    let effective_default = default.unwrap_or(PromptDetail::Off);
+    let options = [PromptDetail::Off, PromptDetail::On];
+    let default_index = options
+        .iter()
+        .position(|prompt_detail| *prompt_detail == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|prompt_detail| {
+            let mut label = prompt_detail.display_name().to_string();
+            if Some(*prompt_detail) == default {
+                label.push_str(" (Current)");
+            } else if default.is_none() && *prompt_detail == PromptDetail::Off {
+                label.push_str(" (Recommended)");
+            }
+            label
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Include your prompt?")
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read prompt detail choice")?;
 
-        println!("Include your prompt?");
-        println!("1. No (Recommended)");
-        println!("2. Yes");
-        if let Some(default) = default {
-            println!("Current: {}", default.display_name());
-        }
-        print!(
-            "Choose prompt detail [1/2, {}]: ",
-            choice_prompt_hint(
-                default.map(prompt_detail_choice),
-                prompt_detail_choice(effective_default)
-            )
-        );
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read prompt detail choice")?;
-
-        match input.trim() {
-            "" => return Ok(effective_default),
-            "1" => return Ok(PromptDetail::Off),
-            "2" => return Ok(PromptDetail::On),
-            _ => println!("Please enter 1 or 2."),
-        }
-        println!();
-    }
+    Ok(options[selection])
 }
 
 fn prompt_for_initial_provider(
     default: Option<InitialProvider>,
 ) -> anyhow::Result<InitialProvider> {
-    loop {
-        let effective_default = default.unwrap_or(InitialProvider::Ntfy);
+    let effective_default = default.unwrap_or(InitialProvider::Ntfy);
+    let options = [
+        InitialProvider::Ntfy,
+        InitialProvider::Slack,
+        InitialProvider::Discord,
+        InitialProvider::Pushover,
+        InitialProvider::FeishuLark,
+        InitialProvider::Webhook,
+        InitialProvider::Telegram,
+        InitialProvider::Whatsapp,
+        InitialProvider::MicrosoftTeams,
+        InitialProvider::EmailSmtp,
+    ];
+    let default_index = options
+        .iter()
+        .position(|provider| *provider == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|provider| {
+            let mut label = provider.display_name().to_string();
+            if Some(*provider) == default {
+                label.push_str(" (Current)");
+            } else if default.is_none() && *provider == InitialProvider::Ntfy {
+                label.push_str(" (Recommended)");
+            }
+            label
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("Where should Agents Notifier send notifications?")
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read provider choice")?;
 
-        println!("Where should Agents Notifier send notifications?");
-        println!("1. ntfy");
-        println!("2. Slack");
-        println!("3. Discord");
-        println!("4. Pushover");
-        println!("5. Feishu/Lark custom bot");
-        println!("6. Webhook");
-        println!("7. Telegram");
-        println!("8. WhatsApp");
-        println!("9. Microsoft Teams");
-        println!("10. Email SMTP");
-        if let Some(default) = default {
-            println!("Current: {}", default.display_name());
-        }
-        print!(
-            "Choose a provider [1/2/3/4/5/6/7/8/9/10, {}]: ",
-            choice_prompt_hint(
-                default.map(provider_choice),
-                provider_choice(effective_default)
-            )
-        );
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read provider choice")?;
-
-        match input.trim() {
-            "" => return Ok(effective_default),
-            "1" => return Ok(InitialProvider::Ntfy),
-            "2" => return Ok(InitialProvider::Slack),
-            "3" => return Ok(InitialProvider::Discord),
-            "4" => return Ok(InitialProvider::Pushover),
-            "5" => return Ok(InitialProvider::FeishuLark),
-            "6" => return Ok(InitialProvider::Webhook),
-            "7" => return Ok(InitialProvider::Telegram),
-            "8" => return Ok(InitialProvider::Whatsapp),
-            "9" => return Ok(InitialProvider::MicrosoftTeams),
-            "10" => return Ok(InitialProvider::EmailSmtp),
-            _ => println!("Please enter 1, 2, 3, 4, 5, 6, 7, 8, 9, or 10."),
-        }
-        println!();
-    }
+    Ok(options[selection])
 }
 
 fn prompt_for_ntfy_topic(
@@ -1175,17 +1190,12 @@ fn prompt_for_ntfy_topic(
 ) -> anyhow::Result<String> {
     loop {
         let default_topic = current_topic.unwrap_or(generated_topic);
-        if let Some(current_topic) = current_topic {
-            print!("Topic [{current_topic}]: ");
+        let prompt = if let Some(current_topic) = current_topic {
+            format!("Topic [{current_topic}, press Enter to keep]")
         } else {
-            print!("Press Enter to use topic `{generated_topic}`, or type a different topic: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read topic")?;
+            format!("Topic [{generated_topic}]")
+        };
+        let input = prompt_text(prompt, "failed to read topic")?;
 
         match setup::resolve_ntfy_topic(&input, default_topic) {
             Ok(topic) => return Ok(topic),
@@ -1198,20 +1208,15 @@ fn prompt_for_ntfy_topic(
 
 fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_url) = current_url {
-            print!(
-                "Webhook URL [configured: {}, press Enter to keep]: ",
+        let prompt = if let Some(current_url) = current_url {
+            format!(
+                "Webhook URL [configured: {}, press Enter to keep]",
                 safe_url_host(current_url)
-            );
+            )
         } else {
-            print!("Webhook URL: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read webhook URL")?;
+            "Webhook URL".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1230,17 +1235,12 @@ fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Resu
 }
 
 fn prompt_for_feishu_lark_secret(current_secret: Option<&str>) -> anyhow::Result<Option<String>> {
-    if current_secret.is_some() {
-        print!("Signing secret [configured, press Enter to keep, type `none` to clear]: ");
+    let prompt = if current_secret.is_some() {
+        "Signing secret [configured, press Enter to keep, type `none` to clear]"
     } else {
-        print!("Signing secret, or press Enter if you did not enable Signature Verification: ");
-    }
-    io::stdout().flush().context("failed to flush stdout")?;
-
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("failed to read signing secret")?;
+        "Signing secret, or press Enter if you did not enable Signature Verification"
+    };
+    let input = prompt_secret(prompt, "failed to read signing secret")?;
 
     let input = input.trim();
     if input.is_empty() {
@@ -1255,20 +1255,15 @@ fn prompt_for_feishu_lark_secret(current_secret: Option<&str>) -> anyhow::Result
 
 fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_url) = current_url {
-            print!(
-                "Webhook URL [configured: {}, press Enter to keep]: ",
+        let prompt = if let Some(current_url) = current_url {
+            format!(
+                "Webhook URL [configured: {}, press Enter to keep]",
                 safe_url_host(current_url)
-            );
+            )
         } else {
-            print!("Webhook URL: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read webhook URL")?;
+            "Webhook URL".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1288,20 +1283,15 @@ fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
 
 fn prompt_for_slack_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_url) = current_url {
-            print!(
-                "Slack webhook URL [configured: {}, press Enter to keep]: ",
+        let prompt = if let Some(current_url) = current_url {
+            format!(
+                "Slack webhook URL [configured: {}, press Enter to keep]",
                 safe_url_host(current_url)
-            );
+            )
         } else {
-            print!("Slack webhook URL: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Slack webhook URL")?;
+            "Slack webhook URL".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read Slack webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1321,20 +1311,15 @@ fn prompt_for_slack_webhook_url(current_url: Option<&str>) -> anyhow::Result<Str
 
 fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_url) = current_url {
-            print!(
-                "Discord webhook URL [configured: {}, press Enter to keep]: ",
+        let prompt = if let Some(current_url) = current_url {
+            format!(
+                "Discord webhook URL [configured: {}, press Enter to keep]",
                 safe_url_host(current_url)
-            );
+            )
         } else {
-            print!("Discord webhook URL: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Discord webhook URL")?;
+            "Discord webhook URL".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read Discord webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1354,17 +1339,12 @@ fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<S
 
 fn prompt_for_telegram_bot_token(current_token: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if current_token.is_some() {
-            print!("Telegram bot token [configured, press Enter to keep]: ");
+        let prompt = if current_token.is_some() {
+            "Telegram bot token [configured, press Enter to keep]"
         } else {
-            print!("Telegram bot token: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Telegram bot token")?;
+            "Telegram bot token"
+        };
+        let input = prompt_secret(prompt, "failed to read Telegram bot token")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1384,17 +1364,12 @@ fn prompt_for_telegram_bot_token(current_token: Option<&str>) -> anyhow::Result<
 
 fn prompt_for_telegram_chat_id(current_chat_id: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_chat_id) = current_chat_id {
-            print!("Telegram chat id [{current_chat_id}, press Enter to keep]: ");
+        let prompt = if let Some(current_chat_id) = current_chat_id {
+            format!("Telegram chat id [{current_chat_id}, press Enter to keep]")
         } else {
-            print!("Telegram chat id, for example 123456789 or @channelusername: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Telegram chat id")?;
+            "Telegram chat id, for example 123456789 or @channelusername".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read Telegram chat id")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1414,17 +1389,12 @@ fn prompt_for_telegram_chat_id(current_chat_id: Option<&str>) -> anyhow::Result<
 
 fn prompt_for_whatsapp_access_token(current_token: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if current_token.is_some() {
-            print!("WhatsApp access token [configured, press Enter to keep]: ");
+        let prompt = if current_token.is_some() {
+            "WhatsApp access token [configured, press Enter to keep]"
         } else {
-            print!("WhatsApp access token: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read WhatsApp access token")?;
+            "WhatsApp access token"
+        };
+        let input = prompt_secret(prompt, "failed to read WhatsApp access token")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1446,17 +1416,12 @@ fn prompt_for_whatsapp_phone_number_id(
     current_phone_number_id: Option<&str>,
 ) -> anyhow::Result<String> {
     loop {
-        if let Some(current_phone_number_id) = current_phone_number_id {
-            print!("WhatsApp phone number ID [{current_phone_number_id}, press Enter to keep]: ");
+        let prompt = if let Some(current_phone_number_id) = current_phone_number_id {
+            format!("WhatsApp phone number ID [{current_phone_number_id}, press Enter to keep]")
         } else {
-            print!("WhatsApp phone number ID: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read WhatsApp phone number ID")?;
+            "WhatsApp phone number ID".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read WhatsApp phone number ID")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1478,19 +1443,12 @@ fn prompt_for_whatsapp_recipient_phone_number(
     current_phone_number: Option<&str>,
 ) -> anyhow::Result<String> {
     loop {
-        if let Some(current_phone_number) = current_phone_number {
-            print!(
-                "WhatsApp recipient phone number [{current_phone_number}, press Enter to keep]: "
-            );
+        let prompt = if let Some(current_phone_number) = current_phone_number {
+            format!("WhatsApp recipient phone number [{current_phone_number}, press Enter to keep]")
         } else {
-            print!("WhatsApp recipient phone number, digits only with country code: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read WhatsApp recipient phone number")?;
+            "WhatsApp recipient phone number, digits only with country code".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read WhatsApp recipient phone number")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1510,20 +1468,15 @@ fn prompt_for_whatsapp_recipient_phone_number(
 
 fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_url) = current_url {
-            print!(
-                "Microsoft Teams webhook URL [configured: {}, press Enter to keep]: ",
+        let prompt = if let Some(current_url) = current_url {
+            format!(
+                "Microsoft Teams webhook URL [configured: {}, press Enter to keep]",
                 safe_url_host(current_url)
-            );
+            )
         } else {
-            print!("Microsoft Teams webhook URL: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Microsoft Teams webhook URL")?;
+            "Microsoft Teams webhook URL".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read Microsoft Teams webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1543,17 +1496,12 @@ fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::
 
 fn prompt_for_email_smtp_host(current_host: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if let Some(current_host) = current_host {
-            print!("SMTP host [{current_host}, press Enter to keep]: ");
+        let prompt = if let Some(current_host) = current_host {
+            format!("SMTP host [{current_host}, press Enter to keep]")
         } else {
-            print!("SMTP host, for example smtp.gmail.com: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read SMTP host")?;
+            "SMTP host, for example smtp.gmail.com".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read SMTP host")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1572,48 +1520,41 @@ fn prompt_for_email_smtp_host(current_host: Option<&str>) -> anyhow::Result<Stri
 fn prompt_for_email_smtp_security(
     current_security: Option<EmailSmtpSecurity>,
 ) -> anyhow::Result<EmailSmtpSecurity> {
-    loop {
-        let effective_default = current_security.unwrap_or(EmailSmtpSecurity::Starttls);
+    let effective_default = current_security.unwrap_or(EmailSmtpSecurity::Starttls);
+    let options = [EmailSmtpSecurity::Starttls, EmailSmtpSecurity::ImplicitTls];
+    let default_index = options
+        .iter()
+        .position(|security| *security == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|security| {
+            let mut label = email_smtp_security_display(*security).to_string();
+            if Some(*security) == current_security {
+                label.push_str(" (Current)");
+            } else if current_security.is_none() && *security == EmailSmtpSecurity::Starttls {
+                label.push_str(" (Recommended)");
+            }
+            label
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("SMTP security")
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read SMTP security")?;
 
-        println!("SMTP security:");
-        println!("1. STARTTLS on an SMTP submission connection (Recommended)");
-        println!("2. Implicit TLS");
-        if let Some(current_security) = current_security {
-            println!("Current: {}", email_smtp_security_display(current_security));
-        }
-        print!(
-            "Choose SMTP security [1/2, {}]: ",
-            choice_prompt_hint(
-                current_security.map(email_smtp_security_choice),
-                email_smtp_security_choice(effective_default)
-            )
-        );
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read SMTP security")?;
-
-        match input.trim() {
-            "" => return Ok(effective_default),
-            "1" => return Ok(EmailSmtpSecurity::Starttls),
-            "2" => return Ok(EmailSmtpSecurity::ImplicitTls),
-            _ => println!("Please enter 1 or 2."),
-        }
-        println!();
-    }
+    Ok(options[selection])
 }
 
 fn prompt_for_email_smtp_port(default_port: u16) -> anyhow::Result<u16> {
     loop {
-        print!("SMTP port [{default_port}, press Enter to keep]: ");
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read SMTP port")?;
+        let input = prompt_text(
+            format!("SMTP port [{default_port}, press Enter to keep]"),
+            "failed to read SMTP port",
+        )?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1633,19 +1574,14 @@ fn prompt_for_email_smtp_username(
     current_username: Option<&str>,
 ) -> anyhow::Result<Option<String>> {
     loop {
-        if let Some(current_username) = current_username {
-            print!(
-                "SMTP username [{current_username}, press Enter to keep, type `none` for no auth]: "
-            );
+        let prompt = if let Some(current_username) = current_username {
+            format!(
+                "SMTP username [{current_username}, press Enter to keep, type `none` for no auth]"
+            )
         } else {
-            print!("SMTP username, or press Enter for no auth: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read SMTP username")?;
+            "SMTP username, or press Enter for no auth".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read SMTP username")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1663,17 +1599,12 @@ fn prompt_for_email_smtp_username(
 
 fn prompt_for_email_smtp_password(current_password: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if current_password.is_some() {
-            print!("SMTP password [configured, press Enter to keep]: ");
+        let prompt = if current_password.is_some() {
+            "SMTP password [configured, press Enter to keep]"
         } else {
-            print!("SMTP password or SMTP API key: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read SMTP password")?;
+            "SMTP password or SMTP API key"
+        };
+        let input = prompt_secret(prompt, "failed to read SMTP password")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1694,17 +1625,12 @@ fn prompt_for_email_smtp_mailbox(
     current_mailbox: Option<&str>,
 ) -> anyhow::Result<String> {
     loop {
-        if let Some(current_mailbox) = current_mailbox {
-            print!("{label} [{current_mailbox}, press Enter to keep]: ");
+        let prompt = if let Some(current_mailbox) = current_mailbox {
+            format!("{label} [{current_mailbox}, press Enter to keep]")
         } else {
-            print!("{label}, for example Agents Notifier <alerts@example.com>: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .with_context(|| format!("failed to read {label}"))?;
+            format!("{label}, for example Agents Notifier <alerts@example.com>")
+        };
+        let input = prompt_text(prompt, format!("failed to read {label}"))?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1725,17 +1651,12 @@ fn prompt_for_email_smtp_optional_mailbox(
     current_mailbox: Option<&str>,
 ) -> anyhow::Result<Option<String>> {
     loop {
-        if let Some(current_mailbox) = current_mailbox {
-            print!("{label} [{current_mailbox}, press Enter to keep, type `none` to clear]: ");
+        let prompt = if let Some(current_mailbox) = current_mailbox {
+            format!("{label} [{current_mailbox}, press Enter to keep, type `none` to clear]")
         } else {
-            print!("{label}, or press Enter to skip: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .with_context(|| format!("failed to read {label}"))?;
+            format!("{label}, or press Enter to skip")
+        };
+        let input = prompt_text(prompt, format!("failed to read {label}"))?;
 
         let input = input.trim();
         if input.is_empty() {
@@ -1756,20 +1677,15 @@ fn prompt_for_email_smtp_recipients(
     current_recipients: Option<&[String]>,
 ) -> anyhow::Result<Vec<String>> {
     loop {
-        if let Some(current_recipients) = current_recipients {
-            print!(
-                "Recipient emails [{}; press Enter to keep]: ",
+        let prompt = if let Some(current_recipients) = current_recipients {
+            format!(
+                "Recipient emails [{}; press Enter to keep]",
                 current_recipients.join(", ")
-            );
+            )
         } else {
-            print!("Recipient emails, comma-separated: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read recipient emails")?;
+            "Recipient emails, comma-separated".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read recipient emails")?;
 
         let input = input.trim();
         if input.is_empty()
@@ -1787,17 +1703,12 @@ fn prompt_for_email_smtp_recipients(
 
 fn prompt_for_pushover_app_token(current_token: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if current_token.is_some() {
-            print!("Pushover application API token [configured, press Enter to keep]: ");
+        let prompt = if current_token.is_some() {
+            "Pushover application API token [configured, press Enter to keep]"
         } else {
-            print!("Pushover application API token: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Pushover application API token")?;
+            "Pushover application API token"
+        };
+        let input = prompt_secret(prompt, "failed to read Pushover application API token")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1817,17 +1728,12 @@ fn prompt_for_pushover_app_token(current_token: Option<&str>) -> anyhow::Result<
 
 fn prompt_for_pushover_user_key(current_user_key: Option<&str>) -> anyhow::Result<String> {
     loop {
-        if current_user_key.is_some() {
-            print!("Pushover user or group key [configured, press Enter to keep]: ");
+        let prompt = if current_user_key.is_some() {
+            "Pushover user or group key [configured, press Enter to keep]"
         } else {
-            print!("Pushover user or group key: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Pushover user or group key")?;
+            "Pushover user or group key"
+        };
+        let input = prompt_secret(prompt, "failed to read Pushover user or group key")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1847,19 +1753,12 @@ fn prompt_for_pushover_user_key(current_user_key: Option<&str>) -> anyhow::Resul
 
 fn prompt_for_pushover_device(current_device: Option<&str>) -> anyhow::Result<Option<String>> {
     loop {
-        if let Some(current_device) = current_device {
-            print!(
-                "Pushover device [{current_device}, press Enter to keep, type `none` to clear]: "
-            );
+        let prompt = if let Some(current_device) = current_device {
+            format!("Pushover device [{current_device}, press Enter to keep, type `none` to clear]")
         } else {
-            print!("Pushover device, or press Enter to send to all devices: ");
-        }
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read Pushover device")?;
+            "Pushover device, or press Enter to send to all devices".to_string()
+        };
+        let input = prompt_text(prompt, "failed to read Pushover device")?;
 
         let input = input.trim();
         if input.is_empty() {
@@ -1879,17 +1778,12 @@ fn prompt_for_pushover_device(current_device: Option<&str>) -> anyhow::Result<Op
 }
 
 fn prompt_for_pushover_sound(current_sound: Option<&str>) -> anyhow::Result<Option<String>> {
-    if let Some(current_sound) = current_sound {
-        print!("Pushover sound [{current_sound}, press Enter to keep, type `none` to clear]: ");
+    let prompt = if let Some(current_sound) = current_sound {
+        format!("Pushover sound [{current_sound}, press Enter to keep, type `none` to clear]")
     } else {
-        print!("Pushover sound, or press Enter to use your account default: ");
-    }
-    io::stdout().flush().context("failed to flush stdout")?;
-
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("failed to read Pushover sound")?;
+        "Pushover sound, or press Enter to use your account default".to_string()
+    };
+    let input = prompt_text(prompt, "failed to read Pushover sound")?;
 
     let input = input.trim();
     if input.is_empty() {
@@ -2015,22 +1909,23 @@ fn print_service_start_outcome(
     log_file: &Path,
     manager_name: &str,
 ) {
+    print_section("Service");
     match outcome {
         ServiceStartOutcome::AlreadyRunning => {
-            println!("agents-notifier service is already running.");
+            print_field("status", "already running");
         }
         ServiceStartOutcome::Started => {
-            println!("agents-notifier service is running.");
+            print_field("status", "running");
         }
         ServiceStartOutcome::UpdatedAndStarted => {
-            println!("agents-notifier service was updated and restarted.");
+            print_field("status", "updated and restarted");
         }
     }
-    println!("manager: {manager_name}");
+    print_field("manager", manager_name);
     if let Some(pid) = pid {
-        println!("pid: {pid}");
+        print_field("pid", pid);
     }
-    println!("log: {}", log_file.display());
+    print_field("log", log_file.display());
 }
 
 fn print_notification_targets(config: &Config) {
@@ -2046,198 +1941,114 @@ fn print_notification_targets(config: &Config) {
     let microsoft_teams_targets = setup::microsoft_teams_targets(config);
     let email_smtp_targets = setup::email_smtp_targets(config);
 
-    println!();
-    println!("Notification:");
-    println!(
-        "answer detail: {}",
-        config.notification.answer_detail.display_name()
+    print_section("Notifications");
+    print_field(
+        "answer detail",
+        config.notification.answer_detail.display_name(),
     );
-    println!(
-        "prompt detail: {}",
-        config.notification.prompt_detail.display_name()
+    print_field(
+        "prompt detail",
+        config.notification.prompt_detail.display_name(),
     );
 
     if !agents.is_empty() {
-        println!();
-        println!("Watched agents:");
+        print_section("Watched agents");
         for agent in &agents {
-            println!("agent: {agent}");
+            print_field("agent", agent);
         }
     }
 
     if !subscriptions.is_empty() {
-        if !agents.is_empty() {
-            println!();
-        }
-        println!("Phone subscription:");
+        print_section("Phone subscription");
         for subscription in &subscriptions {
-            println!("server: {}", subscription.server);
-            println!("topic: {}", subscription.topic);
+            print_field("server", &subscription.server);
+            print_field("topic", &subscription.topic);
         }
     }
 
     if !feishu_lark_targets.is_empty() {
-        if !agents.is_empty() || !subscriptions.is_empty() {
-            println!();
-        }
-        println!("Feishu/Lark custom bot:");
+        print_section("Feishu/Lark custom bot");
         for target in &feishu_lark_targets {
-            println!("provider: {}", target.provider_id);
-            println!("webhook: {}", target.webhook_host);
-            println!(
-                "signature verification: {}",
+            print_field("provider", &target.provider_id);
+            print_field("webhook", &target.webhook_host);
+            print_field(
+                "signature verification",
                 if target.signed {
                     "configured"
                 } else {
                     "not configured"
-                }
+                },
             );
         }
     }
 
     if !webhook_targets.is_empty() {
-        if !agents.is_empty() || !subscriptions.is_empty() || !feishu_lark_targets.is_empty() {
-            println!();
-        }
-        println!("Webhook:");
+        print_section("Webhook");
         for target in &webhook_targets {
-            println!("provider: {}", target.provider_id);
-            println!("endpoint: {}", target.webhook_host);
+            print_field("provider", &target.provider_id);
+            print_field("endpoint", &target.webhook_host);
         }
     }
 
     if !pushover_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-        {
-            println!();
-        }
-        println!("Pushover:");
+        print_section("Pushover");
         for target in &pushover_targets {
-            println!("provider: {}", target.provider_id);
-            println!(
-                "device: {}",
-                target.device.as_deref().unwrap_or("all devices")
-            );
-            println!(
-                "sound: {}",
-                target.sound.as_deref().unwrap_or("account default")
+            print_field("provider", &target.provider_id);
+            print_field("device", target.device.as_deref().unwrap_or("all devices"));
+            print_field(
+                "sound",
+                target.sound.as_deref().unwrap_or("account default"),
             );
         }
     }
 
     if !slack_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-            || !pushover_targets.is_empty()
-        {
-            println!();
-        }
-        println!("Slack:");
+        print_section("Slack");
         for target in &slack_targets {
-            println!("provider: {}", target.provider_id);
-            println!("webhook: {}", target.webhook_host);
+            print_field("provider", &target.provider_id);
+            print_field("webhook", &target.webhook_host);
         }
     }
 
     if !discord_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-            || !pushover_targets.is_empty()
-            || !slack_targets.is_empty()
-        {
-            println!();
-        }
-        println!("Discord:");
+        print_section("Discord");
         for target in &discord_targets {
-            println!("provider: {}", target.provider_id);
-            println!("webhook: {}", target.webhook_host);
+            print_field("provider", &target.provider_id);
+            print_field("webhook", &target.webhook_host);
         }
     }
 
     if !telegram_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-            || !pushover_targets.is_empty()
-            || !slack_targets.is_empty()
-            || !discord_targets.is_empty()
-        {
-            println!();
-        }
-        println!("Telegram:");
+        print_section("Telegram");
         for target in &telegram_targets {
-            println!("provider: {}", target.provider_id);
-            println!("chat id: {}", target.chat_id);
+            print_field("provider", &target.provider_id);
+            print_field("chat id", &target.chat_id);
         }
     }
 
     if !whatsapp_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-            || !pushover_targets.is_empty()
-            || !slack_targets.is_empty()
-            || !discord_targets.is_empty()
-            || !telegram_targets.is_empty()
-        {
-            println!();
-        }
-        println!("WhatsApp:");
+        print_section("WhatsApp");
         for target in &whatsapp_targets {
-            println!("provider: {}", target.provider_id);
-            println!("recipient: {}", target.recipient_phone_number);
+            print_field("provider", &target.provider_id);
+            print_field("recipient", &target.recipient_phone_number);
         }
     }
 
     if !microsoft_teams_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-            || !pushover_targets.is_empty()
-            || !slack_targets.is_empty()
-            || !discord_targets.is_empty()
-            || !telegram_targets.is_empty()
-            || !whatsapp_targets.is_empty()
-        {
-            println!();
-        }
-        println!("Microsoft Teams:");
+        print_section("Microsoft Teams");
         for target in &microsoft_teams_targets {
-            println!("provider: {}", target.provider_id);
-            println!("webhook: {}", target.webhook_host);
+            print_field("provider", &target.provider_id);
+            print_field("webhook", &target.webhook_host);
         }
     }
 
     if !email_smtp_targets.is_empty() {
-        if !agents.is_empty()
-            || !subscriptions.is_empty()
-            || !feishu_lark_targets.is_empty()
-            || !webhook_targets.is_empty()
-            || !pushover_targets.is_empty()
-            || !slack_targets.is_empty()
-            || !discord_targets.is_empty()
-            || !telegram_targets.is_empty()
-            || !whatsapp_targets.is_empty()
-            || !microsoft_teams_targets.is_empty()
-        {
-            println!();
-        }
-        println!("Email SMTP:");
+        print_section("Email SMTP");
         for target in &email_smtp_targets {
-            println!("provider: {}", target.provider_id);
-            println!("server: {}:{}", target.host, target.port);
-            println!("from: {}", target.from);
-            println!("to: {}", target.to.join(", "));
+            print_field("provider", &target.provider_id);
+            print_field("server", format!("{}:{}", target.host, target.port));
+            print_field("from", &target.from);
+            print_field("to", target.to.join(", "));
         }
     }
 }
@@ -2306,59 +2117,6 @@ fn configured_provider_secret(provider: &ProviderConfig) -> Option<String> {
     provider.secret.clone()
 }
 
-fn choice_prompt_hint(
-    current_choice: Option<&'static str>,
-    default_choice: &'static str,
-) -> String {
-    match current_choice {
-        Some(choice) => format!("current: {choice}, press Enter to keep"),
-        None => format!("default: {default_choice}"),
-    }
-}
-
-fn agent_choice(agent: setup::AgentSelection) -> &'static str {
-    supported_agent_options()
-        .into_iter()
-        .find_map(|(choice, candidate)| (candidate == agent).then_some(choice))
-        .unwrap_or("?")
-}
-
-fn answer_detail_choice(answer_detail: AnswerDetail) -> &'static str {
-    match answer_detail {
-        AnswerDetail::Preview => "1",
-        AnswerDetail::Full => "2",
-    }
-}
-
-fn prompt_detail_choice(prompt_detail: PromptDetail) -> &'static str {
-    match prompt_detail {
-        PromptDetail::Off => "1",
-        PromptDetail::On => "2",
-    }
-}
-
-fn provider_choice(provider: InitialProvider) -> &'static str {
-    match provider {
-        InitialProvider::Ntfy => "1",
-        InitialProvider::Slack => "2",
-        InitialProvider::Discord => "3",
-        InitialProvider::Pushover => "4",
-        InitialProvider::FeishuLark => "5",
-        InitialProvider::Webhook => "6",
-        InitialProvider::Telegram => "7",
-        InitialProvider::Whatsapp => "8",
-        InitialProvider::MicrosoftTeams => "9",
-        InitialProvider::EmailSmtp => "10",
-    }
-}
-
-fn email_smtp_security_choice(security: EmailSmtpSecurity) -> &'static str {
-    match security {
-        EmailSmtpSecurity::Starttls => "1",
-        EmailSmtpSecurity::ImplicitTls => "2",
-    }
-}
-
 fn email_smtp_security_display(security: EmailSmtpSecurity) -> &'static str {
     match security {
         EmailSmtpSecurity::Starttls => "STARTTLS",
@@ -2384,8 +2142,8 @@ fn print_status_notification_targets(config_path: &Path) {
     match Config::from_path(config_path) {
         Ok(config) => print_notification_targets(&config),
         Err(error) => {
-            println!();
-            println!("Config status: {error}");
+            print_section("Config");
+            print_field("status", error);
         }
     }
 }
@@ -2398,21 +2156,21 @@ fn run_status() -> anyhow::Result<()> {
     let status = manager.status()?;
     let metadata = load_metadata(&metadata_path).ok();
 
-    println!("agents-notifier status");
-    println!();
-    println!("manager: {}", status.platform);
-    println!("installed: {}", yes_no(status.installed));
-    println!("running: {}", yes_no(status.running));
+    print_heading("agents-notifier status");
+    print_section("Service");
+    print_field("manager", status.platform);
+    print_field("installed", yes_no(status.installed));
+    print_field("running", yes_no(status.running));
     if let Some(pid) = status.pid {
-        println!("pid: {pid}");
+        print_field("pid", pid);
     }
     if let Some(service_file) = service_file {
-        println!("service file: {}", service_file.display());
+        print_field("service file", service_file.display());
     }
-    println!("ingress: {}", endpoint.display());
-    println!(
-        "ingress ready: {}",
-        yes_no(local_ingress_ready_now(&endpoint, status.running))
+    print_field("ingress", endpoint.display());
+    print_field(
+        "ingress ready",
+        yes_no(local_ingress_ready_now(&endpoint, status.running)),
     );
 
     let config_path = metadata
@@ -2424,8 +2182,9 @@ fn run_status() -> anyhow::Result<()> {
         .map(|metadata| PathBuf::from(&metadata.log_file))
         .unwrap_or(log_file_path()?);
 
-    println!("config: {}", config_path.display());
-    println!("log: {}", log_file.display());
+    print_section("Files");
+    print_field("config", config_path.display());
+    print_field("log", log_file.display());
     print_status_notification_targets(&config_path);
 
     Ok(())
@@ -2692,29 +2451,13 @@ async fn wait_for_service(
 }
 
 fn wait_for_enter(prompt: &str) -> anyhow::Result<()> {
-    println!("{prompt}");
-    let mut input = String::new();
-    io::stdin()
-        .read_line(&mut input)
-        .context("failed to read input")?;
+    let _ = prompt_text(prompt, "failed to read input")?;
     Ok(())
 }
 
 fn prompt_yes_no(prompt: &str) -> anyhow::Result<bool> {
-    loop {
-        print!("{prompt}");
-        io::stdout().flush().context("failed to flush stdout")?;
-
-        let mut input = String::new();
-        io::stdin()
-            .read_line(&mut input)
-            .context("failed to read input")?;
-        match input.trim().to_ascii_lowercase().as_str() {
-            "" | "y" | "yes" => return Ok(true),
-            "n" | "no" => return Ok(false),
-            _ => println!("Please answer yes or no."),
-        }
-    }
+    let prompt = prompt.trim().trim_end_matches("[Y/n]").trim();
+    prompt_confirm(prompt, true)
 }
 
 fn run_stop() -> anyhow::Result<()> {
@@ -3120,15 +2863,6 @@ providers = ["work_chat"]
             answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full))
                 .expect("Discord answer detail should resolve"),
             AnswerDetail::Preview
-        );
-    }
-
-    #[test]
-    fn choice_prompt_hint_distinguishes_defaults_from_current_values() {
-        assert_eq!(choice_prompt_hint(None, "1"), "default: 1");
-        assert_eq!(
-            choice_prompt_hint(Some("2"), "1"),
-            "current: 2, press Enter to keep"
         );
     }
 
