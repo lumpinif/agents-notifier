@@ -1077,7 +1077,7 @@ sources = ["codex_cli"]
 providers = ["weixin"]
 "#;
 
-        let err = Config::from_toml_str(raw).expect_err("Weixin should reject full answer detail");
+        let err = Config::from_toml_str(raw).expect_err("WeChat should reject full answer detail");
 
         assert!(matches!(
             err,
@@ -1309,7 +1309,7 @@ sources = ["codex_cli"]
 providers = ["weixin"]
 "#;
 
-        let err = Config::from_toml_str(raw).expect_err("Weixin should reject prompt detail");
+        let err = Config::from_toml_str(raw).expect_err("WeChat should reject prompt detail");
 
         assert!(matches!(
             err,
@@ -1657,7 +1657,7 @@ sources = ["codex_cli"]
 providers = ["weixin"]
 "#;
 
-        let err = Config::from_toml_str(raw).expect_err("missing Weixin token should fail");
+        let err = Config::from_toml_str(raw).expect_err("missing WeChat token should fail");
 
         assert!(matches!(
             err,
@@ -1686,7 +1686,7 @@ sources = ["codex_cli"]
 providers = ["weixin"]
 "#;
 
-        let err = Config::from_toml_str(raw).expect_err("missing Weixin context token should fail");
+        let err = Config::from_toml_str(raw).expect_err("missing WeChat context token should fail");
 
         assert!(matches!(
             err,

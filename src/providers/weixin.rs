@@ -440,7 +440,7 @@ mod tests {
         let result = provider
             .send(&test_signal())
             .await
-            .expect("Weixin send should succeed");
+            .expect("WeChat send should succeed");
 
         assert_eq!(result.provider_id, "weixin");
         assert_eq!(result.provider_type, "weixin");
@@ -489,7 +489,7 @@ mod tests {
         let result = provider
             .send(&test_signal())
             .await
-            .expect("Weixin 2xx non-JSON response should succeed");
+            .expect("WeChat 2xx non-JSON response should succeed");
 
         assert_eq!(result.status, ProviderSendStatus::Sent);
         assert_eq!(result.http_status, Some(200));
@@ -513,7 +513,7 @@ mod tests {
         let err = provider
             .send(&test_signal())
             .await
-            .expect_err("Weixin error response should fail");
+            .expect_err("WeChat error response should fail");
 
         assert!(err.to_string().contains("context token expired"));
         assert_eq!(err.kind, DeliveryErrorKind::ProviderRejected);
@@ -539,7 +539,7 @@ mod tests {
         let err = provider
             .send(&signal)
             .await
-            .expect_err("oversized Weixin message should fail before network send");
+            .expect_err("oversized WeChat message should fail before network send");
 
         assert_eq!(err.kind, DeliveryErrorKind::Validation);
         assert!(err.to_string().contains("text body exceeds 3800"));
@@ -594,7 +594,7 @@ mod tests {
             context_token_env: None,
             route_tag: Some("test-route".to_string()),
         })
-        .expect("Weixin provider config should be valid");
+        .expect("WeChat provider config should be valid");
 
         assert_eq!(provider.id, "weixin");
         assert_eq!(provider.recipient_user_id, "user@im.wechat");

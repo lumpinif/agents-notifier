@@ -371,7 +371,7 @@ impl InitialProvider {
             Self::Discord => "Discord",
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
-            Self::Weixin => "Weixin",
+            Self::Weixin => "WeChat",
             Self::MicrosoftTeams => "Microsoft Teams",
             Self::EmailSmtp => "Email SMTP",
         }
@@ -752,7 +752,7 @@ fn setup_provider_summary(provider: &ProviderConfig) -> SetupProviderSummary {
             ],
         },
         ProviderType::Weixin => SetupProviderSummary {
-            provider_name: "Weixin",
+            provider_name: "WeChat",
             fields: vec![
                 configured_or_not_summary_field(
                     "iLink token",
@@ -1219,9 +1219,9 @@ fn answer_detail_for_provider(
                 "{}",
                 fixed_answer_detail_message(
                     i18n,
-                    "Weixin",
-                    "Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages",
-                    "Agents Notifier 对 Weixin iLink 文本消息使用 3800 字符发送保护线"
+                    "WeChat",
+                    "Agents Notifier uses a 3800-character delivery guard for WeChat iLink text messages",
+                    "Agents Notifier 对 WeChat iLink 文本消息使用 3800 字符发送保护线"
                 )
             );
             Ok(AnswerDetail::Preview)
@@ -1335,9 +1335,9 @@ fn prompt_detail_for_provider(
                 "{}",
                 fixed_prompt_detail_message(
                     i18n,
-                    "Weixin",
-                    "Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages",
-                    "Agents Notifier 对 Weixin iLink 文本消息使用 3800 字符发送保护线"
+                    "WeChat",
+                    "Agents Notifier uses a 3800-character delivery guard for WeChat iLink text messages",
+                    "Agents Notifier 对 WeChat iLink 文本消息使用 3800 字符发送保护线"
                 )
             );
             Ok(PromptDetail::Off)
@@ -2438,26 +2438,26 @@ fn prompt_for_weixin_base_url(
             localized_string(
                 i18n,
                 format!(
-                    "Weixin gateway URL [{current_base_url}, press Enter to keep unless your iLink provider gave you another URL]"
+                    "WeChat gateway URL [{current_base_url}, press Enter to keep unless your iLink provider gave you another URL]"
                 ),
                 format!(
-                    "Weixin gateway URL [{current_base_url}，没有新的 iLink URL 就按 Enter 保留]"
+                    "WeChat gateway URL [{current_base_url}，没有新的 iLink URL 就按 Enter 保留]"
                 ),
             )
         } else {
             localized_string(
                 i18n,
                 format!(
-                    "Weixin gateway URL [{}; press Enter for the default]",
+                    "WeChat gateway URL [{}; press Enter for the default]",
                     setup::DEFAULT_WEIXIN_BASE_URL
                 ),
                 format!(
-                    "Weixin gateway URL [{}；按 Enter 使用默认值]",
+                    "WeChat gateway URL [{}；按 Enter 使用默认值]",
                     setup::DEFAULT_WEIXIN_BASE_URL
                 ),
             )
         };
-        let input = prompt_text(prompt, "failed to read Weixin iLink base URL")?;
+        let input = prompt_text(prompt, "failed to read WeChat iLink base URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -2482,21 +2482,21 @@ fn prompt_for_weixin_route_tag(
             localized_string(
                 i18n,
                 format!(
-                    "Optional Weixin route tag [{current_route_tag}, press Enter to keep, type `none` to clear]"
+                    "Optional WeChat route tag [{current_route_tag}, press Enter to keep, type `none` to clear]"
                 ),
                 format!(
-                    "可选 Weixin route tag [{current_route_tag}，按 Enter 保留，输入 `none` 清除]"
+                    "可选 WeChat route tag [{current_route_tag}，按 Enter 保留，输入 `none` 清除]"
                 ),
             )
         } else {
             localized(
                 i18n,
-                "Optional Weixin route tag (advanced; press Enter to skip unless your iLink provider gave you an SKRouteTag)",
-                "可选 Weixin route tag（高级项；没有服务方给你的 SKRouteTag 就直接按 Enter 跳过）",
+                "Optional WeChat route tag (advanced; press Enter to skip unless your iLink provider gave you an SKRouteTag)",
+                "可选 WeChat route tag（高级项；没有服务方给你的 SKRouteTag 就直接按 Enter 跳过）",
             )
             .to_string()
         };
-        let input = prompt_text(prompt, "failed to read Weixin SKRouteTag")?;
+        let input = prompt_text(prompt, "failed to read WeChat SKRouteTag")?;
 
         let input = input.trim();
         if input.is_empty() {
@@ -2532,7 +2532,7 @@ fn prompt_for_weixin_setup_method(i18n: I18n) -> anyhow::Result<WeixinSetupMetho
         .items(&items)
         .default(default_index)
         .interact()
-        .context("failed to read Weixin setup method")?;
+        .context("failed to read WeChat setup method")?;
 
     Ok(options[selection])
 }
@@ -2542,13 +2542,13 @@ fn prompt_for_weixin_token(current_token: Option<&str>, i18n: I18n) -> anyhow::R
         let prompt = if current_token.is_some() {
             localized(
                 i18n,
-                "Weixin iLink token [configured, press Enter to keep]",
-                "Weixin iLink token [已配置，按 Enter 保留]",
+                "WeChat iLink token [configured, press Enter to keep]",
+                "WeChat iLink token [已配置，按 Enter 保留]",
             )
         } else {
-            "Weixin iLink token"
+            "WeChat iLink token"
         };
-        let input = prompt_secret(prompt, "failed to read Weixin iLink token")?;
+        let input = prompt_secret(prompt, "failed to read WeChat iLink token")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -2593,7 +2593,7 @@ async fn run_weixin_qr_login(
             "expired" => {
                 refresh_count += 1;
                 if refresh_count > 3 {
-                    anyhow::bail!("Weixin QR code expired too many times; run setup again");
+                    anyhow::bail!("WeChat QR code expired too many times; run setup again");
                 }
                 println!("{}", i18n.text(Text::WeixinQrExpired));
                 qr = setup::fetch_weixin_qr_code(
@@ -2608,7 +2608,7 @@ async fn run_weixin_qr_login(
             "confirmed" => {
                 let token = status
                     .token
-                    .ok_or_else(|| anyhow::anyhow!("Weixin login confirmed without token"))?;
+                    .ok_or_else(|| anyhow::anyhow!("WeChat login confirmed without token"))?;
                 let token = setup::resolve_weixin_token(&token)?;
                 let base_url = status
                     .base_url
@@ -2629,7 +2629,7 @@ async fn run_weixin_qr_login(
         }
     }
 
-    anyhow::bail!("timed out waiting for Weixin QR login")
+    anyhow::bail!("timed out waiting for WeChat QR login")
 }
 
 async fn link_weixin_recipient(
@@ -2678,7 +2678,7 @@ async fn link_weixin_recipient(
 fn print_weixin_qr_code(qr_content: &str, i18n: I18n) -> anyhow::Result<()> {
     println!();
     println!("{}", i18n.text(Text::WeixinQrScanPrompt));
-    let code = QrCode::new(qr_content.as_bytes()).context("failed to render Weixin QR code")?;
+    let code = QrCode::new(qr_content.as_bytes()).context("failed to render WeChat QR code")?;
     let image = code.render::<unicode::Dense1x2>().quiet_zone(true).build();
     println!("{image}");
     println!("QR content: {qr_content}");
@@ -3390,7 +3390,7 @@ fn print_notification_targets(config: &Config, i18n: I18n) {
     }
 
     if !weixin_targets.is_empty() {
-        print_section("Weixin");
+        print_section("WeChat");
         for target in &weixin_targets {
             print_field("provider", &target.provider_id);
             print_field("endpoint", &target.base_url_host);
@@ -4261,7 +4261,7 @@ providers = ["work_chat"]
         );
         assert_eq!(
             prompt_detail_for_provider(InitialProvider::Weixin, Some(PromptDetail::On), i18n)
-                .expect("Weixin prompt detail should resolve"),
+                .expect("WeChat prompt detail should resolve"),
             PromptDetail::Off
         );
     }
@@ -4291,7 +4291,7 @@ providers = ["work_chat"]
         );
         assert_eq!(
             answer_detail_for_provider(InitialProvider::Weixin, Some(AnswerDetail::Full), i18n)
-                .expect("Weixin answer detail should resolve"),
+                .expect("WeChat answer detail should resolve"),
             AnswerDetail::Preview
         );
     }

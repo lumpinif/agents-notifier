@@ -65,7 +65,7 @@ Codex Desktop 当前在 macOS 和 Windows 上提供。Linux 上，setup 会从 C
 6. Webhook
 7. Telegram
 8. WhatsApp
-9. Weixin
+9. WeChat
 10. Microsoft Teams
 11. Email SMTP
 ```
@@ -79,7 +79,7 @@ Provider 教程：
 - [Discord](providers/discord.zh-CN.md)
 - [Telegram](providers/telegram.zh-CN.md)
 - [WhatsApp](providers/whatsapp.zh-CN.md)
-- [Weixin](providers/weixin.zh-CN.md)
+- [WeChat](providers/weixin.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
 - [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
@@ -106,7 +106,7 @@ Agents Notifier 会对这些 provider 固定使用 `Preview`：
 - Discord，因为 Discord webhook content 最多 2000 个字符。
 - Telegram，因为 Telegram Bot API text message 最多 4096 个字符。
 - WhatsApp，因为 Agents Notifier 对 WhatsApp text body 使用 4096 字符本地保护线。
-- Weixin，因为 Agents Notifier 对 Weixin iLink text message 使用 3800 字符本地保护线。
+- WeChat，因为 Agents Notifier 对 WeChat iLink text message 使用 3800 字符本地保护线。
 - Microsoft Teams，因为 Teams webhook message 有官方文档记录的 28 KB 大小限制。
 
 ## Prompt Detail
@@ -140,7 +140,7 @@ Agents Notifier 会对这些 provider 禁用 prompt detail：
 - Discord，因为 Discord webhook content 最多 2000 个字符。
 - Telegram，因为 Telegram Bot API text message 最多 4096 个字符。
 - WhatsApp，因为 Agents Notifier 对 WhatsApp text body 使用 4096 字符本地保护线。
-- Weixin，因为 Agents Notifier 对 Weixin iLink text message 使用 3800 字符本地保护线。
+- WeChat，因为 Agents Notifier 对 WeChat iLink text message 使用 3800 字符本地保护线。
 - Microsoft Teams，因为 Teams webhook message 有官方文档记录的 28 KB 大小限制。
 
 如果要包含 prompt：

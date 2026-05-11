@@ -337,7 +337,7 @@ pub fn resolve_whatsapp_recipient_phone_number(input: &str) -> anyhow::Result<St
 pub fn resolve_weixin_base_url(input: &str) -> anyhow::Result<String> {
     let base_url = input.trim().trim_end_matches('/');
     let parsed =
-        reqwest::Url::parse(base_url).context("Weixin iLink base URL must be a valid HTTPS URL")?;
+        reqwest::Url::parse(base_url).context("WeChat iLink base URL must be a valid HTTPS URL")?;
     let has_root_path = parsed.path().is_empty() || parsed.path() == "/";
     if parsed.scheme() != "https"
         || parsed.host_str().is_none()
@@ -348,7 +348,7 @@ pub fn resolve_weixin_base_url(input: &str) -> anyhow::Result<String> {
         || parsed.password().is_some()
     {
         anyhow::bail!(
-            "Weixin iLink base URL must be an HTTPS origin like `https://ilinkai.weixin.qq.com`"
+            "WeChat iLink base URL must be an HTTPS origin like `https://ilinkai.weixin.qq.com`"
         );
     }
 
@@ -356,7 +356,7 @@ pub fn resolve_weixin_base_url(input: &str) -> anyhow::Result<String> {
 }
 
 pub fn resolve_weixin_token(input: &str) -> anyhow::Result<String> {
-    resolve_weixin_secret("Weixin iLink token", input)
+    resolve_weixin_secret("WeChat iLink token", input)
 }
 
 pub fn resolve_weixin_recipient_user_id(input: &str) -> anyhow::Result<String> {
@@ -366,14 +366,14 @@ pub fn resolve_weixin_recipient_user_id(input: &str) -> anyhow::Result<String> {
             .bytes()
             .any(|byte| byte.is_ascii_whitespace())
     {
-        anyhow::bail!("Weixin recipient user id must be non-empty and must not contain whitespace");
+        anyhow::bail!("WeChat recipient user id must be non-empty and must not contain whitespace");
     }
 
     Ok(recipient_user_id.to_string())
 }
 
 pub fn resolve_weixin_context_token(input: &str) -> anyhow::Result<String> {
-    resolve_weixin_secret("Weixin context token", input)
+    resolve_weixin_secret("WeChat context token", input)
 }
 
 pub fn resolve_weixin_route_tag(input: &str) -> anyhow::Result<Option<String>> {
@@ -382,7 +382,7 @@ pub fn resolve_weixin_route_tag(input: &str) -> anyhow::Result<Option<String>> {
         return Ok(None);
     }
     if route_tag.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        anyhow::bail!("Weixin SKRouteTag must not contain whitespace");
+        anyhow::bail!("WeChat SKRouteTag must not contain whitespace");
     }
 
     Ok(Some(route_tag.to_string()))
@@ -1388,7 +1388,7 @@ pub async fn fetch_weixin_qr_code(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(40))
         .build()
-        .context("failed to build Weixin setup HTTP client")?;
+        .context("failed to build WeChat setup HTTP client")?;
     let mut url = weixin_url(base_url, &["ilink", "bot", "get_bot_qrcode"])?;
     url.query_pairs_mut().append_pair("bot_type", bot_type);
 
@@ -1400,29 +1400,29 @@ pub async fn fetch_weixin_qr_code(
     let response = request
         .send()
         .await
-        .context("failed to request Weixin QR code")?;
+        .context("failed to request WeChat QR code")?;
     let status = response.status();
     let body = response
         .text()
         .await
-        .context("failed to read Weixin QR code response")?;
+        .context("failed to read WeChat QR code response")?;
     if !status.is_success() {
         anyhow::bail!(
-            "Weixin QR code request returned HTTP {}: {}",
+            "WeChat QR code request returned HTTP {}: {}",
             status.as_u16(),
             short_response_body(&body)
         );
     }
 
     let payload: WeixinQrCodeResponse =
-        serde_json::from_str(&body).context("failed to parse Weixin QR code response")?;
+        serde_json::from_str(&body).context("failed to parse WeChat QR code response")?;
     let qr_key = payload.qrcode.trim();
     let qr_content = payload.qrcode_img_content.trim();
     if qr_key.is_empty() {
-        anyhow::bail!("Weixin QR code response did not include `qrcode`");
+        anyhow::bail!("WeChat QR code response did not include `qrcode`");
     }
     if qr_content.is_empty() {
-        anyhow::bail!("Weixin QR code response did not include `qrcode_img_content`");
+        anyhow::bail!("WeChat QR code response did not include `qrcode_img_content`");
     }
 
     Ok(WeixinQrCode {
@@ -1439,7 +1439,7 @@ pub async fn poll_weixin_qr_status(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(40))
         .build()
-        .context("failed to build Weixin setup HTTP client")?;
+        .context("failed to build WeChat setup HTTP client")?;
     let mut url = weixin_url(base_url, &["ilink", "bot", "get_qrcode_status"])?;
     url.query_pairs_mut().append_pair("qrcode", qr_key);
 
@@ -1451,22 +1451,22 @@ pub async fn poll_weixin_qr_status(
     let response = request
         .send()
         .await
-        .context("failed to request Weixin QR status")?;
+        .context("failed to request WeChat QR status")?;
     let status = response.status();
     let body = response
         .text()
         .await
-        .context("failed to read Weixin QR status response")?;
+        .context("failed to read WeChat QR status response")?;
     if !status.is_success() {
         anyhow::bail!(
-            "Weixin QR status request returned HTTP {}: {}",
+            "WeChat QR status request returned HTTP {}: {}",
             status.as_u16(),
             short_response_body(&body)
         );
     }
 
     let payload: WeixinQrStatusResponse =
-        serde_json::from_str(&body).context("failed to parse Weixin QR status response")?;
+        serde_json::from_str(&body).context("failed to parse WeChat QR status response")?;
 
     Ok(WeixinQrStatus {
         status: payload.status.trim().to_string(),
@@ -1485,7 +1485,7 @@ pub async fn verify_weixin_token(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()
-        .context("failed to build Weixin setup HTTP client")?;
+        .context("failed to build WeChat setup HTTP client")?;
     let url = weixin_url(base_url, &["ilink", "bot", "getupdates"])?;
     let body = json!({
         "get_updates_buf": "",
@@ -1507,21 +1507,21 @@ pub async fn verify_weixin_token(
     let response = request
         .send()
         .await
-        .context("failed to verify Weixin iLink token")?;
+        .context("failed to verify WeChat iLink token")?;
     let status = response.status();
     let body = response
         .text()
         .await
-        .context("failed to read Weixin token verification response")?;
+        .context("failed to read WeChat token verification response")?;
     if !status.is_success() {
         anyhow::bail!(
-            "Weixin token verification returned HTTP {}: {}",
+            "WeChat token verification returned HTTP {}: {}",
             status.as_u16(),
             short_response_body(&body)
         );
     }
     let _: serde_json::Value =
-        serde_json::from_str(&body).context("Weixin token verification returned invalid JSON")?;
+        serde_json::from_str(&body).context("WeChat token verification returned invalid JSON")?;
 
     Ok(())
 }
@@ -1536,7 +1536,7 @@ pub async fn poll_weixin_recipient_link(
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(40))
         .build()
-        .context("failed to build Weixin setup HTTP client")?;
+        .context("failed to build WeChat setup HTTP client")?;
     let url = weixin_url(base_url, &["ilink", "bot", "getupdates"])?;
     let deadline = Instant::now() + timeout;
     let mut get_updates_buf = String::new();
@@ -1561,25 +1561,25 @@ pub async fn poll_weixin_recipient_link(
         let response = request
             .send()
             .await
-            .context("failed to poll Weixin recipient link message")?;
+            .context("failed to poll WeChat recipient link message")?;
         let status = response.status();
         let response_body = response
             .text()
             .await
-            .context("failed to read Weixin recipient link response")?;
+            .context("failed to read WeChat recipient link response")?;
         if !status.is_success() {
             anyhow::bail!(
-                "Weixin recipient link poll returned HTTP {}: {}",
+                "WeChat recipient link poll returned HTTP {}: {}",
                 status.as_u16(),
                 short_response_body(&response_body)
             );
         }
 
         let payload: WeixinGetUpdatesResponse = serde_json::from_str(&response_body)
-            .context("failed to parse Weixin recipient link response")?;
+            .context("failed to parse WeChat recipient link response")?;
         if payload.ret != 0 || payload.errcode != 0 {
             anyhow::bail!(
-                "Weixin recipient link poll returned ret={} errcode={}: {}",
+                "WeChat recipient link poll returned ret={} errcode={}: {}",
                 payload.ret,
                 payload.errcode,
                 payload.errmsg
@@ -1609,7 +1609,7 @@ pub async fn poll_weixin_recipient_link(
         sleep(Duration::from_secs(1)).await;
     }
 
-    anyhow::bail!("timed out waiting for a Weixin message with context_token")
+    anyhow::bail!("timed out waiting for a WeChat message with context_token")
 }
 
 #[derive(Debug, Deserialize)]
@@ -1659,7 +1659,7 @@ struct WeixinUpdateMessage {
 fn weixin_url(base_url: &str, path: &[&str]) -> anyhow::Result<reqwest::Url> {
     let mut url = reqwest::Url::parse(&resolve_weixin_base_url(base_url)?)?;
     url.path_segments_mut()
-        .map_err(|_| anyhow::anyhow!("Weixin iLink base URL cannot be a base URL"))?
+        .map_err(|_| anyhow::anyhow!("WeChat iLink base URL cannot be a base URL"))?
         .extend(path);
     Ok(url)
 }
@@ -2269,25 +2269,25 @@ mod tests {
         );
         assert_eq!(
             resolve_weixin_base_url(DEFAULT_WEIXIN_BASE_URL)
-                .expect("Weixin base URL should be valid"),
+                .expect("WeChat base URL should be valid"),
             DEFAULT_WEIXIN_BASE_URL
         );
         assert_eq!(
-            resolve_weixin_token("test-token").expect("Weixin token should be valid"),
+            resolve_weixin_token("test-token").expect("WeChat token should be valid"),
             "test-token"
         );
         assert_eq!(
             resolve_weixin_recipient_user_id("user@im.wechat")
-                .expect("Weixin recipient user id should be valid"),
+                .expect("WeChat recipient user id should be valid"),
             "user@im.wechat"
         );
         assert_eq!(
             resolve_weixin_context_token("test-context-token")
-                .expect("Weixin context token should be valid"),
+                .expect("WeChat context token should be valid"),
             "test-context-token"
         );
         assert_eq!(
-            resolve_weixin_route_tag("test-route").expect("Weixin route tag should be valid"),
+            resolve_weixin_route_tag("test-route").expect("WeChat route tag should be valid"),
             Some("test-route".to_string())
         );
         assert_eq!(

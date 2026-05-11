@@ -1,12 +1,12 @@
-# Weixin
+# WeChat
 
 中文文档：[weixin.zh-CN.md](weixin.zh-CN.md)
 
-Use Weixin when you want Agents Notifier updates sent to one personal WeChat chat through an iLink bot connection.
+Use WeChat when you want Agents Notifier updates sent to one personal WeChat chat through an iLink bot connection.
 
-This is personal WeChat through the official Tencent/Weixin OpenClaw iLink bot channel. It is not WeChat Work, and it is not WhatsApp.
+This is personal WeChat through the official Tencent/WeChat OpenClaw iLink bot channel. It is not WeChat Work, and it is not WhatsApp.
 
-The WeChat chat currently appears as `WeixinClawBot`. Agents Notifier cannot rename this bot. The bot display name is controlled by the Weixin iLink/OpenClaw channel, not by this local app.
+The WeChat chat currently appears as `WeixinClawBot`. Agents Notifier cannot rename this bot. The bot display name is controlled by the WeChat iLink/OpenClaw channel, not by this local app.
 
 ## What You Need
 
@@ -22,8 +22,8 @@ https://ilinkai.weixin.qq.com
 
 Setup asks for two iLink connection settings:
 
-- `Weixin gateway URL`: the Weixin iLink gateway. Most users should press Enter and keep the default. Only change it if your iLink provider gave you another URL.
-- `Optional Weixin route tag`: an advanced optional routing value for iLink `SKRouteTag`. Most users should press Enter and skip it. Only enter a value if your iLink provider gave you one.
+- `WeChat gateway URL`: the WeChat iLink gateway. Most users should press Enter and keep the default. Only change it if your iLink provider gave you another URL.
+- `Optional WeChat route tag`: an advanced optional routing value for iLink `SKRouteTag`. Most users should press Enter and skip it. Only enter a value if your iLink provider gave you one.
 
 ## 1. Connect Agents Notifier
 
@@ -36,7 +36,7 @@ agents-notifier setup
 Choose:
 
 ```text
-Weixin
+WeChat
 ```
 
 Agents Notifier supports two setup paths:
@@ -74,19 +74,19 @@ The runtime request uses the stored token, recipient id, and context token. If i
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for Weixin.
+Agents Notifier fixes answer detail to `Preview` for WeChat.
 
-Weixin notifications should stay short. Agents Notifier uses a 3800-character local guard for Weixin iLink text messages and fails before sending if a formatted notification is too long.
+WeChat notifications should stay short. Agents Notifier uses a 3800-character local guard for WeChat iLink text messages and fails before sending if a formatted notification is too long.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for Weixin.
+Agents Notifier disables prompt detail for WeChat.
 
-Prompts can be long and private, so Agents Notifier keeps prompts out of Weixin notifications.
+Prompts can be long and private, so Agents Notifier keeps prompts out of WeChat notifications.
 
 ## Manual Config
 
-Weixin is configured in:
+WeChat is configured in:
 
 ```text
 ~/.config/agents-notifier/config.toml
@@ -119,25 +119,25 @@ agents-notifier start
 
 ## Limits
 
-Agents Notifier sends plain text only. It does not send images, files, audio, stickers, or interactive cards through Weixin.
+Agents Notifier sends plain text only. It does not send images, files, audio, stickers, or interactive cards through WeChat.
 
-Agents Notifier cannot rename the Weixin bot. The bot chat name is controlled by the official Weixin iLink/OpenClaw channel and currently appears as `WeixinClawBot`.
+Agents Notifier cannot rename the WeChat bot. The bot chat name is controlled by the official WeChat iLink/OpenClaw channel and currently appears as `WeixinClawBot`.
 
-Agents Notifier does not create a custom WeChat bot, official account, mini program, or WeChat Work app. It uses the existing Weixin iLink bot channel.
+Agents Notifier does not create a custom WeChat bot, official account, mini program, or WeChat Work app. It uses the existing WeChat iLink bot channel.
 
 `base_url` must be an HTTPS origin such as `https://ilinkai.weixin.qq.com`.
 
 `token`, `recipient_user_id`, `context_token`, and `route_tag` must not contain whitespace.
 
-If iLink returns an expired or invalid `context_token`, Agents Notifier fails the Weixin delivery and keeps the error visible. It does not silently retry by polling your WeChat messages in the background.
+If iLink returns an expired or invalid `context_token`, Agents Notifier fails the WeChat delivery and keeps the error visible. It does not silently retry by polling your WeChat messages in the background.
 
-If the context token expires, run `agents-notifier setup` again and choose Weixin to relink the chat.
+If the context token expires, run `agents-notifier setup` again and choose WeChat to relink the chat.
 
 ## If It Does Not Show Up
 
 Check these first:
 
-- The Weixin iLink token is valid.
+- The WeChat iLink token is valid.
 - The linked WeChat account sent `hi` to the `WeixinClawBot` chat during setup.
 - The `context_token` has not expired.
 - The `base_url` and optional `route_tag` match your iLink provider.
