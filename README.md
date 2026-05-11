@@ -212,6 +212,10 @@ agents-notifier emit \
 
 Codex Desktop + Lark integration, including Apple Watch push notifications.
 
+| Original source: Codex Desktop | Lark desktop notification |
+| --- | --- |
+| <img src="docs/assets/examples/codex-desktop-source.png" alt="Codex Desktop source task that Agents Notifier watches" width="520"> | <img src="docs/assets/examples/lark-desktop-notification.png" alt="Lark desktop notification sent by Agents Notifier" width="520"> |
+
 | Lark push preview | Apple Watch notification |
 | --- | --- |
 | <img src="docs/assets/examples/codex-lark-watch-cover.png" alt="Agents Notifier Apple Watch push preview with Lark" width="260"> | <img src="docs/assets/examples/codex-lark-watch-notification.png" alt="Agents Notifier Apple Watch notification sent through Lark" width="260"> |
