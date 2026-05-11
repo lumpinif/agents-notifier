@@ -77,7 +77,7 @@ function publishPackage(packageDir) {
     return;
   }
 
-  const publishArgs = ["publish", packageDir];
+  const publishArgs = ["publish", packageDir, "--access", "public"];
   if (process.env.GITHUB_ACTIONS === "true") {
     publishArgs.push("--provenance");
   }
