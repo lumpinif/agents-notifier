@@ -19,7 +19,7 @@ Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex C
 Built in Rust 🦀. Fast, small, and quiet in the background.
 
 ```text
-Agent on your Mac -> Agents Notifier -> Your provider
+Agent on your computer -> Agents Notifier -> Your provider
 ```
 
 No cloud account. No hosted backend. No extra dashboard.
@@ -29,8 +29,8 @@ No cloud account. No hosted backend. No extra dashboard.
 Agents:
 
 - [Codex Desktop](https://openai.com/codex/) on macOS
-- [Codex CLI](https://github.com/openai/codex) through hooks
-- [Claude Code](https://claude.com/product/claude-code) through hooks
+- [Codex CLI](https://github.com/openai/codex) through hooks on macOS, Linux, and Windows
+- [Claude Code](https://claude.com/product/claude-code) through hooks on macOS, Linux, and Windows
 - More local agents soon
 
 Providers (Where do you want to get the notification?):
@@ -49,7 +49,7 @@ Agents Notifier runs locally.
 
 Your data does not go to an Agents Notifier cloud.
 
-Notifications go directly from your Mac to your provider.
+Notifications go directly from your computer to your provider.
 
 For Codex Desktop, it reads only completion data needed for the notification:
 
@@ -62,7 +62,7 @@ For Codex Desktop, it reads only completion data needed for the notification:
 - time
 - final answer preview by default, or full answer when enabled
 - prompt only when explicitly enabled
-- Mac computer name
+- computer name
 
 In Feishu/Lark, notifications are sent as Codex-colored interactive cards with a clickable Open in Codex button.
 The button opens a local browser URL first, then hands off to Codex Desktop.
@@ -77,6 +77,13 @@ Copy this into your Terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
+agents-notifier setup
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 | iex
 agents-notifier setup
 ```
 
@@ -106,7 +113,12 @@ For optional settings such as answer detail and prompt inclusion, see [Setup](do
 
 ## 🎉 That's it
 
-On macOS, the service runs as a LaunchAgent.
+The service runs locally:
+
+- macOS: LaunchAgent
+- Linux: systemd user service
+- Windows: Task Scheduler
+
 To stop using the service, run `agents-notifier stop`.
 
 Provider setup guides:

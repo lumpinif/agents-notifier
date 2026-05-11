@@ -24,6 +24,8 @@ Choose the agent Agents Notifier should watch:
 3. Claude Code
 ```
 
+Codex Desktop is currently offered only on macOS. On Linux and Windows, setup offers Codex CLI and Claude Code hook sources.
+
 ## Provider
 
 Choose where notifications should go:
@@ -136,4 +138,5 @@ Setup writes:
 ~/.config/agents-notifier/config.toml
 ```
 
-Then it starts the macOS LaunchAgent service and sends a test notification through the same route.
+Then it starts the local service and sends a test notification through the same route.
+On macOS this is a LaunchAgent. On Linux this is a systemd user service. On Windows this is a Task Scheduler task.

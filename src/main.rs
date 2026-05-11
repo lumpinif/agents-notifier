@@ -15,15 +15,19 @@ use agents_notifier::config::{
 };
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
+#[cfg(target_os = "macos")]
+use agents_notifier::paths::pid_file_path;
 use agents_notifier::paths::{
-    app_support_dir_path, default_config_file_path, launch_agent_plist_path, log_file_path,
-    pid_file_path, service_metadata_path, socket_file_path,
+    app_support_dir_path, default_config_file_path, ingress_endpoint, log_file_path,
+    service_metadata_path,
 };
+#[cfg(target_os = "macos")]
 use agents_notifier::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_notifier::providers::build_providers;
 use agents_notifier::router::Provider;
 use agents_notifier::service::{
-    LaunchAgentManager, ServiceDefinition, ServiceStartOutcome, ServiceStopOutcome, load_metadata,
+    PlatformServiceManager, ServiceDefinition, ServiceStartOutcome, ServiceStopOutcome,
+    load_metadata,
 };
 use agents_notifier::setup;
 use agents_notifier::sources::codex_desktop;
@@ -668,18 +672,29 @@ fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
 ) -> anyhow::Result<setup::AgentSelection> {
     loop {
-        let effective_default = default.unwrap_or(setup::AgentSelection::CodexDesktop);
+        let options = supported_agent_options();
+        let supported_default =
+            default.filter(|agent| options.iter().any(|(_, candidate)| candidate == agent));
+        let effective_default = supported_default.unwrap_or_else(default_agent_for_platform);
 
         println!("Which agent should Agents Notifier watch?");
-        println!("1. Codex Desktop");
-        println!("2. Codex CLI");
-        println!("3. Claude Code");
-        if let Some(default) = default {
+        for (choice, agent) in &options {
+            println!("{choice}. {}", agent.display_name());
+        }
+        if let Some(default) = supported_default {
             println!("Current: {}", default.display_name());
         }
+        let choices = options
+            .iter()
+            .map(|(choice, _)| choice.to_string())
+            .collect::<Vec<_>>()
+            .join("/");
         print!(
-            "Choose an agent [1/2/3, {}]: ",
-            choice_prompt_hint(default.map(agent_choice), agent_choice(effective_default))
+            "Choose an agent [{choices}, {}]: ",
+            choice_prompt_hint(
+                supported_default.map(agent_choice),
+                agent_choice(effective_default)
+            )
         );
         io::stdout().flush().context("failed to flush stdout")?;
 
@@ -690,13 +705,38 @@ fn prompt_for_agent(
 
         match input.trim() {
             "" => return Ok(effective_default),
-            "1" => return Ok(setup::AgentSelection::CodexDesktop),
-            "2" => return Ok(setup::AgentSelection::CodexCli),
-            "3" => return Ok(setup::AgentSelection::ClaudeCode),
-            _ => println!("Please enter 1, 2, or 3."),
+            value => {
+                if let Some((_, agent)) = options.iter().find(|(choice, _)| *choice == value) {
+                    return Ok(*agent);
+                }
+                println!("Please enter one of: {choices}.");
+            }
         }
         println!();
     }
+}
+
+fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
+    #[cfg(target_os = "macos")]
+    return vec![
+        ("1", setup::AgentSelection::CodexDesktop),
+        ("2", setup::AgentSelection::CodexCli),
+        ("3", setup::AgentSelection::ClaudeCode),
+    ];
+
+    #[cfg(not(target_os = "macos"))]
+    return vec![
+        ("1", setup::AgentSelection::CodexCli),
+        ("2", setup::AgentSelection::ClaudeCode),
+    ];
+}
+
+fn default_agent_for_platform() -> setup::AgentSelection {
+    #[cfg(target_os = "macos")]
+    return setup::AgentSelection::CodexDesktop;
+
+    #[cfg(not(target_os = "macos"))]
+    return setup::AgentSelection::CodexCli;
 }
 
 fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<AnswerDetail> {
@@ -1123,30 +1163,30 @@ async fn run_start_service(
     loaded: LoadedConfig,
     force_restart: bool,
 ) -> anyhow::Result<()> {
+    ensure_sources_supported_on_current_platform(&loaded.config)?;
     build_providers(&loaded.config).context("provider setup failed")?;
     let progress = ProgressLine::start("Starting agents-notifier")?;
     let start_result = async {
         cleanup_legacy_background_service()?;
 
-        let manager = LaunchAgentManager::system()?;
+        let manager = PlatformServiceManager::system()?;
         let definition = build_service_definition(config_path)?;
-        let plist_path = launch_agent_plist_path()?;
         let metadata_path = service_metadata_path()?;
         let outcome = if force_restart {
-            manager.stop(&plist_path)?;
-            remove_socket_file_if_exists()?;
-            manager.install_or_update(&definition, &plist_path, &metadata_path)?
+            manager.stop()?;
+            cleanup_ingress_endpoint_if_exists()?;
+            manager.install_or_update(&definition, &metadata_path)?
         } else {
-            manager.install_or_update(&definition, &plist_path, &metadata_path)?
+            manager.install_or_update(&definition, &metadata_path)?
         };
-        wait_for_service(&socket_file_path()?).await?;
+        wait_for_service(&ingress_endpoint()?).await?;
 
-        let status = manager.status(&plist_path)?;
-        anyhow::Ok((outcome, status.pid, definition.log_file))
+        let status = manager.status()?;
+        anyhow::Ok((outcome, status.pid, definition.log_file, status.platform))
     }
     .await;
 
-    let (outcome, pid, log_file) = match start_result {
+    let (outcome, pid, log_file, manager_name) = match start_result {
         Ok(started) => {
             progress.finish(ProgressOutcome::Ready)?;
             started
@@ -1157,7 +1197,7 @@ async fn run_start_service(
         }
     };
 
-    print_service_start_outcome(outcome, pid, &log_file);
+    print_service_start_outcome(outcome, pid, &log_file, manager_name);
 
     if let Some(setup) = loaded.guided_setup {
         finish_guided_setup(setup).await?;
@@ -1172,16 +1212,21 @@ async fn run_start_service(
 fn build_service_definition(config_path: &Path) -> anyhow::Result<ServiceDefinition> {
     let binary_path = resolved_current_exe()?;
     let working_dir = std::env::current_dir().context("failed to detect working directory")?;
+    let config_path = if config_path.is_absolute() {
+        config_path.to_path_buf()
+    } else {
+        working_dir.join(config_path)
+    };
     let log_file = log_file_path()?;
-    let home = std::env::var("HOME").context("HOME is not set")?;
+    let home = home_env_value()?;
     let env_path = std::env::var("PATH")
         .ok()
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin".to_string());
+        .unwrap_or_else(default_service_env_path);
 
     Ok(ServiceDefinition {
         binary_path,
-        config_path: config_path.to_path_buf(),
+        config_path,
         working_dir,
         log_file,
         home,
@@ -1189,12 +1234,36 @@ fn build_service_definition(config_path: &Path) -> anyhow::Result<ServiceDefinit
     })
 }
 
+fn default_service_env_path() -> String {
+    #[cfg(windows)]
+    return r"C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
+        .to_string();
+
+    #[cfg(not(windows))]
+    return "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin".to_string();
+}
+
+fn home_env_value() -> anyhow::Result<String> {
+    #[cfg(windows)]
+    let name = "USERPROFILE";
+
+    #[cfg(not(windows))]
+    let name = "HOME";
+
+    std::env::var(name).with_context(|| format!("{name} is not set"))
+}
+
 fn resolved_current_exe() -> anyhow::Result<PathBuf> {
     let exe = std::env::current_exe().context("failed to locate current executable")?;
     Ok(fs::canonicalize(&exe).unwrap_or(exe))
 }
 
-fn print_service_start_outcome(outcome: ServiceStartOutcome, pid: Option<u32>, log_file: &Path) {
+fn print_service_start_outcome(
+    outcome: ServiceStartOutcome,
+    pid: Option<u32>,
+    log_file: &Path,
+    manager_name: &str,
+) {
     match outcome {
         ServiceStartOutcome::AlreadyRunning => {
             println!("agents-notifier service is already running.");
@@ -1206,7 +1275,7 @@ fn print_service_start_outcome(outcome: ServiceStartOutcome, pid: Option<u32>, l
             println!("agents-notifier service was updated and restarted.");
         }
     }
-    println!("manager: LaunchAgent");
+    println!("manager: {manager_name}");
     if let Some(pid) = pid {
         println!("pid: {pid}");
     }
@@ -1403,11 +1472,10 @@ fn choice_prompt_hint(
 }
 
 fn agent_choice(agent: setup::AgentSelection) -> &'static str {
-    match agent {
-        setup::AgentSelection::CodexDesktop => "1",
-        setup::AgentSelection::CodexCli => "2",
-        setup::AgentSelection::ClaudeCode => "3",
-    }
+    supported_agent_options()
+        .into_iter()
+        .find_map(|(choice, candidate)| (candidate == agent).then_some(choice))
+        .unwrap_or("?")
 }
 
 fn answer_detail_choice(answer_detail: AnswerDetail) -> &'static str {
@@ -1453,11 +1521,11 @@ fn print_status_notification_targets(config_path: &Path) {
 }
 
 fn run_status() -> anyhow::Result<()> {
-    let manager = LaunchAgentManager::system()?;
-    let plist_path = launch_agent_plist_path()?;
+    let manager = PlatformServiceManager::system()?;
+    let service_file = manager.service_file_path()?;
     let metadata_path = service_metadata_path()?;
-    let socket_path = socket_file_path()?;
-    let status = manager.status(&plist_path)?;
+    let endpoint = ingress_endpoint()?;
+    let status = manager.status()?;
     let metadata = load_metadata(&metadata_path).ok();
 
     println!("agents-notifier status");
@@ -1468,8 +1536,14 @@ fn run_status() -> anyhow::Result<()> {
     if let Some(pid) = status.pid {
         println!("pid: {pid}");
     }
-    println!("plist: {}", plist_path.display());
-    println!("socket ready: {}", yes_no(socket_path.exists()));
+    if let Some(service_file) = service_file {
+        println!("service file: {}", service_file.display());
+    }
+    println!("ingress: {}", endpoint.display());
+    println!(
+        "ingress ready: {}",
+        yes_no(local_ingress_ready_now(&endpoint, status.running))
+    );
 
     let config_path = metadata
         .as_ref()
@@ -1487,16 +1561,37 @@ fn run_status() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn local_ingress_ready_now(
+    endpoint: &agents_notifier::paths::IngressEndpoint,
+    service_running: bool,
+) -> bool {
+    #[cfg(unix)]
+    let _ = service_running;
+
+    match endpoint {
+        #[cfg(unix)]
+        agents_notifier::paths::IngressEndpoint::UnixSocket(path) => path.exists(),
+        #[cfg(windows)]
+        agents_notifier::paths::IngressEndpoint::WindowsNamedPipe(_) => service_running,
+    }
+}
+
 fn yes_no(value: bool) -> &'static str {
     if value { "yes" } else { "no" }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn cleanup_legacy_background_service() -> anyhow::Result<()> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn cleanup_legacy_background_service() -> anyhow::Result<()> {
     let pid_file = pid_file_path()?;
     match stop_with_manager(&pid_file, &SystemProcessManager)? {
         StopOutcome::MissingPidFile => {}
         StopOutcome::RemovedStalePidFile { .. } | StopOutcome::Stopped { .. } => {
-            remove_socket_file_if_exists()?;
+            cleanup_ingress_endpoint_if_exists()?;
         }
     }
 
@@ -1504,8 +1599,8 @@ fn cleanup_legacy_background_service() -> anyhow::Result<()> {
 }
 
 async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
-    let socket_path = socket_file_path()?;
-    wait_for_service(&socket_path).await?;
+    let endpoint = ingress_endpoint()?;
+    wait_for_service(&endpoint).await?;
 
     match setup {
         GuidedSetup::Ntfy { agent, topic } => {
@@ -1562,7 +1657,7 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
         println!("The service is still running, but the test notification did not arrive.");
         println!("Check the provider settings in your config, then run this test again:");
         println!(
-            "agents-notifier emit --source agents_notifier --title \"Agents Notifier\" --body \"Test notification from your Mac.\""
+            "agents-notifier emit --source agents_notifier --title \"Agents Notifier\" --body \"Test notification from your computer.\""
         );
     }
 
@@ -1623,33 +1718,36 @@ fn can_send_test_notification(config: &Config) -> bool {
 }
 
 async fn send_test_notification() -> anyhow::Result<()> {
-    let socket_path = socket_file_path()?;
-    wait_for_service(&socket_path).await?;
+    let endpoint = ingress_endpoint()?;
+    wait_for_service(&endpoint).await?;
 
     local_ingress::submit_event(
-        &socket_path,
+        &endpoint,
         &LocalSignalEvent {
             source_id: "agents_notifier".to_string(),
             title: "Agents Notifier".to_string(),
-            body: "Test notification from your Mac. If this arrived, Agents Notifier is working."
-                .to_string(),
+            body:
+                "Test notification from your computer. If this arrived, Agents Notifier is working."
+                    .to_string(),
         },
     )
     .await
     .context("failed to send test notification through the local service")
 }
 
-async fn wait_for_service(socket_path: &Path) -> anyhow::Result<()> {
+async fn wait_for_service(
+    endpoint: &agents_notifier::paths::IngressEndpoint,
+) -> anyhow::Result<()> {
     let started = Instant::now();
     loop {
-        if socket_path.exists() {
+        if local_ingress::is_ready(endpoint).await {
             return Ok(());
         }
 
         if started.elapsed() >= SERVICE_READY_TIMEOUT {
             anyhow::bail!(
                 "agents-notifier service did not become ready at `{}`; check the log file",
-                socket_path.display()
+                endpoint.display()
             );
         }
 
@@ -1685,9 +1783,8 @@ fn prompt_yes_no(prompt: &str) -> anyhow::Result<bool> {
 
 fn run_stop() -> anyhow::Result<()> {
     init_tracing("info")?;
-    let manager = LaunchAgentManager::system()?;
-    let plist_path = launch_agent_plist_path()?;
-    match manager.stop(&plist_path)? {
+    let manager = PlatformServiceManager::system()?;
+    match manager.stop()? {
         ServiceStopOutcome::NotInstalled => {
             println!("agents-notifier service is not installed.");
         }
@@ -1699,24 +1796,19 @@ fn run_stop() -> anyhow::Result<()> {
         }
     }
 
-    remove_socket_file_if_exists()?;
-    match stop_with_manager(&pid_file_path()?, &SystemProcessManager)? {
-        StopOutcome::MissingPidFile => {}
-        StopOutcome::RemovedStalePidFile { pid } => {
-            println!("removed stale pid file for process {pid}.");
-        }
-        StopOutcome::Stopped { pid } => {
-            println!("stopped legacy background process {pid}.");
-        }
-    }
+    cleanup_ingress_endpoint_if_exists()?;
+    cleanup_legacy_background_service()?;
 
     Ok(())
 }
 
 fn run_uninstall() -> anyhow::Result<()> {
-    run_stop()?;
+    init_tracing("info")?;
+    let manager = PlatformServiceManager::system()?;
+    manager.uninstall()?;
+    cleanup_ingress_endpoint_if_exists()?;
+    cleanup_legacy_background_service()?;
 
-    remove_path_if_exists(&launch_agent_plist_path()?)?;
     remove_path_if_exists(&app_support_dir_path()?)?;
     if let Some(log_dir) = log_file_path()?.parent() {
         remove_path_if_exists(log_dir)?;
@@ -1759,7 +1851,10 @@ fn remove_path_if_exists(path: &Path) -> anyhow::Result<()> {
 }
 
 fn should_remove_current_binary(path: &Path) -> bool {
-    if path.file_name().and_then(|name| name.to_str()) != Some("agents-notifier") {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    if file_name != "agents-notifier" && file_name != "agents-notifier.exe" {
         return false;
     }
 
@@ -1768,23 +1863,19 @@ fn should_remove_current_binary(path: &Path) -> bool {
         .any(|component| component.as_os_str() == "target")
 }
 
-fn remove_socket_file_if_exists() -> anyhow::Result<()> {
-    let socket_file = socket_file_path()?;
-    if socket_file.exists() {
-        fs::remove_file(&socket_file)
-            .with_context(|| format!("failed to remove socket file `{}`", socket_file.display()))?;
-    }
-
-    Ok(())
+fn cleanup_ingress_endpoint_if_exists() -> anyhow::Result<()> {
+    let endpoint = ingress_endpoint()?;
+    local_ingress::cleanup_endpoint(&endpoint)
 }
 
 async fn run_watch(config: &Config) -> anyhow::Result<()> {
+    ensure_sources_supported_on_current_platform(config)?;
     let providers = build_providers(config).context("provider setup failed")?;
     let provider_refs: Vec<&dyn Provider> = providers
         .iter()
         .map(|provider| provider.as_ref() as &dyn Provider)
         .collect();
-    let socket_path = socket_file_path()?;
+    let endpoint = ingress_endpoint()?;
     let codex_desktop_source = codex_desktop_source(config);
     let needs_local_open_bridge = config
         .providers
@@ -1794,39 +1885,62 @@ async fn run_watch(config: &Config) -> anyhow::Result<()> {
     if let (Some(source), true) = (codex_desktop_source, needs_local_open_bridge) {
         tokio::select! {
             result = codex_desktop::watch(config, source, &provider_refs) => result,
-            result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+            result = local_ingress::serve(config, &provider_refs, &endpoint) => result,
             result = local_open_bridge::serve() => result,
         }
     } else if let Some(source) = codex_desktop_source {
         tokio::select! {
             result = codex_desktop::watch(config, source, &provider_refs) => result,
-            result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+            result = local_ingress::serve(config, &provider_refs, &endpoint) => result,
         }
     } else if needs_local_open_bridge {
         tokio::select! {
-            result = local_ingress::serve(config, &provider_refs, &socket_path) => result,
+            result = local_ingress::serve(config, &provider_refs, &endpoint) => result,
             result = local_open_bridge::serve() => result,
         }
     } else {
-        local_ingress::serve(config, &provider_refs, &socket_path).await
+        local_ingress::serve(config, &provider_refs, &endpoint).await
     }
 }
 
 fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
+    #[cfg(not(target_os = "macos"))]
+    if config
+        .sources
+        .iter()
+        .any(|source| source.source_type == SourceType::CodexDesktop)
+    {
+        return None;
+    }
+
     config
         .sources
         .iter()
         .find(|source| source.source_type == SourceType::CodexDesktop)
 }
 
+fn ensure_sources_supported_on_current_platform(config: &Config) -> anyhow::Result<()> {
+    #[cfg(not(target_os = "macos"))]
+    if config
+        .sources
+        .iter()
+        .any(|source| source.source_type == SourceType::CodexDesktop)
+    {
+        anyhow::bail!("Codex Desktop source is currently supported only on macOS");
+    }
+
+    let _ = config;
+    Ok(())
+}
+
 async fn run_emit(source_id: &str, title: String, body: String) -> anyhow::Result<()> {
-    let socket_path = socket_file_path()?;
+    let endpoint = ingress_endpoint()?;
     let event = LocalSignalEvent {
         source_id: source_id.to_string(),
         title,
         body,
     };
-    local_ingress::submit_event(&socket_path, &event).await
+    local_ingress::submit_event(&endpoint, &event).await
 }
 
 fn init_tracing(level: &str) -> anyhow::Result<()> {

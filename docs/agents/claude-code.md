@@ -19,7 +19,7 @@ agents-notifier emit \
   --body "Claude Code finished a task."
 ```
 
-`emit` does not send notifications directly. It submits the event to the local service socket, and the service routes it to your configured providers.
+`emit` does not send notifications directly. It submits the event to the local service ingress, and the service routes it to your configured providers.
 
 ## 1. Set Up the Service
 
@@ -98,7 +98,7 @@ agents-notifier emit \
 
 If the provider receives this notification, the Agents Notifier side is working.
 
-If Claude Code itself cannot run on your machine, this manual `emit` test is still the right local validation for Agents Notifier. It verifies the same local socket, source adapter, router, and provider path that a Claude Code hook uses.
+If Claude Code itself cannot run on your machine, this manual `emit` test is still the right local validation for Agents Notifier. It verifies the same local ingress, source adapter, router, and provider path that a Claude Code hook uses.
 
 ## If It Fails
 

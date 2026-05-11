@@ -72,7 +72,7 @@ Webhook 配置在：
 ~/.config/agents-notifier/config.toml
 ```
 
-LaunchAgent service 推荐直接使用 `url`：
+本机 service 推荐直接使用 `url`：
 
 ```toml
 [[providers]]
@@ -91,7 +91,7 @@ providers = ["debug_webhook"]
 agents-notifier start
 ```
 
-进阶用法：也支持 `url_env`。但只有在你确认环境变量能被运行中的 service 读到时再用。普通 macOS LaunchAgent 场景下，直接写 `url` 更简单、更稳定。
+进阶用法：也支持 `url_env`。但只有在你确认环境变量能被运行中的 service 读到时再用。普通 setup 场景下，直接写 `url` 更简单、更稳定。
 
 ## 3. 确认成功
 
@@ -103,7 +103,7 @@ agents-notifier start
 
 先检查这几件事：
 
-- endpoint 是否能从你的 Mac 访问。
+- endpoint 是否能从你的电脑访问。
 - endpoint 是否返回 `2xx`。
 - 如果你使用 `url_env`，环境变量是否真的能被运行中的 service 读到。
 - route 是否包含你想监听的 source。

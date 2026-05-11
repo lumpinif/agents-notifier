@@ -13,27 +13,50 @@ need() {
 
 need curl
 need tar
-need shasum
+
+verify_checksum() {
+  archive="$1"
+  checksum_file="$2"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 -c "$checksum_file"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c "$checksum_file"
+  else
+    echo "Missing required command: shasum or sha256sum" >&2
+    exit 1
+  fi
+}
 
 os="$(uname -s)"
 arch="$(uname -m)"
 
 case "$os" in
   Darwin) ;;
+  Linux) ;;
   *)
-    echo "Agents Notifier install script currently supports macOS only." >&2
+    echo "Agents Notifier install script supports macOS and Linux. Use install.ps1 on Windows." >&2
     exit 1
     ;;
 esac
 
-case "$arch" in
-  arm64) target="aarch64-apple-darwin" ;;
-  x86_64) target="x86_64-apple-darwin" ;;
-  *)
-    echo "Unsupported macOS architecture: $arch" >&2
-    exit 1
-    ;;
-esac
+if [ "$os" = "Darwin" ]; then
+  case "$arch" in
+    arm64) target="aarch64-apple-darwin" ;;
+    x86_64) target="x86_64-apple-darwin" ;;
+    *)
+      echo "Unsupported macOS architecture: $arch" >&2
+      exit 1
+      ;;
+  esac
+else
+  case "$arch" in
+    x86_64) target="x86_64-unknown-linux-gnu" ;;
+    *)
+      echo "Unsupported Linux architecture: $arch" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 archive="agents-notifier-${target}.tar.gz"
 base_url="https://github.com/${REPO}/releases/latest/download"
@@ -48,7 +71,7 @@ echo "Downloading Agents Notifier for ${target}..."
 curl -fsSL "${base_url}/${archive}" -o "${tmp_dir}/${archive}"
 curl -fsSL "${base_url}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
 
-(cd "$tmp_dir" && shasum -a 256 -c "${archive}.sha256")
+(cd "$tmp_dir" && verify_checksum "${archive}" "${archive}.sha256")
 
 tar -xzf "${tmp_dir}/${archive}" -C "$tmp_dir"
 mkdir -p "$INSTALL_DIR"

@@ -48,14 +48,14 @@ mod tests {
             &config,
             "agents_notifier",
             "Agents Notifier",
-            "Test notification from your Mac.",
+            "Test notification from your computer.",
         )
         .expect("agents_notifier source should create signal");
 
         assert_eq!(signal.source_id, "agents_notifier");
         assert_eq!(signal.source_type, "agents_notifier");
         assert_eq!(signal.title, "Agents Notifier");
-        assert_eq!(signal.body, "Test notification from your Mac.");
+        assert_eq!(signal.body, "Test notification from your computer.");
     }
 
     #[test]

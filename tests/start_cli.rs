@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use tempfile::{TempDir, tempdir_in};
 use tokio::process::Command;
 
@@ -5,8 +7,7 @@ use tokio::process::Command;
 async fn start_fails_with_actionable_message_when_default_config_is_missing() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .arg("start")
         .output()
         .await
@@ -24,8 +25,7 @@ async fn start_fails_with_actionable_message_when_default_config_is_missing() {
 async fn watch_background_is_not_supported() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .args(["watch", "--background"])
         .output()
         .await
@@ -41,8 +41,7 @@ async fn watch_background_is_not_supported() {
 async fn setup_requires_interactive_terminal() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .arg("setup")
         .output()
         .await
@@ -59,8 +58,7 @@ async fn setup_requires_interactive_terminal() {
 async fn configure_is_not_supported() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .arg("configure")
         .output()
         .await
@@ -76,8 +74,7 @@ async fn configure_is_not_supported() {
 async fn version_command_prints_package_version() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .arg("version")
         .output()
         .await
@@ -96,8 +93,7 @@ async fn version_command_prints_package_version() {
 async fn version_flag_prints_package_version() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .arg("--version")
         .output()
         .await
@@ -116,8 +112,7 @@ async fn version_flag_prints_package_version() {
 async fn help_lists_uninstall_command() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
-        .env("HOME", home.path())
+    let output = command_with_home(home.path())
         .arg("--help")
         .output()
         .await
@@ -131,5 +126,14 @@ async fn help_lists_uninstall_command() {
 }
 
 fn short_home() -> TempDir {
-    tempdir_in("/tmp").expect("short temp home should be created")
+    tempdir_in(std::env::temp_dir()).expect("short temp home should be created")
+}
+
+fn command_with_home(home: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_agents-notifier"));
+    command.env("HOME", home);
+    command.env("USERPROFILE", home);
+    command.env("APPDATA", home.join("AppData").join("Roaming"));
+    command.env("LOCALAPPDATA", home.join("AppData").join("Local"));
+    command
 }

@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -123,8 +125,16 @@ async fn emit_fails_when_local_service_is_not_running() {
 }
 
 fn socket_path_for_home(home: &Path) -> PathBuf {
-    home.join("Library")
+    #[cfg(target_os = "macos")]
+    return home
+        .join("Library")
         .join("Application Support")
+        .join("agents-notifier")
+        .join("agents-notifier.sock");
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    home.join(".local")
+        .join("state")
         .join("agents-notifier")
         .join("agents-notifier.sock")
 }

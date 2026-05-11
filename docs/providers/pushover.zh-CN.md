@@ -103,7 +103,7 @@ device = "iphone"
 sound = "pushover"
 ```
 
-高级用法：支持 `app_token_env` 和 `user_key_env`，但只有当这些环境变量对正在运行的 macOS LaunchAgent service 可见时才应该使用。
+高级用法：支持 `app_token_env` 和 `user_key_env`，但只有当这些环境变量对正在运行的本机 service 可见时才应该使用。
 
 手动修改后重启 service：
 

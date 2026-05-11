@@ -86,7 +86,7 @@ sources = ["codex_desktop", "agents_notifier"]
 providers = ["slack"]
 ```
 
-高级用法：支持 `url_env`，但只有当这个环境变量对正在运行的 macOS LaunchAgent service 可见时才使用它。普通 setup 场景下，`url` 更简单、更可预测。
+高级用法：支持 `url_env`，但只有当这个环境变量对正在运行的本机 service 可见时才使用它。普通 setup 场景下，`url` 更简单、更可预测。
 
 手动修改后重启 service：
 

@@ -15,7 +15,7 @@ agents-notifier emit \
   --body "Codex CLI finished a task."
 ```
 
-`emit` does not send notifications directly. It submits the event to the local service socket, and the service routes it to your configured providers.
+`emit` does not send notifications directly. It submits the event to the local service ingress, and the service routes it to your configured providers.
 
 ## 1. Set Up the Service
 

@@ -72,7 +72,7 @@ Webhook is configured in:
 ~/.config/agents-notifier/config.toml
 ```
 
-Use `url` for the LaunchAgent service:
+Use `url` for the local service:
 
 ```toml
 [[providers]]
@@ -91,7 +91,7 @@ Restart the service:
 agents-notifier start
 ```
 
-Advanced: `url_env` is supported, but only use it when the environment variable is visible to the running service. For normal macOS LaunchAgent setup, `url` is simpler and more predictable.
+Advanced: `url_env` is supported, but only use it when the environment variable is visible to the running service. For normal setup, `url` is simpler and more predictable.
 
 ## 3. Confirm
 
@@ -103,7 +103,7 @@ Your endpoint should receive one JSON payload.
 
 Check these first:
 
-- The endpoint is reachable from your Mac.
+- The endpoint is reachable from your computer.
 - The endpoint returns `2xx`.
 - If you use `url_env`, the environment variable is visible to the running service.
 - The route includes the source you expect.

@@ -98,7 +98,7 @@ agents-notifier emit \
 
 如果 provider 收到这条通知，说明 Agents Notifier 这边已经正常。
 
-如果你的机器上 Claude Code 因为账号或会员原因跑不起来，这个手工 `emit` 测试仍然是 Agents Notifier 侧最正确的本地验证。它验证的是同一条本机 socket、source adapter、router 和 provider 链路，和 Claude Code hook 实际调用时走的路径一致。
+如果你的机器上 Claude Code 因为账号或会员原因跑不起来，这个手工 `emit` 测试仍然是 Agents Notifier 侧最正确的本地验证。它验证的是同一条本机 ingress、source adapter、router 和 provider 链路，和 Claude Code hook 实际调用时走的路径一致。
 
 ## 如果失败
 

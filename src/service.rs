@@ -6,7 +6,11 @@ use anyhow::Context;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
+use crate::paths::service_file_path;
+
 pub const LAUNCH_AGENT_LABEL: &str = "com.agents-notifier.service";
+pub const SYSTEMD_USER_UNIT_NAME: &str = "agents-notifier.service";
+pub const WINDOWS_TASK_NAME: &str = r"\AgentsNotifier";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceDefinition {
@@ -46,6 +50,119 @@ pub struct ServiceMetadata {
     pub config_path: String,
     pub log_file: String,
     pub installed_at: String,
+}
+
+impl ServiceMetadata {
+    #[cfg(windows)]
+    fn matches_definition(&self, definition: &ServiceDefinition) -> bool {
+        self.binary_path == definition.binary_path.display().to_string()
+            && self.config_path == definition.config_path.display().to_string()
+            && self.log_file == definition.log_file.display().to_string()
+    }
+}
+
+pub enum PlatformServiceManager {
+    #[cfg(target_os = "macos")]
+    LaunchAgent(LaunchAgentManager<SystemLaunchctl>),
+    #[cfg(target_os = "linux")]
+    SystemdUser(SystemdUserManager),
+    #[cfg(windows)]
+    WindowsTaskScheduler(WindowsTaskSchedulerManager),
+}
+
+impl PlatformServiceManager {
+    pub fn system() -> anyhow::Result<Self> {
+        #[cfg(target_os = "macos")]
+        return Ok(Self::LaunchAgent(LaunchAgentManager::system()?));
+
+        #[cfg(target_os = "linux")]
+        return Ok(Self::SystemdUser(SystemdUserManager::system()?));
+
+        #[cfg(windows)]
+        return Ok(Self::WindowsTaskScheduler(
+            WindowsTaskSchedulerManager::system()?,
+        ));
+    }
+
+    pub fn install_or_update(
+        &self,
+        definition: &ServiceDefinition,
+        metadata_path: &Path,
+    ) -> anyhow::Result<ServiceStartOutcome> {
+        match self {
+            #[cfg(target_os = "macos")]
+            Self::LaunchAgent(manager) => {
+                let plist_path = service_file_path()?.context("missing LaunchAgent plist path")?;
+                manager.install_or_update(definition, &plist_path, metadata_path)
+            }
+            #[cfg(target_os = "linux")]
+            Self::SystemdUser(manager) => {
+                let unit_path = service_file_path()?.context("missing systemd user unit path")?;
+                manager.install_or_update(definition, &unit_path, metadata_path)
+            }
+            #[cfg(windows)]
+            Self::WindowsTaskScheduler(manager) => {
+                manager.install_or_update(definition, metadata_path)
+            }
+        }
+    }
+
+    pub fn stop(&self) -> anyhow::Result<ServiceStopOutcome> {
+        match self {
+            #[cfg(target_os = "macos")]
+            Self::LaunchAgent(manager) => {
+                let plist_path = service_file_path()?.context("missing LaunchAgent plist path")?;
+                manager.stop(&plist_path)
+            }
+            #[cfg(target_os = "linux")]
+            Self::SystemdUser(manager) => {
+                let unit_path = service_file_path()?.context("missing systemd user unit path")?;
+                manager.stop(&unit_path)
+            }
+            #[cfg(windows)]
+            Self::WindowsTaskScheduler(manager) => manager.stop(),
+        }
+    }
+
+    pub fn status(&self) -> anyhow::Result<ServiceStatus> {
+        match self {
+            #[cfg(target_os = "macos")]
+            Self::LaunchAgent(manager) => {
+                let plist_path = service_file_path()?.context("missing LaunchAgent plist path")?;
+                manager.status(&plist_path)
+            }
+            #[cfg(target_os = "linux")]
+            Self::SystemdUser(manager) => {
+                let unit_path = service_file_path()?.context("missing systemd user unit path")?;
+                manager.status(&unit_path)
+            }
+            #[cfg(windows)]
+            Self::WindowsTaskScheduler(manager) => manager.status(),
+        }
+    }
+
+    pub fn uninstall(&self) -> anyhow::Result<()> {
+        match self {
+            #[cfg(target_os = "macos")]
+            Self::LaunchAgent(manager) => {
+                let plist_path = service_file_path()?.context("missing LaunchAgent plist path")?;
+                manager.stop(&plist_path)?;
+                remove_file_if_exists(&plist_path)?;
+                Ok(())
+            }
+            #[cfg(target_os = "linux")]
+            Self::SystemdUser(manager) => {
+                let unit_path = service_file_path()?.context("missing systemd user unit path")?;
+                manager.uninstall(&unit_path)
+            }
+            #[cfg(windows)]
+            Self::WindowsTaskScheduler(manager) => manager.uninstall(),
+        }
+    }
+
+    pub fn service_file_path(&self) -> anyhow::Result<Option<PathBuf>> {
+        service_file_path()
+    }
 }
 
 pub trait LaunchctlRunner {
@@ -232,6 +349,230 @@ impl<R: LaunchctlRunner> LaunchAgentManager<R> {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub struct SystemdUserManager;
+
+#[cfg(target_os = "linux")]
+impl SystemdUserManager {
+    pub fn system() -> anyhow::Result<Self> {
+        ensure_linux()?;
+        Ok(Self)
+    }
+
+    pub fn install_or_update(
+        &self,
+        definition: &ServiceDefinition,
+        unit_path: &Path,
+        metadata_path: &Path,
+    ) -> anyhow::Result<ServiceStartOutcome> {
+        if let Some(parent) = definition.log_file.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create log directory `{}`", parent.display())
+            })?;
+        }
+
+        let desired_unit = build_systemd_unit(definition);
+        let installed = unit_path.exists();
+        let current_unit = if installed {
+            Some(fs::read_to_string(unit_path).with_context(|| {
+                format!("failed to read systemd user unit `{}`", unit_path.display())
+            })?)
+        } else {
+            None
+        };
+        let needs_update = current_unit.as_deref() != Some(desired_unit.as_str());
+        let status = self.status(unit_path)?;
+
+        if installed && !needs_update && status.running {
+            save_metadata(metadata_path, definition)?;
+            return Ok(ServiceStartOutcome::AlreadyRunning);
+        }
+
+        if needs_update || !installed {
+            write_text_file(unit_path, &desired_unit, "systemd user unit")?;
+            run_systemctl(&["--user", "daemon-reload"])?;
+        }
+
+        if installed && needs_update && status.running {
+            run_systemctl(&["--user", "restart", SYSTEMD_USER_UNIT_NAME])?;
+        } else {
+            run_systemctl(&["--user", "enable", "--now", SYSTEMD_USER_UNIT_NAME])?;
+        }
+
+        save_metadata(metadata_path, definition)?;
+
+        if installed && needs_update {
+            Ok(ServiceStartOutcome::UpdatedAndStarted)
+        } else {
+            Ok(ServiceStartOutcome::Started)
+        }
+    }
+
+    pub fn stop(&self, unit_path: &Path) -> anyhow::Result<ServiceStopOutcome> {
+        let status = self.status(unit_path)?;
+        if !status.installed {
+            return Ok(ServiceStopOutcome::NotInstalled);
+        }
+
+        if status.running {
+            run_systemctl(&["--user", "stop", SYSTEMD_USER_UNIT_NAME])?;
+            Ok(ServiceStopOutcome::Stopped)
+        } else {
+            Ok(ServiceStopOutcome::AlreadyStopped)
+        }
+    }
+
+    pub fn status(&self, unit_path: &Path) -> anyhow::Result<ServiceStatus> {
+        let installed = unit_path.exists();
+        let running = installed
+            && Command::new("systemctl")
+                .args(["--user", "is-active", "--quiet", SYSTEMD_USER_UNIT_NAME])
+                .status()
+                .context("failed to run systemctl --user is-active")?
+                .success();
+        let pid = if installed {
+            systemd_main_pid().ok().flatten()
+        } else {
+            None
+        };
+
+        Ok(ServiceStatus {
+            installed,
+            running,
+            pid,
+            platform: "systemd user",
+        })
+    }
+
+    pub fn uninstall(&self, unit_path: &Path) -> anyhow::Result<()> {
+        let installed = unit_path.exists();
+        if installed {
+            let _ = run_systemctl(&["--user", "stop", SYSTEMD_USER_UNIT_NAME]);
+            let _ = run_systemctl(&["--user", "disable", SYSTEMD_USER_UNIT_NAME]);
+            remove_file_if_exists(unit_path)?;
+            run_systemctl(&["--user", "daemon-reload"])?;
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+pub struct WindowsTaskSchedulerManager;
+
+#[cfg(windows)]
+impl WindowsTaskSchedulerManager {
+    pub fn system() -> anyhow::Result<Self> {
+        ensure_windows()?;
+        Ok(Self)
+    }
+
+    pub fn install_or_update(
+        &self,
+        definition: &ServiceDefinition,
+        metadata_path: &Path,
+    ) -> anyhow::Result<ServiceStartOutcome> {
+        if let Some(parent) = definition.log_file.parent() {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create log directory `{}`", parent.display())
+            })?;
+        }
+
+        let installed = windows_task_installed()?;
+        let status = self.status()?;
+        let needs_update = load_metadata(metadata_path)
+            .map(|metadata| !metadata.matches_definition(definition))
+            .unwrap_or(true);
+
+        if installed && !needs_update && status.running {
+            save_metadata(metadata_path, definition)?;
+            return Ok(ServiceStartOutcome::AlreadyRunning);
+        }
+
+        if status.running {
+            let _ = run_schtasks(&["/End", "/TN", WINDOWS_TASK_NAME]);
+        }
+
+        let task_command = windows_task_command(definition);
+        run_schtasks(&[
+            "/Create",
+            "/TN",
+            WINDOWS_TASK_NAME,
+            "/SC",
+            "ONLOGON",
+            "/TR",
+            &task_command,
+            "/RL",
+            "LIMITED",
+            "/F",
+        ])?;
+        run_schtasks(&["/Run", "/TN", WINDOWS_TASK_NAME])?;
+        save_metadata(metadata_path, definition)?;
+
+        if installed && needs_update {
+            Ok(ServiceStartOutcome::UpdatedAndStarted)
+        } else {
+            Ok(ServiceStartOutcome::Started)
+        }
+    }
+
+    pub fn stop(&self) -> anyhow::Result<ServiceStopOutcome> {
+        let status = self.status()?;
+        if !status.installed {
+            return Ok(ServiceStopOutcome::NotInstalled);
+        }
+
+        if status.running {
+            run_schtasks(&["/End", "/TN", WINDOWS_TASK_NAME])?;
+            Ok(ServiceStopOutcome::Stopped)
+        } else {
+            Ok(ServiceStopOutcome::AlreadyStopped)
+        }
+    }
+
+    pub fn status(&self) -> anyhow::Result<ServiceStatus> {
+        let output = Command::new("schtasks.exe")
+            .args(["/Query", "/TN", WINDOWS_TASK_NAME, "/FO", "LIST", "/V"])
+            .output()
+            .context("failed to run schtasks.exe /Query")?;
+
+        if !output.status.success() {
+            return Ok(ServiceStatus {
+                installed: false,
+                running: false,
+                pid: None,
+                platform: "Task Scheduler",
+            });
+        }
+
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let running = combined
+            .lines()
+            .map(str::trim)
+            .any(|line| line.eq_ignore_ascii_case("Status: Running"));
+
+        Ok(ServiceStatus {
+            installed: true,
+            running,
+            pid: None,
+            platform: "Task Scheduler",
+        })
+    }
+
+    pub fn uninstall(&self) -> anyhow::Result<()> {
+        if windows_task_installed()? {
+            let _ = run_schtasks(&["/End", "/TN", WINDOWS_TASK_NAME]);
+            run_schtasks(&["/Delete", "/TN", WINDOWS_TASK_NAME, "/F"])?;
+        }
+
+        Ok(())
+    }
+}
+
 pub fn build_plist(definition: &ServiceDefinition) -> String {
     let binary = xml_escape(&definition.binary_path.display().to_string());
     let config = xml_escape(&definition.config_path.display().to_string());
@@ -289,6 +630,129 @@ pub fn build_plist(definition: &ServiceDefinition) -> String {
     )
 }
 
+#[cfg(target_os = "linux")]
+pub fn build_systemd_unit(definition: &ServiceDefinition) -> String {
+    let binary = systemd_quote(&definition.binary_path.display().to_string());
+    let config = systemd_quote(&definition.config_path.display().to_string());
+    let working_dir = systemd_quote(&definition.working_dir.display().to_string());
+    let log_file = definition.log_file.display().to_string();
+    let home = systemd_escape_value(&definition.home);
+    let env_path = systemd_escape_value(&definition.env_path);
+
+    format!(
+        r#"[Unit]
+Description=Agents Notifier local notification service
+After=default.target
+
+[Service]
+Type=simple
+ExecStart={binary} watch --config {config}
+WorkingDirectory={working_dir}
+Environment="HOME={home}"
+Environment="PATH={env_path}"
+Restart=always
+RestartSec=2
+StandardOutput=append:{log_file}
+StandardError=append:{log_file}
+
+[Install]
+WantedBy=default.target
+"#
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn systemd_quote(value: &str) -> String {
+    if value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'-' | b'_'))
+    {
+        value.to_string()
+    } else {
+        format!("\"{}\"", systemd_escape_value(value))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn systemd_escape_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(target_os = "linux")]
+fn run_systemctl(args: &[&str]) -> anyhow::Result<String> {
+    let output = Command::new("systemctl")
+        .args(args)
+        .output()
+        .with_context(|| format!("failed to run systemctl {}", args.join(" ")))?;
+    command_output_or_error("systemctl", args, output)
+}
+
+#[cfg(target_os = "linux")]
+fn systemd_main_pid() -> anyhow::Result<Option<u32>> {
+    let output = Command::new("systemctl")
+        .args([
+            "--user",
+            "show",
+            SYSTEMD_USER_UNIT_NAME,
+            "--property",
+            "MainPID",
+            "--value",
+        ])
+        .output()
+        .context("failed to run systemctl --user show MainPID")?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let pid = raw.trim().parse::<u32>().ok().filter(|pid| *pid > 0);
+    Ok(pid)
+}
+
+#[cfg(windows)]
+fn run_schtasks(args: &[&str]) -> anyhow::Result<String> {
+    let output = Command::new("schtasks.exe")
+        .args(args)
+        .output()
+        .with_context(|| format!("failed to run schtasks.exe {}", args.join(" ")))?;
+    command_output_or_error("schtasks.exe", args, output)
+}
+
+#[cfg(windows)]
+fn windows_task_installed() -> anyhow::Result<bool> {
+    let output = Command::new("schtasks.exe")
+        .args(["/Query", "/TN", WINDOWS_TASK_NAME])
+        .output()
+        .context("failed to run schtasks.exe /Query")?;
+    Ok(output.status.success())
+}
+
+#[cfg(windows)]
+fn windows_task_command(definition: &ServiceDefinition) -> String {
+    format!(
+        "\"{}\" watch --config \"{}\"",
+        definition.binary_path.display(),
+        definition.config_path.display()
+    )
+}
+
+#[cfg(any(target_os = "linux", windows))]
+fn command_output_or_error(
+    program: &str,
+    args: &[&str],
+    output: std::process::Output,
+) -> anyhow::Result<String> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{}{}", stdout, stderr).trim().to_string();
+
+    if output.status.success() {
+        Ok(combined)
+    } else {
+        anyhow::bail!("{} {} failed: {}", program, args.join(" "), combined)
+    }
+}
+
 pub fn load_metadata(path: &Path) -> anyhow::Result<ServiceMetadata> {
     let raw = fs::read_to_string(path)
         .with_context(|| format!("failed to read service metadata `{}`", path.display()))?;
@@ -318,16 +782,27 @@ pub fn save_metadata(path: &Path, definition: &ServiceDefinition) -> anyhow::Res
 }
 
 fn write_plist(path: &Path, plist: &str) -> anyhow::Result<()> {
+    write_text_file(path, plist, "LaunchAgent plist")
+}
+
+fn write_text_file(path: &Path, content: &str, label: &str) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create LaunchAgent directory `{}`",
-                parent.display()
-            )
+            format!("failed to create {label} directory `{}`", parent.display(),)
         })?;
     }
-    fs::write(path, plist)
-        .with_context(|| format!("failed to write LaunchAgent plist `{}`", path.display()))
+    fs::write(path, content)
+        .with_context(|| format!("failed to write {label} `{}`", path.display()))
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn remove_file_if_exists(path: &Path) -> anyhow::Result<()> {
+    if path.exists() {
+        fs::remove_file(path)
+            .with_context(|| format!("failed to remove service file `{}`", path.display()))?;
+    }
+
+    Ok(())
 }
 
 struct ParsedLaunchctlPrint {
@@ -376,6 +851,24 @@ fn ensure_macos() -> anyhow::Result<()> {
         Ok(())
     } else {
         anyhow::bail!("LaunchAgent service management is only supported on macOS")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_linux() -> anyhow::Result<()> {
+    if cfg!(target_os = "linux") {
+        Ok(())
+    } else {
+        anyhow::bail!("systemd user service management is only supported on Linux")
+    }
+}
+
+#[cfg(windows)]
+fn ensure_windows() -> anyhow::Result<()> {
+    if cfg!(windows) {
+        Ok(())
+    } else {
+        anyhow::bail!("Task Scheduler service management is only supported on Windows")
     }
 }
 

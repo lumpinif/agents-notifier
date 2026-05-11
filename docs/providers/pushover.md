@@ -103,7 +103,7 @@ device = "iphone"
 sound = "pushover"
 ```
 
-Advanced: `app_token_env` and `user_key_env` are supported, but only use them when those environment variables are visible to the running macOS LaunchAgent service.
+Advanced: `app_token_env` and `user_key_env` are supported, but only use them when those environment variables are visible to the running local service.
 
 Restart the service after manual edits:
 

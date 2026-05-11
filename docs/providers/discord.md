@@ -84,7 +84,7 @@ sources = ["codex_desktop", "agents_notifier"]
 providers = ["discord"]
 ```
 
-Advanced: `url_env` is supported, but only use it when the environment variable is visible to the running macOS LaunchAgent service. For normal setup, `url` is simpler and more predictable.
+Advanced: `url_env` is supported, but only use it when the environment variable is visible to the running local service. For normal setup, `url` is simpler and more predictable.
 
 Restart the service after manual edits:
 
