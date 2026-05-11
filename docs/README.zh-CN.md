@@ -88,11 +88,17 @@ Agents Notifier 在本地运行。
 复制到 Terminal 里运行：
 
 ```bash
+npx --yes agents-notifier setup
+```
+
+如果你更喜欢持久 npm 安装：
+
+```bash
 npm install -g agents-notifier
 agents-notifier setup
 ```
 
-不用 npm 的话：
+不用 Node.js/npm 的话：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
@@ -170,12 +176,13 @@ Agent 设置教程：
 一行命令干净卸载：
 
 ```bash
-agents-notifier uninstall
+npx --yes agents-notifier uninstall
 ```
 
-如果你是用 npm 安装的，本地清理完成后再删除 npm package：
+如果你是用全局 npm 安装的，本地清理完成后再删除 npm package：
 
 ```bash
+agents-notifier uninstall
 npm uninstall -g agents-notifier
 ```
 

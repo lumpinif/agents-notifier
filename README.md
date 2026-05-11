@@ -87,11 +87,17 @@ Recommended:
 Copy this into your Terminal:
 
 ```bash
+npx --yes agents-notifier setup
+```
+
+Prefer a persistent npm install:
+
+```bash
 npm install -g agents-notifier
 agents-notifier setup
 ```
 
-Without npm:
+Without Node.js/npm:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
@@ -169,12 +175,13 @@ Agent setup guides:
 Remove Agents Notifier cleanly:
 
 ```bash
-agents-notifier uninstall
+npx --yes agents-notifier uninstall
 ```
 
-If you installed it with npm, remove the npm package after local cleanup:
+If you installed it globally with npm, remove the npm package after local cleanup:
 
 ```bash
+agents-notifier uninstall
 npm uninstall -g agents-notifier
 ```
 
