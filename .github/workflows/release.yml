@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build-unix:
@@ -131,6 +132,18 @@ jobs:
 
       - name: Prepare npm package tarballs
         run: node scripts/prepare-npm-release.js --dist dist --out npm-packages --pack-destination npm-tarballs
+
+      - name: Set up Node.js for npm publishing
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Publish npm packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/publish-npm-release.js --packages npm-packages
 
       - name: Upload npm package tarballs
         uses: actions/upload-artifact@v7

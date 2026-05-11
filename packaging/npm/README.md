@@ -24,12 +24,12 @@ node scripts/prepare-npm-release.js \
 Publish the native packages first, then publish the main package:
 
 ```bash
-npm publish dist/npm-packages/agents-notifier-darwin-arm64
-npm publish dist/npm-packages/agents-notifier-darwin-x64
-npm publish dist/npm-packages/agents-notifier-linux-x64-gnu
-npm publish dist/npm-packages/agents-notifier-win32-x64-msvc
-npm publish dist/npm-packages/agents-notifier
+node scripts/publish-npm-release.js --packages dist/npm-packages
 ```
 
 The main package depends on the native packages at the exact same version, so
 publishing the main package first will make fresh installs fail.
+
+GitHub Actions can publish with npm Trusted Publishing/OIDC or with a repository
+secret named `NPM_TOKEN`. Trusted Publishing is preferred because it avoids a
+long-lived publish token.
