@@ -401,6 +401,26 @@ fn prompt_text(
         .with_context(|| read_context)
 }
 
+fn prompt_private_text(
+    prompt: impl Into<String>,
+    initial_text: Option<&str>,
+    read_context: impl Into<String>,
+) -> anyhow::Result<String> {
+    let theme = prompt_theme();
+    let read_context = read_context.into();
+    let input = Input::<String>::with_theme(&theme)
+        .with_prompt(prompt.into())
+        .allow_empty(true)
+        .report(false);
+    let input = if let Some(initial_text) = initial_text {
+        input.with_initial_text(initial_text)
+    } else {
+        input
+    };
+
+    input.interact().with_context(|| read_context)
+}
+
 fn prompt_secret(
     prompt: impl Into<String>,
     read_context: impl Into<String>,
@@ -1251,13 +1271,13 @@ fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Resu
     loop {
         let prompt = if let Some(current_url) = current_url {
             format!(
-                "Webhook URL [configured: {}, press Enter to keep]",
+                "Webhook URL [configured: {}, edit or press Enter to keep]",
                 safe_url_host(current_url)
             )
         } else {
             "Webhook URL".to_string()
         };
-        let input = prompt_text(prompt, "failed to read webhook URL")?;
+        let input = prompt_private_text(prompt, current_url, "failed to read webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1298,13 +1318,13 @@ fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_url) = current_url {
             format!(
-                "Webhook URL [configured: {}, press Enter to keep]",
+                "Webhook URL [configured: {}, edit or press Enter to keep]",
                 safe_url_host(current_url)
             )
         } else {
             "Webhook URL".to_string()
         };
-        let input = prompt_text(prompt, "failed to read webhook URL")?;
+        let input = prompt_private_text(prompt, current_url, "failed to read webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1326,13 +1346,13 @@ fn prompt_for_slack_webhook_url(current_url: Option<&str>) -> anyhow::Result<Str
     loop {
         let prompt = if let Some(current_url) = current_url {
             format!(
-                "Slack webhook URL [configured: {}, press Enter to keep]",
+                "Slack webhook URL [configured: {}, edit or press Enter to keep]",
                 safe_url_host(current_url)
             )
         } else {
             "Slack webhook URL".to_string()
         };
-        let input = prompt_text(prompt, "failed to read Slack webhook URL")?;
+        let input = prompt_private_text(prompt, current_url, "failed to read Slack webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1354,13 +1374,13 @@ fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<S
     loop {
         let prompt = if let Some(current_url) = current_url {
             format!(
-                "Discord webhook URL [configured: {}, press Enter to keep]",
+                "Discord webhook URL [configured: {}, edit or press Enter to keep]",
                 safe_url_host(current_url)
             )
         } else {
             "Discord webhook URL".to_string()
         };
-        let input = prompt_text(prompt, "failed to read Discord webhook URL")?;
+        let input = prompt_private_text(prompt, current_url, "failed to read Discord webhook URL")?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
@@ -1511,13 +1531,17 @@ fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::
     loop {
         let prompt = if let Some(current_url) = current_url {
             format!(
-                "Microsoft Teams webhook URL [configured: {}, press Enter to keep]",
+                "Microsoft Teams webhook URL [configured: {}, edit or press Enter to keep]",
                 safe_url_host(current_url)
             )
         } else {
             "Microsoft Teams webhook URL".to_string()
         };
-        let input = prompt_text(prompt, "failed to read Microsoft Teams webhook URL")?;
+        let input = prompt_private_text(
+            prompt,
+            current_url,
+            "failed to read Microsoft Teams webhook URL",
+        )?;
 
         let input = input.trim();
         let candidate = if input.is_empty() {
