@@ -12,12 +12,73 @@ pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 pub struct Config {
     pub schema_version: u32,
     #[serde(default)]
+    pub cli: CliConfig,
+    #[serde(default)]
     pub log: LogConfig,
     #[serde(default)]
     pub notification: NotificationConfig,
     pub sources: Vec<SourceConfig>,
     pub providers: Vec<ProviderConfig>,
     pub routes: Vec<RouteConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CliConfig {
+    #[serde(default)]
+    pub language: CliLanguage,
+}
+
+impl CliConfig {
+    pub fn new(language: CliLanguage) -> Self {
+        Self { language }
+    }
+}
+
+impl Default for CliConfig {
+    fn default() -> Self {
+        Self {
+            language: CliLanguage::English,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub enum CliLanguage {
+    #[default]
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "zh-CN")]
+    SimplifiedChinese,
+}
+
+impl CliLanguage {
+    pub fn config_value(self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::SimplifiedChinese => "zh-CN",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::English => "English",
+            Self::SimplifiedChinese => "简体中文",
+        }
+    }
+
+    pub fn parse(input: &str) -> Option<Self> {
+        let normalized = input.trim().to_ascii_lowercase().replace('_', "-");
+        match normalized.as_str() {
+            "en" | "english" => Some(Self::English),
+            "zh" | "zh-cn" | "zh-hans" | "cn" | "chinese" | "simplified-chinese" => {
+                Some(Self::SimplifiedChinese)
+            }
+            _ if input.trim() == "简体中文" || input.trim() == "中文" => {
+                Some(Self::SimplifiedChinese)
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -747,9 +808,51 @@ providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discor
         assert_eq!(config.sources.len(), 2);
         assert_eq!(config.providers.len(), 11);
         assert_eq!(config.routes.len(), 1);
+        assert_eq!(config.cli.language, CliLanguage::English);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
         assert_eq!(config.notification.prompt_detail, PromptDetail::Off);
+    }
+
+    #[test]
+    fn parses_cli_language() {
+        let raw = r#"
+schema_version = 1
+
+[cli]
+language = "zh-CN"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+        let config = Config::from_toml_str(raw).expect("valid config should parse");
+
+        assert_eq!(config.cli.language, CliLanguage::SimplifiedChinese);
+    }
+
+    #[test]
+    fn parses_cli_language_aliases() {
+        assert_eq!(CliLanguage::parse("en"), Some(CliLanguage::English));
+        assert_eq!(
+            CliLanguage::parse("zh_CN"),
+            Some(CliLanguage::SimplifiedChinese)
+        );
+        assert_eq!(
+            CliLanguage::parse("简体中文"),
+            Some(CliLanguage::SimplifiedChinese)
+        );
+        assert_eq!(CliLanguage::parse("fr"), None);
     }
 
     #[test]

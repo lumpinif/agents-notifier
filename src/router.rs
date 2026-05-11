@@ -185,8 +185,8 @@ mod tests {
 
     use super::*;
     use crate::config::{
-        Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-        SourceConfig, SourceType,
+        CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType,
+        RouteConfig, SourceConfig, SourceType,
     };
     use crate::delivery::DeliveryErrorContext;
 
@@ -342,6 +342,7 @@ mod tests {
     fn test_config(routes: Vec<RouteConfig>) -> Config {
         Config {
             schema_version: 1,
+            cli: CliConfig::default(),
             log: LogConfig::default(),
             notification: NotificationConfig::default(),
             sources: vec![

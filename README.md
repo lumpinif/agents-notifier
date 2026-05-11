@@ -129,6 +129,10 @@ agents-notifier setup
 
 Setup only requires two choices:
 
+First choose the CLI language. English is the default, and Simplified Chinese is available.
+
+Then setup only requires two choices:
+
 1. Which agent should it watch?
 2. Where should notifications go?
 

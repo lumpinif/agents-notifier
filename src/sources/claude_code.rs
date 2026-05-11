@@ -15,8 +15,8 @@ pub fn create_signal(
 mod tests {
     use super::*;
     use crate::config::{
-        Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-        SourceConfig, SourceType,
+        CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType,
+        RouteConfig, SourceConfig, SourceType,
     };
 
     #[test]
@@ -50,6 +50,7 @@ mod tests {
     fn test_config(source_type: SourceType) -> Config {
         Config {
             schema_version: 1,
+            cli: CliConfig::default(),
             log: LogConfig::default(),
             notification: NotificationConfig::default(),
             sources: vec![SourceConfig {

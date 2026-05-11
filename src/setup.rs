@@ -11,8 +11,9 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::config::{
-    AnswerDetail, CONFIG_SCHEMA_VERSION, Config, EmailSmtpSecurity, LogConfig, NotificationConfig,
-    PromptDetail, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
+    AnswerDetail, CONFIG_SCHEMA_VERSION, CliConfig, Config, EmailSmtpSecurity, LogConfig,
+    NotificationConfig, PromptDetail, ProviderConfig, ProviderType, RouteConfig, SourceConfig,
+    SourceType,
 };
 use crate::provider_urls::{
     host_label, validate_custom_webhook_url, validate_discord_webhook_url,
@@ -1151,6 +1152,7 @@ fn build_config(
 
     Config {
         schema_version: CONFIG_SCHEMA_VERSION,
+        cli: CliConfig::default(),
         log: LogConfig::default(),
         notification: NotificationConfig {
             answer_detail,

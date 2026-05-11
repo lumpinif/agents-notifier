@@ -14,9 +14,10 @@ use qrcode::render::unicode;
 use tokio::time::sleep;
 
 use agents_notifier::config::{
-    AnswerDetail, Config, ConfigError, EmailSmtpSecurity, PromptDetail, ProviderConfig,
-    ProviderType, SourceConfig, SourceType,
+    AnswerDetail, CliConfig, CliLanguage, Config, ConfigError, EmailSmtpSecurity, PromptDetail,
+    ProviderConfig, ProviderType, SourceConfig, SourceType,
 };
+use agents_notifier::i18n::{I18n, Text};
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
 #[cfg(target_os = "macos")]
@@ -226,6 +227,7 @@ struct WeixinLogin {
 
 #[derive(Debug, Clone, Default)]
 struct SetupDefaults {
+    language: Option<CliLanguage>,
     agent: Option<setup::AgentSelection>,
     answer_detail: Option<AnswerDetail>,
     prompt_detail: Option<PromptDetail>,
@@ -264,6 +266,7 @@ struct SetupDefaults {
 impl SetupDefaults {
     fn from_config(config: &Config) -> Self {
         Self {
+            language: Some(config.cli.language),
             agent: first_configured_agent(config),
             answer_detail: Some(config.notification.answer_detail),
             prompt_detail: Some(config.notification.prompt_detail),
@@ -349,10 +352,10 @@ enum ConfigWriteMode {
 }
 
 impl ConfigWriteMode {
-    fn past_tense(self) -> &'static str {
+    fn past_tense(self, i18n: I18n) -> &'static str {
         match self {
-            Self::Created => "Created",
-            Self::Updated => "Updated",
+            Self::Created => i18n.text(Text::ConfigCreated),
+            Self::Updated => i18n.text(Text::ConfigUpdated),
         }
     }
 }
@@ -498,6 +501,56 @@ fn prompt_confirm(prompt: &str, default: bool) -> anyhow::Result<bool> {
         .context("failed to read confirmation")
 }
 
+fn prompt_for_language(default: Option<CliLanguage>) -> anyhow::Result<CliLanguage> {
+    let effective_default = language_default(default)?;
+    let options = [CliLanguage::English, CliLanguage::SimplifiedChinese];
+    let default_index = options
+        .iter()
+        .position(|language| *language == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|language| language.display_name())
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt(I18n::new(effective_default).text(Text::LanguagePrompt))
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read language choice")?;
+
+    Ok(options[selection])
+}
+
+fn language_default(default: Option<CliLanguage>) -> anyhow::Result<CliLanguage> {
+    if let Ok(value) = std::env::var("AGENTS_NOTIFIER_LANGUAGE") {
+        let Some(language) = CliLanguage::parse(&value) else {
+            anyhow::bail!(
+                "AGENTS_NOTIFIER_LANGUAGE must be `en` or `zh-CN`; got `{}`",
+                value
+            );
+        };
+        return Ok(language);
+    }
+
+    Ok(default.unwrap_or_default())
+}
+
+fn localized(i18n: I18n, english: &'static str, simplified_chinese: &'static str) -> &'static str {
+    match i18n.language() {
+        CliLanguage::English => english,
+        CliLanguage::SimplifiedChinese => simplified_chinese,
+    }
+}
+
+fn localized_string(i18n: I18n, english: String, simplified_chinese: String) -> String {
+    match i18n.language() {
+        CliLanguage::English => english,
+        CliLanguage::SimplifiedChinese => simplified_chinese,
+    }
+}
+
 fn print_heading(title: &str) {
     println!("{}", style(title).bold());
 }
@@ -533,41 +586,64 @@ fn print_setup_summary(
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
+    i18n: I18n,
 ) {
     println!(
         "{} config: {}",
-        style(mode.past_tense()).green(),
+        style(mode.past_tense(i18n)).green(),
         style(path.display()).cyan()
     );
-    println!("agent: {}", style(agent.display_name()).green());
     println!(
-        "answer detail: {}",
-        style(answer_detail.display_name()).green()
+        "{}: {}",
+        i18n.text(Text::AgentField),
+        style(agent.display_name()).green()
     );
     println!(
-        "prompt detail: {}",
-        style(prompt_detail.display_name()).green()
+        "{}: {}",
+        i18n.text(Text::AnswerDetailField),
+        style(i18n.answer_detail(answer_detail)).green()
+    );
+    println!(
+        "{}: {}",
+        i18n.text(Text::PromptDetailField),
+        style(i18n.prompt_detail(prompt_detail)).green()
     );
 }
 
-fn print_provider_configured(provider: &str) {
-    println!("{provider}: {}", style("configured").green());
+fn print_provider_configured(provider: &str, i18n: I18n) {
+    println!("{provider}: {}", style(i18n.text(Text::Configured)).green());
 }
 
-fn print_setup_provider_summary(config: &Config) {
+fn print_setup_provider_summary(config: &Config, i18n: I18n) {
     for summary in setup_provider_summaries(config) {
-        print_provider_configured(summary.provider_name);
+        print_provider_configured(summary.provider_name, i18n);
         for field in &summary.fields {
-            print_setup_provider_summary_field(field);
+            print_setup_provider_summary_field(field, i18n);
         }
     }
 }
 
-fn print_setup_provider_summary_field(field: &SetupProviderSummaryField) {
+fn print_setup_provider_summary_field(field: &SetupProviderSummaryField, i18n: I18n) {
+    let value = localized_summary_value(&field.value, i18n);
     match field.tone {
-        SetupProviderSummaryTone::Plain => print_field(field.label, &field.value),
-        SetupProviderSummaryTone::Success => print_success_field(field.label, &field.value),
-        SetupProviderSummaryTone::Warning => print_field(field.label, style(&field.value).yellow()),
+        SetupProviderSummaryTone::Plain => print_field(field.label, value),
+        SetupProviderSummaryTone::Success => print_success_field(field.label, value),
+        SetupProviderSummaryTone::Warning => print_field(field.label, style(value).yellow()),
+    }
+}
+
+fn localized_summary_value(value: &str, i18n: I18n) -> &str {
+    if i18n.language() == CliLanguage::English {
+        return value;
+    }
+
+    match value {
+        "configured" => i18n.text(Text::Configured),
+        "not configured" => i18n.text(Text::NotConfigured),
+        "not used" => i18n.text(Text::NotUsed),
+        "all devices" => i18n.text(Text::AllDevices),
+        "account default" => i18n.text(Text::AccountDefault),
+        _ => value,
     }
 }
 
@@ -866,150 +942,305 @@ fn present_summary_str(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
+fn write_setup_config(
+    path: &Path,
+    config: &mut Config,
+    language: CliLanguage,
+) -> anyhow::Result<()> {
+    config.cli = CliConfig::new(language);
+    setup::write_config(path, config)
+}
+
 async fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
-    println!("No Agents Notifier config found at `{}`.", path.display());
+    let language = prompt_for_language(None)?;
+    let i18n = I18n::new(language);
+
+    match language {
+        CliLanguage::English => {
+            println!("No Agents Notifier config found at `{}`.", path.display())
+        }
+        CliLanguage::SimplifiedChinese => {
+            println!("没有找到 Agents Notifier config：`{}`。", path.display())
+        }
+    }
     println!();
-    println!("Starting setup now.");
-    println!("Setup connects one agent to one notification provider.");
+    println!("{}", i18n.text(Text::FirstStartStartingSetup));
+    println!("{}", i18n.text(Text::FirstStartSetupScope));
     println!();
 
-    run_guided_provider_setup(path, ConfigWriteMode::Created, SetupDefaults::default()).await
+    run_guided_provider_setup(
+        path,
+        ConfigWriteMode::Created,
+        SetupDefaults {
+            language: Some(language),
+            ..SetupDefaults::default()
+        },
+        i18n,
+    )
+    .await
 }
 
 async fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     if !is_interactive_terminal() {
-        anyhow::bail!(
-            "`agents-notifier setup` must be run in an interactive terminal so you can choose an agent and a provider."
-        );
+        anyhow::bail!("{}", I18n::default().text(Text::SetupInteractiveRequired));
     }
-
-    print_heading("Set up agent notifications");
-    println!(
-        "This replaces the notification, agent, provider, and route sections in `{}`.",
-        path.display()
-    );
-    println!("It does not change Codex or other agent settings.");
-    println!();
 
     let mode = if path.exists() {
         ConfigWriteMode::Updated
     } else {
         ConfigWriteMode::Created
     };
-    let defaults = SetupDefaults::from_path(path)?;
-    run_guided_provider_setup(path, mode, defaults).await
+    let mut defaults = SetupDefaults::from_path(path)?;
+    let language = prompt_for_language(defaults.language)?;
+    defaults.language = Some(language);
+    let i18n = I18n::new(language);
+
+    print_heading(i18n.text(Text::SetupTitle));
+    match language {
+        CliLanguage::English => println!(
+            "This replaces the notification, agent, provider, and route sections in `{}`.",
+            path.display()
+        ),
+        CliLanguage::SimplifiedChinese => println!(
+            "这会替换 `{}` 里的 notification、agent、provider 和 route 配置。",
+            path.display()
+        ),
+    }
+    println!("{}", i18n.text(Text::SetupDoesNotChangeAgentSettings));
+    println!();
+
+    run_guided_provider_setup(path, mode, defaults, i18n).await
 }
 
 async fn run_guided_provider_setup(
     path: &Path,
     mode: ConfigWriteMode,
     defaults: SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
-    let agent = prompt_for_agent(defaults.agent)?;
-    let provider = prompt_for_initial_provider(defaults.provider)?;
-    let answer_detail = answer_detail_for_provider(provider, defaults.answer_detail)?;
-    let prompt_detail = prompt_detail_for_provider(provider, defaults.prompt_detail)?;
+    let agent = prompt_for_agent(defaults.agent, i18n)?;
+    let provider = prompt_for_initial_provider(defaults.provider, i18n)?;
+    let answer_detail = answer_detail_for_provider(provider, defaults.answer_detail, i18n)?;
+    let prompt_detail = prompt_detail_for_provider(provider, defaults.prompt_detail, i18n)?;
 
     match provider {
-        InitialProvider::Ntfy => {
-            run_ntfy_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::FeishuLark => {
-            run_feishu_lark_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::Webhook => {
-            run_webhook_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::Pushover => {
-            run_pushover_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::Slack => {
-            run_slack_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::Discord => {
-            run_discord_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::Telegram => {
-            run_telegram_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::Whatsapp => {
-            run_whatsapp_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
+        InitialProvider::Ntfy => run_ntfy_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::FeishuLark => run_feishu_lark_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::Webhook => run_webhook_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::Pushover => run_pushover_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::Slack => run_slack_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::Discord => run_discord_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::Telegram => run_telegram_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::Whatsapp => run_whatsapp_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
         InitialProvider::Weixin => {
-            run_weixin_setup(path, mode, agent, answer_detail, prompt_detail, &defaults).await
+            run_weixin_setup(
+                path,
+                mode,
+                agent,
+                answer_detail,
+                prompt_detail,
+                &defaults,
+                i18n,
+            )
+            .await
         }
-        InitialProvider::MicrosoftTeams => {
-            run_microsoft_teams_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
-        InitialProvider::EmailSmtp => {
-            run_email_smtp_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
-        }
+        InitialProvider::MicrosoftTeams => run_microsoft_teams_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
+        InitialProvider::EmailSmtp => run_email_smtp_setup(
+            path,
+            mode,
+            agent,
+            answer_detail,
+            prompt_detail,
+            &defaults,
+            i18n,
+        ),
     }
 }
 
 fn answer_detail_for_provider(
     provider: InitialProvider,
     default: Option<AnswerDetail>,
+    i18n: I18n,
 ) -> anyhow::Result<AnswerDetail> {
     match provider {
         InitialProvider::Ntfy => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for ntfy because ntfy has a documented message size limit. Agents Notifier will keep ntfy notifications short enough for reliable delivery."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "ntfy",
+                    "ntfy has a documented message size limit",
+                    "ntfy 有明确的消息长度限制"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::Pushover => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for Pushover because Pushover messages are limited to 1024 characters. Agents Notifier will keep Pushover notifications short enough for reliable delivery."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "Pushover",
+                    "Pushover messages are limited to 1024 characters",
+                    "Pushover 消息最多 1024 字符"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::Slack => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for Slack because Slack has documented message length and truncation limits. Agents Notifier will keep Slack notifications short enough for reliable delivery."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "Slack",
+                    "Slack has documented message length and truncation limits",
+                    "Slack 有明确的消息长度和截断限制"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::Discord => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for Discord because Discord webhook content is limited to 2000 characters. Agents Notifier will keep Discord notifications short enough for reliable delivery."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "Discord",
+                    "Discord webhook content is limited to 2000 characters",
+                    "Discord webhook 内容最多 2000 字符"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::Telegram => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for Telegram because Telegram Bot API text messages are limited to 4096 characters. Agents Notifier will keep Telegram notifications short enough for reliable delivery."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "Telegram",
+                    "Telegram Bot API text messages are limited to 4096 characters",
+                    "Telegram Bot API 文本消息最多 4096 字符"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::Whatsapp => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for WhatsApp because Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "WhatsApp",
+                    "Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies",
+                    "Agents Notifier 对 WhatsApp 文本使用 4096 字符发送保护线"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::Weixin => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for Weixin because Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "Weixin",
+                    "Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages",
+                    "Agents Notifier 对 Weixin iLink 文本消息使用 3800 字符发送保护线"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::MicrosoftTeams => {
             println!();
             println!(
-                "Answer detail is fixed to Preview for Microsoft Teams because incoming webhook messages have a 28 KB size limit. Agents Notifier will keep Teams notifications short enough for reliable delivery."
+                "{}",
+                fixed_answer_detail_message(
+                    i18n,
+                    "Microsoft Teams",
+                    "incoming webhook messages have a 28 KB size limit",
+                    "incoming webhook 消息有 28 KB 大小限制"
+                )
             );
             Ok(AnswerDetail::Preview)
         }
         InitialProvider::FeishuLark | InitialProvider::Webhook | InitialProvider::EmailSmtp => {
-            prompt_for_answer_detail(default)
+            prompt_for_answer_detail(default, i18n)
         }
     }
 }
@@ -1017,67 +1248,148 @@ fn answer_detail_for_provider(
 fn prompt_detail_for_provider(
     provider: InitialProvider,
     default: Option<PromptDetail>,
+    i18n: I18n,
 ) -> anyhow::Result<PromptDetail> {
     match provider {
         InitialProvider::Ntfy => {
             println!();
             println!(
-                "Prompt detail is disabled for ntfy because ntfy has a documented message size limit. Agents Notifier will keep prompts out of ntfy notifications for reliable delivery."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "ntfy",
+                    "ntfy has a documented message size limit",
+                    "ntfy 有明确的消息长度限制"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::Pushover => {
             println!();
             println!(
-                "Prompt detail is disabled for Pushover because Pushover messages are limited to 1024 characters. Agents Notifier will keep prompts out of Pushover notifications for reliable delivery."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "Pushover",
+                    "Pushover messages are limited to 1024 characters",
+                    "Pushover 消息最多 1024 字符"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::Slack => {
             println!();
             println!(
-                "Prompt detail is disabled for Slack because Slack has documented message length and truncation limits. Agents Notifier will keep prompts out of Slack notifications for reliable delivery."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "Slack",
+                    "Slack has documented message length and truncation limits",
+                    "Slack 有明确的消息长度和截断限制"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::Discord => {
             println!();
             println!(
-                "Prompt detail is disabled for Discord because Discord webhook content is limited to 2000 characters. Agents Notifier will keep prompts out of Discord notifications for reliable delivery."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "Discord",
+                    "Discord webhook content is limited to 2000 characters",
+                    "Discord webhook 内容最多 2000 字符"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::Telegram => {
             println!();
             println!(
-                "Prompt detail is disabled for Telegram because Telegram Bot API text messages are limited to 4096 characters. Agents Notifier will keep prompts out of Telegram notifications for reliable delivery."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "Telegram",
+                    "Telegram Bot API text messages are limited to 4096 characters",
+                    "Telegram Bot API 文本消息最多 4096 字符"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::Whatsapp => {
             println!();
             println!(
-                "Prompt detail is disabled for WhatsApp because Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "WhatsApp",
+                    "Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies",
+                    "Agents Notifier 对 WhatsApp 文本使用 4096 字符发送保护线"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::Weixin => {
             println!();
             println!(
-                "Prompt detail is disabled for Weixin because Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "Weixin",
+                    "Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages",
+                    "Agents Notifier 对 Weixin iLink 文本消息使用 3800 字符发送保护线"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::MicrosoftTeams => {
             println!();
             println!(
-                "Prompt detail is disabled for Microsoft Teams because incoming webhook messages have a 28 KB size limit. Agents Notifier will keep prompts out of Teams notifications for reliable delivery."
+                "{}",
+                fixed_prompt_detail_message(
+                    i18n,
+                    "Microsoft Teams",
+                    "incoming webhook messages have a 28 KB size limit",
+                    "incoming webhook 消息有 28 KB 大小限制"
+                )
             );
             Ok(PromptDetail::Off)
         }
         InitialProvider::FeishuLark | InitialProvider::Webhook | InitialProvider::EmailSmtp => {
-            prompt_for_prompt_detail(default)
+            prompt_for_prompt_detail(default, i18n)
         }
+    }
+}
+
+fn fixed_answer_detail_message(
+    i18n: I18n,
+    provider: &str,
+    english_reason: &str,
+    chinese_reason: &str,
+) -> String {
+    match i18n.language() {
+        CliLanguage::English => format!(
+            "Answer detail is fixed to Preview for {provider} because {english_reason}. Agents Notifier will keep {provider} notifications short enough for reliable delivery."
+        ),
+        CliLanguage::SimplifiedChinese => format!(
+            "{provider} 的回答内容固定为 Preview，因为{chinese_reason}。Agents Notifier 会保持通知短小，确保可靠送达。"
+        ),
+    }
+}
+
+fn fixed_prompt_detail_message(
+    i18n: I18n,
+    provider: &str,
+    english_reason: &str,
+    chinese_reason: &str,
+) -> String {
+    match i18n.language() {
+        CliLanguage::English => format!(
+            "Prompt detail is disabled for {provider} because {english_reason}. Agents Notifier will keep prompts out of {provider} notifications for reliable delivery."
+        ),
+        CliLanguage::SimplifiedChinese => format!(
+            "{provider} 已关闭 prompt 内容，因为{chinese_reason}。Agents Notifier 不会把 prompt 放进 {provider} 通知里。"
+        ),
     }
 }
 
@@ -1088,21 +1400,22 @@ fn run_ntfy_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     let generated_topic = setup::generated_ntfy_topic();
 
     println!();
-    println!("ntfy sends notifications to your phone through a topic subscription.");
-    println!("Install the ntfy app on your phone, then subscribe to the topic below.");
+    println!("{}", i18n.text(Text::NtfyIntro1));
+    println!("{}", i18n.text(Text::NtfyIntro2));
     println!();
 
-    let topic = prompt_for_ntfy_topic(&generated_topic, defaults.ntfy_topic.as_deref())?;
-    let config = setup::build_ntfy_config(agent, answer_detail, prompt_detail, &topic);
-    setup::write_config(path, &config)?;
+    let topic = prompt_for_ntfy_topic(&generated_topic, defaults.ntfy_topic.as_deref(), i18n)?;
+    let mut config = setup::build_ntfy_config(agent, answer_detail, prompt_detail, &topic);
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1117,25 +1430,24 @@ fn run_feishu_lark_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Feishu/Lark sends notifications to a group through a custom bot webhook.");
-    println!("Add a custom bot to the target group, then paste its webhook URL.");
-    println!(
-        "If you enable security, use Signature Verification. Keyword security can block notifications unless every message contains your keyword."
-    );
+    println!("{}", i18n.text(Text::FeishuLarkIntro1));
+    println!("{}", i18n.text(Text::FeishuLarkIntro2));
+    println!("{}", i18n.text(Text::FeishuLarkIntro3));
     println!();
 
     let webhook_url =
-        prompt_for_feishu_lark_webhook_url(defaults.feishu_lark_webhook_url.as_deref())?;
-    let secret = prompt_for_feishu_lark_secret(defaults.feishu_lark_secret.as_deref())?;
-    let config =
+        prompt_for_feishu_lark_webhook_url(defaults.feishu_lark_webhook_url.as_deref(), i18n)?;
+    let secret = prompt_for_feishu_lark_secret(defaults.feishu_lark_secret.as_deref(), i18n)?;
+    let mut config =
         setup::build_feishu_lark_config(agent, answer_detail, prompt_detail, &webhook_url, secret);
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1150,19 +1462,20 @@ fn run_webhook_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Webhook sends every signal as JSON to your HTTPS endpoint.");
-    println!("Use this for internal tools, automation platforms, or your own notification bridge.");
+    println!("{}", i18n.text(Text::WebhookIntro1));
+    println!("{}", i18n.text(Text::WebhookIntro2));
     println!();
 
-    let webhook_url = prompt_for_webhook_url(defaults.webhook_url.as_deref())?;
-    let config = setup::build_webhook_config(agent, answer_detail, prompt_detail, &webhook_url);
-    setup::write_config(path, &config)?;
+    let webhook_url = prompt_for_webhook_url(defaults.webhook_url.as_deref(), i18n)?;
+    let mut config = setup::build_webhook_config(agent, answer_detail, prompt_detail, &webhook_url);
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1177,19 +1490,18 @@ fn run_pushover_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!(
-        "Pushover sends notifications to your phone and desktop through your Pushover account."
-    );
-    println!("Create a Pushover application, then paste its API token and your user or group key.");
+    println!("{}", i18n.text(Text::PushoverIntro1));
+    println!("{}", i18n.text(Text::PushoverIntro2));
     println!();
 
-    let app_token = prompt_for_pushover_app_token(defaults.pushover_app_token.as_deref())?;
-    let user_key = prompt_for_pushover_user_key(defaults.pushover_user_key.as_deref())?;
-    let device = prompt_for_pushover_device(defaults.pushover_device.as_deref())?;
-    let sound = prompt_for_pushover_sound(defaults.pushover_sound.as_deref())?;
-    let config = setup::build_pushover_config(
+    let app_token = prompt_for_pushover_app_token(defaults.pushover_app_token.as_deref(), i18n)?;
+    let user_key = prompt_for_pushover_user_key(defaults.pushover_user_key.as_deref(), i18n)?;
+    let device = prompt_for_pushover_device(defaults.pushover_device.as_deref(), i18n)?;
+    let sound = prompt_for_pushover_sound(defaults.pushover_sound.as_deref(), i18n)?;
+    let mut config = setup::build_pushover_config(
         agent,
         answer_detail,
         prompt_detail,
@@ -1198,11 +1510,11 @@ fn run_pushover_setup(
         device,
         sound,
     );
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1217,19 +1529,20 @@ fn run_slack_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Slack sends notifications to one channel through an incoming webhook.");
-    println!("Create a Slack app, enable Incoming Webhooks, then paste the channel webhook URL.");
+    println!("{}", i18n.text(Text::SlackIntro1));
+    println!("{}", i18n.text(Text::SlackIntro2));
     println!();
 
-    let webhook_url = prompt_for_slack_webhook_url(defaults.slack_webhook_url.as_deref())?;
-    let config = setup::build_slack_config(agent, answer_detail, prompt_detail, &webhook_url);
-    setup::write_config(path, &config)?;
+    let webhook_url = prompt_for_slack_webhook_url(defaults.slack_webhook_url.as_deref(), i18n)?;
+    let mut config = setup::build_slack_config(agent, answer_detail, prompt_detail, &webhook_url);
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1244,19 +1557,21 @@ fn run_discord_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Discord sends notifications to one channel through a channel webhook.");
-    println!("Create a Discord channel webhook, then paste its webhook URL.");
+    println!("{}", i18n.text(Text::DiscordIntro1));
+    println!("{}", i18n.text(Text::DiscordIntro2));
     println!();
 
-    let webhook_url = prompt_for_discord_webhook_url(defaults.discord_webhook_url.as_deref())?;
-    let config = setup::build_discord_config(agent, answer_detail, prompt_detail, &webhook_url);
-    setup::write_config(path, &config)?;
+    let webhook_url =
+        prompt_for_discord_webhook_url(defaults.discord_webhook_url.as_deref(), i18n)?;
+    let mut config = setup::build_discord_config(agent, answer_detail, prompt_detail, &webhook_url);
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1271,23 +1586,22 @@ fn run_telegram_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Telegram sends notifications through a Telegram bot to one chat or channel.");
-    println!(
-        "Create a bot with BotFather, add it to the target chat if needed, then paste the bot token and chat id."
-    );
+    println!("{}", i18n.text(Text::TelegramIntro1));
+    println!("{}", i18n.text(Text::TelegramIntro2));
     println!();
 
-    let bot_token = prompt_for_telegram_bot_token(defaults.telegram_bot_token.as_deref())?;
-    let chat_id = prompt_for_telegram_chat_id(defaults.telegram_chat_id.as_deref())?;
-    let config =
+    let bot_token = prompt_for_telegram_bot_token(defaults.telegram_bot_token.as_deref(), i18n)?;
+    let chat_id = prompt_for_telegram_chat_id(defaults.telegram_chat_id.as_deref(), i18n)?;
+    let mut config =
         setup::build_telegram_config(agent, answer_detail, prompt_detail, &bot_token, &chat_id);
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1302,21 +1616,22 @@ fn run_whatsapp_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("WhatsApp sends notifications through the WhatsApp Business Platform Cloud API.");
-    println!(
-        "Use a WhatsApp Business phone number ID, a system user access token, and one recipient phone number."
-    );
+    println!("{}", i18n.text(Text::WhatsappIntro1));
+    println!("{}", i18n.text(Text::WhatsappIntro2));
     println!();
 
-    let access_token = prompt_for_whatsapp_access_token(defaults.whatsapp_access_token.as_deref())?;
+    let access_token =
+        prompt_for_whatsapp_access_token(defaults.whatsapp_access_token.as_deref(), i18n)?;
     let phone_number_id =
-        prompt_for_whatsapp_phone_number_id(defaults.whatsapp_phone_number_id.as_deref())?;
+        prompt_for_whatsapp_phone_number_id(defaults.whatsapp_phone_number_id.as_deref(), i18n)?;
     let recipient_phone_number = prompt_for_whatsapp_recipient_phone_number(
         defaults.whatsapp_recipient_phone_number.as_deref(),
+        i18n,
     )?;
-    let config = setup::build_whatsapp_config(
+    let mut config = setup::build_whatsapp_config(
         agent,
         answer_detail,
         prompt_detail,
@@ -1324,11 +1639,11 @@ fn run_whatsapp_setup(
         &phone_number_id,
         &recipient_phone_number,
     );
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1343,27 +1658,28 @@ async fn run_weixin_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Weixin sends notifications through a personal WeChat iLink bot connection.");
-    println!("This is personal WeChat through iLink, not WeChat Work and not WhatsApp Business.");
+    println!("{}", i18n.text(Text::WeixinIntro1));
+    println!("{}", i18n.text(Text::WeixinIntro2));
     println!();
 
-    let mut base_url = prompt_for_weixin_base_url(defaults.weixin_base_url.as_deref())?;
-    let route_tag = prompt_for_weixin_route_tag(defaults.weixin_route_tag.as_deref())?;
-    let setup_method = prompt_for_weixin_setup_method()?;
+    let mut base_url = prompt_for_weixin_base_url(defaults.weixin_base_url.as_deref(), i18n)?;
+    let route_tag = prompt_for_weixin_route_tag(defaults.weixin_route_tag.as_deref(), i18n)?;
+    let setup_method = prompt_for_weixin_setup_method(i18n)?;
 
     let (token, scanned_user_id) = match setup_method {
         WeixinSetupMethod::QrLogin => {
-            let login = run_weixin_qr_login(&base_url, route_tag.as_deref()).await?;
+            let login = run_weixin_qr_login(&base_url, route_tag.as_deref(), i18n).await?;
             base_url = login.base_url;
             (login.token, login.scanned_user_id)
         }
         WeixinSetupMethod::ExistingToken => {
-            let token = prompt_for_weixin_token(defaults.weixin_token.as_deref())?;
-            println!("Verifying Weixin iLink token...");
+            let token = prompt_for_weixin_token(defaults.weixin_token.as_deref(), i18n)?;
+            println!("{}", i18n.text(Text::WeixinTokenVerifying));
             setup::verify_weixin_token(&base_url, &token, route_tag.as_deref()).await?;
-            println!("{}", style("Token verified.").green());
+            println!("{}", style(i18n.text(Text::WeixinTokenVerified)).green());
             (token, None)
         }
     };
@@ -1374,7 +1690,7 @@ async fn run_weixin_setup(
         defaults.weixin_recipient_user_id.as_ref(),
         defaults.weixin_context_token.as_ref(),
     ) {
-        if prompt_confirm("Keep the current linked Weixin recipient?", true)? {
+        if prompt_confirm(i18n.text(Text::WeixinKeepRecipientPrompt), true)? {
             setup::WeixinRecipientLink {
                 recipient_user_id: recipient_user_id.clone(),
                 context_token: context_token.clone(),
@@ -1385,6 +1701,7 @@ async fn run_weixin_setup(
                 &token,
                 route_tag.as_deref(),
                 scanned_user_id.as_deref(),
+                i18n,
             )
             .await?
         }
@@ -1394,11 +1711,12 @@ async fn run_weixin_setup(
             &token,
             route_tag.as_deref(),
             scanned_user_id.as_deref(),
+            i18n,
         )
         .await?
     };
 
-    let config = setup::build_weixin_config(
+    let mut config = setup::build_weixin_config(
         agent,
         answer_detail,
         prompt_detail,
@@ -1408,11 +1726,11 @@ async fn run_weixin_setup(
         &linked_recipient.context_token,
         route_tag,
     );
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1427,23 +1745,24 @@ fn run_microsoft_teams_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!(
-        "Microsoft Teams sends notifications to one chat or channel through an incoming webhook."
-    );
-    println!("Create a Teams workflow or incoming webhook, then paste its webhook URL.");
+    println!("{}", i18n.text(Text::TeamsIntro1));
+    println!("{}", i18n.text(Text::TeamsIntro2));
     println!();
 
-    let webhook_url =
-        prompt_for_microsoft_teams_webhook_url(defaults.microsoft_teams_webhook_url.as_deref())?;
-    let config =
+    let webhook_url = prompt_for_microsoft_teams_webhook_url(
+        defaults.microsoft_teams_webhook_url.as_deref(),
+        i18n,
+    )?;
+    let mut config =
         setup::build_microsoft_teams_config(agent, answer_detail, prompt_detail, &webhook_url);
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1458,33 +1777,39 @@ fn run_email_smtp_setup(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     defaults: &SetupDefaults,
+    i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
     println!();
-    println!("Email SMTP sends notifications through your SMTP server as plain text email.");
-    println!("Use STARTTLS on port 587 unless your provider explicitly gives you port 465.");
+    println!("{}", i18n.text(Text::EmailIntro1));
+    println!("{}", i18n.text(Text::EmailIntro2));
     println!();
 
-    let host = prompt_for_email_smtp_host(defaults.email_smtp_host.as_deref())?;
-    let security = prompt_for_email_smtp_security(defaults.email_smtp_security)?;
+    let host = prompt_for_email_smtp_host(defaults.email_smtp_host.as_deref(), i18n)?;
+    let security = prompt_for_email_smtp_security(defaults.email_smtp_security, i18n)?;
     let default_port = defaults
         .email_smtp_port
         .unwrap_or_else(|| default_email_smtp_port(security));
-    let port = prompt_for_email_smtp_port(default_port)?;
-    let username = prompt_for_email_smtp_username(defaults.email_smtp_username.as_deref())?;
+    let port = prompt_for_email_smtp_port(default_port, i18n)?;
+    let username = prompt_for_email_smtp_username(defaults.email_smtp_username.as_deref(), i18n)?;
     let password = if username.is_some() {
         Some(prompt_for_email_smtp_password(
             defaults.email_smtp_password.as_deref(),
+            i18n,
         )?)
     } else {
         None
     };
-    let from = prompt_for_email_smtp_mailbox("From email", defaults.email_smtp_from.as_deref())?;
-    let to = prompt_for_email_smtp_recipients(defaults.email_smtp_to.as_deref())?;
+    let from_label = localized(i18n, "From email", "发件人邮箱");
+    let reply_to_label = localized(i18n, "Reply-To email", "Reply-To 邮箱");
+    let from =
+        prompt_for_email_smtp_mailbox(from_label, defaults.email_smtp_from.as_deref(), i18n)?;
+    let to = prompt_for_email_smtp_recipients(defaults.email_smtp_to.as_deref(), i18n)?;
     let reply_to = prompt_for_email_smtp_optional_mailbox(
-        "Reply-To email",
+        reply_to_label,
         defaults.email_smtp_reply_to.as_deref(),
+        i18n,
     )?;
-    let config = setup::build_email_smtp_config(
+    let mut config = setup::build_email_smtp_config(
         agent,
         answer_detail,
         prompt_detail,
@@ -1497,11 +1822,11 @@ fn run_email_smtp_setup(
         to,
         reply_to,
     );
-    setup::write_config(path, &config)?;
+    write_setup_config(path, &mut config, i18n.language())?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
-    print_setup_provider_summary(&config);
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
         config,
@@ -1511,6 +1836,7 @@ fn run_email_smtp_setup(
 
 fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
+    i18n: I18n,
 ) -> anyhow::Result<setup::AgentSelection> {
     let options = supported_agent_options();
     let supported_default =
@@ -1525,16 +1851,16 @@ fn prompt_for_agent(
         .map(|(_, agent)| {
             let mut label = agent.display_name().to_string();
             if Some(*agent) == supported_default {
-                label.push_str(" (Current)");
+                label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
             } else if supported_default.is_none() && *agent == effective_default {
-                label.push_str(" (Recommended)");
+                label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label
         })
         .collect::<Vec<_>>();
     let theme = prompt_theme();
     let selection = Select::with_theme(&theme)
-        .with_prompt("Which agent should Agents Notifier watch?")
+        .with_prompt(i18n.text(Text::AgentPrompt))
         .items(&items)
         .default(default_index)
         .interact()
@@ -1621,7 +1947,10 @@ fn default_agent_for_runtime_platform(platform: RuntimePlatform) -> setup::Agent
     }
 }
 
-fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<AnswerDetail> {
+fn prompt_for_answer_detail(
+    default: Option<AnswerDetail>,
+    i18n: I18n,
+) -> anyhow::Result<AnswerDetail> {
     let effective_default = default.unwrap_or(AnswerDetail::Preview);
     let options = [AnswerDetail::Preview, AnswerDetail::Full];
     let default_index = options
@@ -1631,18 +1960,18 @@ fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<Ans
     let items = options
         .iter()
         .map(|answer_detail| {
-            let mut label = answer_detail.display_name().to_string();
+            let mut label = i18n.answer_detail(*answer_detail).to_string();
             if Some(*answer_detail) == default {
-                label.push_str(" (Current)");
+                label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
             } else if default.is_none() && *answer_detail == AnswerDetail::Preview {
-                label.push_str(" (Recommended)");
+                label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label
         })
         .collect::<Vec<_>>();
     let theme = prompt_theme();
     let selection = Select::with_theme(&theme)
-        .with_prompt("Answer detail")
+        .with_prompt(i18n.text(Text::AnswerDetailPrompt))
         .items(&items)
         .default(default_index)
         .interact()
@@ -1651,7 +1980,10 @@ fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<Ans
     Ok(options[selection])
 }
 
-fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<PromptDetail> {
+fn prompt_for_prompt_detail(
+    default: Option<PromptDetail>,
+    i18n: I18n,
+) -> anyhow::Result<PromptDetail> {
     let effective_default = default.unwrap_or(PromptDetail::Off);
     let options = [PromptDetail::Off, PromptDetail::On];
     let default_index = options
@@ -1661,18 +1993,18 @@ fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<Pro
     let items = options
         .iter()
         .map(|prompt_detail| {
-            let mut label = prompt_detail.display_name().to_string();
+            let mut label = i18n.prompt_detail(*prompt_detail).to_string();
             if Some(*prompt_detail) == default {
-                label.push_str(" (Current)");
+                label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
             } else if default.is_none() && *prompt_detail == PromptDetail::Off {
-                label.push_str(" (Recommended)");
+                label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label
         })
         .collect::<Vec<_>>();
     let theme = prompt_theme();
     let selection = Select::with_theme(&theme)
-        .with_prompt("Include your prompt?")
+        .with_prompt(i18n.text(Text::PromptDetailPrompt))
         .items(&items)
         .default(default_index)
         .interact()
@@ -1683,6 +2015,7 @@ fn prompt_for_prompt_detail(default: Option<PromptDetail>) -> anyhow::Result<Pro
 
 fn prompt_for_initial_provider(
     default: Option<InitialProvider>,
+    i18n: I18n,
 ) -> anyhow::Result<InitialProvider> {
     let effective_default = default.unwrap_or(InitialProvider::Ntfy);
     let options = [
@@ -1707,16 +2040,16 @@ fn prompt_for_initial_provider(
         .map(|provider| {
             let mut label = provider.display_name().to_string();
             if Some(*provider) == default {
-                label.push_str(" (Current)");
+                label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
             } else if default.is_none() && *provider == InitialProvider::Ntfy {
-                label.push_str(" (Recommended)");
+                label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label
         })
         .collect::<Vec<_>>();
     let theme = prompt_theme();
     let selection = Select::with_theme(&theme)
-        .with_prompt("Where should Agents Notifier send notifications?")
+        .with_prompt(i18n.text(Text::ProviderPrompt))
         .items(&items)
         .default(default_index)
         .interact()
@@ -1728,11 +2061,16 @@ fn prompt_for_initial_provider(
 fn prompt_for_ntfy_topic(
     generated_topic: &str,
     current_topic: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<String> {
     loop {
         let default_topic = current_topic.unwrap_or(generated_topic);
         let prompt = if let Some(current_topic) = current_topic {
-            format!("Topic [{current_topic}, press Enter to keep]")
+            localized_string(
+                i18n,
+                format!("Topic [{current_topic}, press Enter to keep]"),
+                format!("Topic [{current_topic}，按 Enter 保留]"),
+            )
         } else {
             format!("Topic [{generated_topic}]")
         };
@@ -1747,12 +2085,22 @@ fn prompt_for_ntfy_topic(
     }
 }
 
-fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_feishu_lark_webhook_url(
+    current_url: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_url) = current_url {
-            format!(
-                "Webhook URL [configured: {}, edit or press Enter to keep]",
-                safe_url_host(current_url)
+            localized_string(
+                i18n,
+                format!(
+                    "Webhook URL [configured: {}, edit or press Enter to keep]",
+                    safe_url_host(current_url)
+                ),
+                format!(
+                    "Webhook URL [已配置：{}，修改或按 Enter 保留]",
+                    safe_url_host(current_url)
+                ),
             )
         } else {
             "Webhook URL".to_string()
@@ -1775,11 +2123,18 @@ fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Resu
     }
 }
 
-fn prompt_for_feishu_lark_secret(current_secret: Option<&str>) -> anyhow::Result<Option<String>> {
+fn prompt_for_feishu_lark_secret(
+    current_secret: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<Option<String>> {
     let prompt = if current_secret.is_some() {
-        "Signing secret (optional) [configured, press Enter to keep, type `none` to clear]"
+        localized(
+            i18n,
+            "Signing secret (optional) [configured, press Enter to keep, type `none` to clear]",
+            "签名 secret（可选）[已配置，按 Enter 保留，输入 `none` 清除]",
+        )
     } else {
-        "Signing secret (optional)"
+        localized(i18n, "Signing secret (optional)", "签名 secret（可选）")
     };
     let input = prompt_secret(prompt, "failed to read signing secret")?;
 
@@ -1794,12 +2149,19 @@ fn prompt_for_feishu_lark_secret(current_secret: Option<&str>) -> anyhow::Result
     Ok(setup::resolve_feishu_lark_secret(input))
 }
 
-fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_webhook_url(current_url: Option<&str>, i18n: I18n) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_url) = current_url {
-            format!(
-                "Webhook URL [configured: {}, edit or press Enter to keep]",
-                safe_url_host(current_url)
+            localized_string(
+                i18n,
+                format!(
+                    "Webhook URL [configured: {}, edit or press Enter to keep]",
+                    safe_url_host(current_url)
+                ),
+                format!(
+                    "Webhook URL [已配置：{}，修改或按 Enter 保留]",
+                    safe_url_host(current_url)
+                ),
             )
         } else {
             "Webhook URL".to_string()
@@ -1822,12 +2184,19 @@ fn prompt_for_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
     }
 }
 
-fn prompt_for_slack_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_slack_webhook_url(current_url: Option<&str>, i18n: I18n) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_url) = current_url {
-            format!(
-                "Slack webhook URL [configured: {}, edit or press Enter to keep]",
-                safe_url_host(current_url)
+            localized_string(
+                i18n,
+                format!(
+                    "Slack webhook URL [configured: {}, edit or press Enter to keep]",
+                    safe_url_host(current_url)
+                ),
+                format!(
+                    "Slack webhook URL [已配置：{}，修改或按 Enter 保留]",
+                    safe_url_host(current_url)
+                ),
             )
         } else {
             "Slack webhook URL".to_string()
@@ -1850,12 +2219,19 @@ fn prompt_for_slack_webhook_url(current_url: Option<&str>) -> anyhow::Result<Str
     }
 }
 
-fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_discord_webhook_url(current_url: Option<&str>, i18n: I18n) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_url) = current_url {
-            format!(
-                "Discord webhook URL [configured: {}, edit or press Enter to keep]",
-                safe_url_host(current_url)
+            localized_string(
+                i18n,
+                format!(
+                    "Discord webhook URL [configured: {}, edit or press Enter to keep]",
+                    safe_url_host(current_url)
+                ),
+                format!(
+                    "Discord webhook URL [已配置：{}，修改或按 Enter 保留]",
+                    safe_url_host(current_url)
+                ),
             )
         } else {
             "Discord webhook URL".to_string()
@@ -1878,10 +2254,17 @@ fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<S
     }
 }
 
-fn prompt_for_telegram_bot_token(current_token: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_telegram_bot_token(
+    current_token: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if current_token.is_some() {
-            "Telegram bot token [configured, press Enter to keep]"
+            localized(
+                i18n,
+                "Telegram bot token [configured, press Enter to keep]",
+                "Telegram bot token [已配置，按 Enter 保留]",
+            )
         } else {
             "Telegram bot token"
         };
@@ -1903,12 +2286,24 @@ fn prompt_for_telegram_bot_token(current_token: Option<&str>) -> anyhow::Result<
     }
 }
 
-fn prompt_for_telegram_chat_id(current_chat_id: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_telegram_chat_id(
+    current_chat_id: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_chat_id) = current_chat_id {
-            format!("Telegram chat id [{current_chat_id}, press Enter to keep]")
+            localized_string(
+                i18n,
+                format!("Telegram chat id [{current_chat_id}, press Enter to keep]"),
+                format!("Telegram chat id [{current_chat_id}，按 Enter 保留]"),
+            )
         } else {
-            "Telegram chat id, for example 123456789 or @channelusername".to_string()
+            localized(
+                i18n,
+                "Telegram chat id, for example 123456789 or @channelusername",
+                "Telegram chat id，例如 123456789 或 @channelusername",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read Telegram chat id")?;
 
@@ -1928,10 +2323,17 @@ fn prompt_for_telegram_chat_id(current_chat_id: Option<&str>) -> anyhow::Result<
     }
 }
 
-fn prompt_for_whatsapp_access_token(current_token: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_whatsapp_access_token(
+    current_token: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if current_token.is_some() {
-            "WhatsApp access token [configured, press Enter to keep]"
+            localized(
+                i18n,
+                "WhatsApp access token [configured, press Enter to keep]",
+                "WhatsApp access token [已配置，按 Enter 保留]",
+            )
         } else {
             "WhatsApp access token"
         };
@@ -1955,10 +2357,17 @@ fn prompt_for_whatsapp_access_token(current_token: Option<&str>) -> anyhow::Resu
 
 fn prompt_for_whatsapp_phone_number_id(
     current_phone_number_id: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_phone_number_id) = current_phone_number_id {
-            format!("WhatsApp phone number ID [{current_phone_number_id}, press Enter to keep]")
+            localized_string(
+                i18n,
+                format!(
+                    "WhatsApp phone number ID [{current_phone_number_id}, press Enter to keep]"
+                ),
+                format!("WhatsApp phone number ID [{current_phone_number_id}，按 Enter 保留]"),
+            )
         } else {
             "WhatsApp phone number ID".to_string()
         };
@@ -1982,12 +2391,24 @@ fn prompt_for_whatsapp_phone_number_id(
 
 fn prompt_for_whatsapp_recipient_phone_number(
     current_phone_number: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_phone_number) = current_phone_number {
-            format!("WhatsApp recipient phone number [{current_phone_number}, press Enter to keep]")
+            localized_string(
+                i18n,
+                format!(
+                    "WhatsApp recipient phone number [{current_phone_number}, press Enter to keep]"
+                ),
+                format!("WhatsApp recipient phone number [{current_phone_number}，按 Enter 保留]"),
+            )
         } else {
-            "WhatsApp recipient phone number, digits only with country code".to_string()
+            localized(
+                i18n,
+                "WhatsApp recipient phone number, digits only with country code",
+                "WhatsApp 接收手机号，只填数字，包含国家区号",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read WhatsApp recipient phone number")?;
 
@@ -2007,17 +2428,33 @@ fn prompt_for_whatsapp_recipient_phone_number(
     }
 }
 
-fn prompt_for_weixin_base_url(current_base_url: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_weixin_base_url(
+    current_base_url: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let default_base_url = current_base_url.unwrap_or(setup::DEFAULT_WEIXIN_BASE_URL);
         let prompt = if let Some(current_base_url) = current_base_url {
-            format!(
-                "Weixin gateway URL [{current_base_url}, press Enter to keep unless your iLink provider gave you another URL]"
+            localized_string(
+                i18n,
+                format!(
+                    "Weixin gateway URL [{current_base_url}, press Enter to keep unless your iLink provider gave you another URL]"
+                ),
+                format!(
+                    "Weixin gateway URL [{current_base_url}，没有新的 iLink URL 就按 Enter 保留]"
+                ),
             )
         } else {
-            format!(
-                "Weixin gateway URL [{}; press Enter for the default]",
-                setup::DEFAULT_WEIXIN_BASE_URL
+            localized_string(
+                i18n,
+                format!(
+                    "Weixin gateway URL [{}; press Enter for the default]",
+                    setup::DEFAULT_WEIXIN_BASE_URL
+                ),
+                format!(
+                    "Weixin gateway URL [{}；按 Enter 使用默认值]",
+                    setup::DEFAULT_WEIXIN_BASE_URL
+                ),
             )
         };
         let input = prompt_text(prompt, "failed to read Weixin iLink base URL")?;
@@ -2036,15 +2473,28 @@ fn prompt_for_weixin_base_url(current_base_url: Option<&str>) -> anyhow::Result<
     }
 }
 
-fn prompt_for_weixin_route_tag(current_route_tag: Option<&str>) -> anyhow::Result<Option<String>> {
+fn prompt_for_weixin_route_tag(
+    current_route_tag: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<Option<String>> {
     loop {
         let prompt = if let Some(current_route_tag) = current_route_tag {
-            format!(
-                "Optional Weixin route tag [{current_route_tag}, press Enter to keep, type `none` to clear]"
+            localized_string(
+                i18n,
+                format!(
+                    "Optional Weixin route tag [{current_route_tag}, press Enter to keep, type `none` to clear]"
+                ),
+                format!(
+                    "可选 Weixin route tag [{current_route_tag}，按 Enter 保留，输入 `none` 清除]"
+                ),
             )
         } else {
-            "Optional Weixin route tag (advanced; press Enter to skip unless your iLink provider gave you an SKRouteTag)"
-                .to_string()
+            localized(
+                i18n,
+                "Optional Weixin route tag (advanced; press Enter to skip unless your iLink provider gave you an SKRouteTag)",
+                "可选 Weixin route tag（高级项；没有服务方给你的 SKRouteTag 就直接按 Enter 跳过）",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read Weixin SKRouteTag")?;
 
@@ -2063,7 +2513,7 @@ fn prompt_for_weixin_route_tag(current_route_tag: Option<&str>) -> anyhow::Resul
     }
 }
 
-fn prompt_for_weixin_setup_method() -> anyhow::Result<WeixinSetupMethod> {
+fn prompt_for_weixin_setup_method(i18n: I18n) -> anyhow::Result<WeixinSetupMethod> {
     let options = [WeixinSetupMethod::QrLogin, WeixinSetupMethod::ExistingToken];
     let default_index = options
         .iter()
@@ -2072,13 +2522,13 @@ fn prompt_for_weixin_setup_method() -> anyhow::Result<WeixinSetupMethod> {
     let items = options
         .iter()
         .map(|method| match method {
-            WeixinSetupMethod::QrLogin => "Scan WeChat QR code",
-            WeixinSetupMethod::ExistingToken => "Paste existing iLink token",
+            WeixinSetupMethod::QrLogin => i18n.text(Text::WeixinScanQrOption),
+            WeixinSetupMethod::ExistingToken => i18n.text(Text::WeixinExistingTokenOption),
         })
         .collect::<Vec<_>>();
     let theme = prompt_theme();
     let selection = Select::with_theme(&theme)
-        .with_prompt("How should Agents Notifier connect to Weixin?")
+        .with_prompt(i18n.text(Text::WeixinSetupMethodPrompt))
         .items(&items)
         .default(default_index)
         .interact()
@@ -2087,10 +2537,14 @@ fn prompt_for_weixin_setup_method() -> anyhow::Result<WeixinSetupMethod> {
     Ok(options[selection])
 }
 
-fn prompt_for_weixin_token(current_token: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_weixin_token(current_token: Option<&str>, i18n: I18n) -> anyhow::Result<String> {
     loop {
         let prompt = if current_token.is_some() {
-            "Weixin iLink token [configured, press Enter to keep]"
+            localized(
+                i18n,
+                "Weixin iLink token [configured, press Enter to keep]",
+                "Weixin iLink token [已配置，按 Enter 保留]",
+            )
         } else {
             "Weixin iLink token"
         };
@@ -2113,10 +2567,11 @@ fn prompt_for_weixin_token(current_token: Option<&str>) -> anyhow::Result<String
 async fn run_weixin_qr_login(
     base_url: &str,
     route_tag: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<WeixinLogin> {
     let mut qr =
         setup::fetch_weixin_qr_code(base_url, route_tag, setup::DEFAULT_WEIXIN_BOT_TYPE).await?;
-    print_weixin_qr_code(&qr.qr_content)?;
+    print_weixin_qr_code(&qr.qr_content, i18n)?;
 
     let deadline = Instant::now() + setup::DEFAULT_WEIXIN_QR_TIMEOUT;
     let mut refresh_count = 1;
@@ -2130,7 +2585,7 @@ async fn run_weixin_qr_login(
             }
             "scaned" | "scanned" => {
                 if !scanned_message_printed {
-                    println!("QR code scanned. Confirm the login in WeChat.");
+                    println!("{}", i18n.text(Text::WeixinQrScanned));
                     scanned_message_printed = true;
                 }
                 sleep(Duration::from_secs(1)).await;
@@ -2140,14 +2595,14 @@ async fn run_weixin_qr_login(
                 if refresh_count > 3 {
                     anyhow::bail!("Weixin QR code expired too many times; run setup again");
                 }
-                println!("QR code expired. Fetching a new one...");
+                println!("{}", i18n.text(Text::WeixinQrExpired));
                 qr = setup::fetch_weixin_qr_code(
                     base_url,
                     route_tag,
                     setup::DEFAULT_WEIXIN_BOT_TYPE,
                 )
                 .await?;
-                print_weixin_qr_code(&qr.qr_content)?;
+                print_weixin_qr_code(&qr.qr_content, i18n)?;
                 scanned_message_printed = false;
             }
             "confirmed" => {
@@ -2161,7 +2616,7 @@ async fn run_weixin_qr_login(
                     .unwrap_or(base_url)
                     .trim_end_matches('/');
                 let base_url = setup::resolve_weixin_base_url(base_url)?;
-                println!("{}", style("Weixin QR login confirmed.").green());
+                println!("{}", style(i18n.text(Text::WeixinQrConfirmed)).green());
                 return Ok(WeixinLogin {
                     token,
                     base_url,
@@ -2182,33 +2637,34 @@ async fn link_weixin_recipient(
     token: &str,
     route_tag: Option<&str>,
     expected_user_id: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<setup::WeixinRecipientLink> {
     println!();
     println!(
         "{}",
-        style("ACTION REQUIRED: Open WeChat now.").yellow().bold()
+        style(i18n.text(Text::WeixinActionHeading)).yellow().bold()
     );
     println!(
-        "1. Find the bot chat that appeared after login: {}",
+        "1. {} {}",
+        i18n.text(Text::WeixinActionStep1),
         style("WeixinClawBot").cyan().bold()
     );
     println!(
-        "2. Send this exact message in that WeChat chat: {}",
+        "2. {} {}",
+        i18n.text(Text::WeixinActionStep2),
         style("hi").green().bold()
     );
     println!(
         "{}",
-        style("Do not type `hi` here in Terminal. Send it inside WeChat.")
-            .red()
+        style(i18n.text(Text::WeixinActionDoNotType)).red().bold()
+    );
+    wait_for_enter(
+        &style(i18n.text(Text::WeixinActionDone))
+            .green()
             .bold()
-    );
-    let prompt = format!(
-        "{} Press Enter only after you sent {} in the Weixin bot chat.",
-        style("DONE?").green().bold(),
-        style("hi").green().bold()
-    );
-    wait_for_enter(&prompt)?;
-    println!("Waiting for the Weixin bot message you just sent...");
+            .to_string(),
+    )?;
+    println!("{}", i18n.text(Text::WeixinWaitingForMessage));
     setup::poll_weixin_recipient_link(
         base_url,
         token,
@@ -2219,9 +2675,9 @@ async fn link_weixin_recipient(
     .await
 }
 
-fn print_weixin_qr_code(qr_content: &str) -> anyhow::Result<()> {
+fn print_weixin_qr_code(qr_content: &str, i18n: I18n) -> anyhow::Result<()> {
     println!();
-    println!("Scan this QR code with WeChat:");
+    println!("{}", i18n.text(Text::WeixinQrScanPrompt));
     let code = QrCode::new(qr_content.as_bytes()).context("failed to render Weixin QR code")?;
     let image = code.render::<unicode::Dense1x2>().quiet_zone(true).build();
     println!("{image}");
@@ -2230,12 +2686,22 @@ fn print_weixin_qr_code(qr_content: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_microsoft_teams_webhook_url(
+    current_url: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_url) = current_url {
-            format!(
-                "Microsoft Teams webhook URL [configured: {}, edit or press Enter to keep]",
-                safe_url_host(current_url)
+            localized_string(
+                i18n,
+                format!(
+                    "Microsoft Teams webhook URL [configured: {}, edit or press Enter to keep]",
+                    safe_url_host(current_url)
+                ),
+                format!(
+                    "Microsoft Teams webhook URL [已配置：{}，修改或按 Enter 保留]",
+                    safe_url_host(current_url)
+                ),
             )
         } else {
             "Microsoft Teams webhook URL".to_string()
@@ -2262,12 +2728,21 @@ fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::
     }
 }
 
-fn prompt_for_email_smtp_host(current_host: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_email_smtp_host(current_host: Option<&str>, i18n: I18n) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_host) = current_host {
-            format!("SMTP host [{current_host}, press Enter to keep]")
+            localized_string(
+                i18n,
+                format!("SMTP host [{current_host}, press Enter to keep]"),
+                format!("SMTP host [{current_host}，按 Enter 保留]"),
+            )
         } else {
-            "SMTP host, for example smtp.gmail.com".to_string()
+            localized(
+                i18n,
+                "SMTP host, for example smtp.gmail.com",
+                "SMTP host，例如 smtp.gmail.com",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read SMTP host")?;
 
@@ -2287,6 +2762,7 @@ fn prompt_for_email_smtp_host(current_host: Option<&str>) -> anyhow::Result<Stri
 
 fn prompt_for_email_smtp_security(
     current_security: Option<EmailSmtpSecurity>,
+    i18n: I18n,
 ) -> anyhow::Result<EmailSmtpSecurity> {
     let effective_default = current_security.unwrap_or(EmailSmtpSecurity::Starttls);
     let options = [EmailSmtpSecurity::Starttls, EmailSmtpSecurity::ImplicitTls];
@@ -2299,16 +2775,16 @@ fn prompt_for_email_smtp_security(
         .map(|security| {
             let mut label = email_smtp_security_display(*security).to_string();
             if Some(*security) == current_security {
-                label.push_str(" (Current)");
+                label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
             } else if current_security.is_none() && *security == EmailSmtpSecurity::Starttls {
-                label.push_str(" (Recommended)");
+                label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label
         })
         .collect::<Vec<_>>();
     let theme = prompt_theme();
     let selection = Select::with_theme(&theme)
-        .with_prompt("SMTP security")
+        .with_prompt(localized(i18n, "SMTP security", "SMTP 加密方式"))
         .items(&items)
         .default(default_index)
         .interact()
@@ -2317,10 +2793,14 @@ fn prompt_for_email_smtp_security(
     Ok(options[selection])
 }
 
-fn prompt_for_email_smtp_port(default_port: u16) -> anyhow::Result<u16> {
+fn prompt_for_email_smtp_port(default_port: u16, i18n: I18n) -> anyhow::Result<u16> {
     loop {
         let input = prompt_text(
-            format!("SMTP port [{default_port}, press Enter to keep]"),
+            localized_string(
+                i18n,
+                format!("SMTP port [{default_port}, press Enter to keep]"),
+                format!("SMTP port [{default_port}，按 Enter 保留]"),
+            ),
             "failed to read SMTP port",
         )?;
 
@@ -2340,14 +2820,24 @@ fn prompt_for_email_smtp_port(default_port: u16) -> anyhow::Result<u16> {
 
 fn prompt_for_email_smtp_username(
     current_username: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<Option<String>> {
     loop {
         let prompt = if let Some(current_username) = current_username {
-            format!(
-                "SMTP username [{current_username}, press Enter to keep, type `none` for no auth]"
+            localized_string(
+                i18n,
+                format!(
+                    "SMTP username [{current_username}, press Enter to keep, type `none` for no auth]"
+                ),
+                format!("SMTP username [{current_username}，按 Enter 保留，输入 `none` 关闭 auth]"),
             )
         } else {
-            "SMTP username, or press Enter for no auth".to_string()
+            localized(
+                i18n,
+                "SMTP username, or press Enter for no auth",
+                "SMTP username。没有 auth 就按 Enter",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read SMTP username")?;
 
@@ -2365,12 +2855,23 @@ fn prompt_for_email_smtp_username(
     }
 }
 
-fn prompt_for_email_smtp_password(current_password: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_email_smtp_password(
+    current_password: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if current_password.is_some() {
-            "SMTP password [configured, press Enter to keep]"
+            localized(
+                i18n,
+                "SMTP password [configured, press Enter to keep]",
+                "SMTP password [已配置，按 Enter 保留]",
+            )
         } else {
-            "SMTP password or SMTP API key"
+            localized(
+                i18n,
+                "SMTP password or SMTP API key",
+                "SMTP password 或 SMTP API key",
+            )
         };
         let input = prompt_secret(prompt, "failed to read SMTP password")?;
 
@@ -2391,12 +2892,21 @@ fn prompt_for_email_smtp_password(current_password: Option<&str>) -> anyhow::Res
 fn prompt_for_email_smtp_mailbox(
     label: &'static str,
     current_mailbox: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<String> {
     loop {
         let prompt = if let Some(current_mailbox) = current_mailbox {
-            format!("{label} [{current_mailbox}, press Enter to keep]")
+            localized_string(
+                i18n,
+                format!("{label} [{current_mailbox}, press Enter to keep]"),
+                format!("{label} [{current_mailbox}，按 Enter 保留]"),
+            )
         } else {
-            format!("{label}, for example Agents Notifier <alerts@example.com>")
+            localized_string(
+                i18n,
+                format!("{label}, for example Agents Notifier <alerts@example.com>"),
+                format!("{label}，例如 Agents Notifier <alerts@example.com>"),
+            )
         };
         let input = prompt_text(prompt, format!("failed to read {label}"))?;
 
@@ -2417,12 +2927,21 @@ fn prompt_for_email_smtp_mailbox(
 fn prompt_for_email_smtp_optional_mailbox(
     label: &'static str,
     current_mailbox: Option<&str>,
+    i18n: I18n,
 ) -> anyhow::Result<Option<String>> {
     loop {
         let prompt = if let Some(current_mailbox) = current_mailbox {
-            format!("{label} [{current_mailbox}, press Enter to keep, type `none` to clear]")
+            localized_string(
+                i18n,
+                format!("{label} [{current_mailbox}, press Enter to keep, type `none` to clear]"),
+                format!("{label} [{current_mailbox}，按 Enter 保留，输入 `none` 清除]"),
+            )
         } else {
-            format!("{label}, or press Enter to skip")
+            localized_string(
+                i18n,
+                format!("{label}, or press Enter to skip"),
+                format!("{label}，跳过就按 Enter"),
+            )
         };
         let input = prompt_text(prompt, format!("failed to read {label}"))?;
 
@@ -2443,15 +2962,28 @@ fn prompt_for_email_smtp_optional_mailbox(
 
 fn prompt_for_email_smtp_recipients(
     current_recipients: Option<&[String]>,
+    i18n: I18n,
 ) -> anyhow::Result<Vec<String>> {
     loop {
         let prompt = if let Some(current_recipients) = current_recipients {
-            format!(
-                "Recipient emails [{}; press Enter to keep]",
-                current_recipients.join(", ")
+            localized_string(
+                i18n,
+                format!(
+                    "Recipient emails [{}; press Enter to keep]",
+                    current_recipients.join(", ")
+                ),
+                format!(
+                    "收件人邮箱 [{}；按 Enter 保留]",
+                    current_recipients.join(", ")
+                ),
             )
         } else {
-            "Recipient emails, comma-separated".to_string()
+            localized(
+                i18n,
+                "Recipient emails, comma-separated",
+                "收件人邮箱，多个用英文逗号分隔",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read recipient emails")?;
 
@@ -2469,10 +3001,17 @@ fn prompt_for_email_smtp_recipients(
     }
 }
 
-fn prompt_for_pushover_app_token(current_token: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_pushover_app_token(
+    current_token: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if current_token.is_some() {
-            "Pushover application API token [configured, press Enter to keep]"
+            localized(
+                i18n,
+                "Pushover application API token [configured, press Enter to keep]",
+                "Pushover application API token [已配置，按 Enter 保留]",
+            )
         } else {
             "Pushover application API token"
         };
@@ -2494,10 +3033,17 @@ fn prompt_for_pushover_app_token(current_token: Option<&str>) -> anyhow::Result<
     }
 }
 
-fn prompt_for_pushover_user_key(current_user_key: Option<&str>) -> anyhow::Result<String> {
+fn prompt_for_pushover_user_key(
+    current_user_key: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<String> {
     loop {
         let prompt = if current_user_key.is_some() {
-            "Pushover user or group key [configured, press Enter to keep]"
+            localized(
+                i18n,
+                "Pushover user or group key [configured, press Enter to keep]",
+                "Pushover user 或 group key [已配置，按 Enter 保留]",
+            )
         } else {
             "Pushover user or group key"
         };
@@ -2519,12 +3065,26 @@ fn prompt_for_pushover_user_key(current_user_key: Option<&str>) -> anyhow::Resul
     }
 }
 
-fn prompt_for_pushover_device(current_device: Option<&str>) -> anyhow::Result<Option<String>> {
+fn prompt_for_pushover_device(
+    current_device: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<Option<String>> {
     loop {
         let prompt = if let Some(current_device) = current_device {
-            format!("Pushover device [{current_device}, press Enter to keep, type `none` to clear]")
+            localized_string(
+                i18n,
+                format!(
+                    "Pushover device [{current_device}, press Enter to keep, type `none` to clear]"
+                ),
+                format!("Pushover device [{current_device}，按 Enter 保留，输入 `none` 清除]"),
+            )
         } else {
-            "Pushover device, or press Enter to send to all devices".to_string()
+            localized(
+                i18n,
+                "Pushover device, or press Enter to send to all devices",
+                "Pushover device。发给所有设备就按 Enter",
+            )
+            .to_string()
         };
         let input = prompt_text(prompt, "failed to read Pushover device")?;
 
@@ -2545,11 +3105,23 @@ fn prompt_for_pushover_device(current_device: Option<&str>) -> anyhow::Result<Op
     }
 }
 
-fn prompt_for_pushover_sound(current_sound: Option<&str>) -> anyhow::Result<Option<String>> {
+fn prompt_for_pushover_sound(
+    current_sound: Option<&str>,
+    i18n: I18n,
+) -> anyhow::Result<Option<String>> {
     let prompt = if let Some(current_sound) = current_sound {
-        format!("Pushover sound [{current_sound}, press Enter to keep, type `none` to clear]")
+        localized_string(
+            i18n,
+            format!("Pushover sound [{current_sound}, press Enter to keep, type `none` to clear]"),
+            format!("Pushover sound [{current_sound}，按 Enter 保留，输入 `none` 清除]"),
+        )
     } else {
-        "Pushover sound, or press Enter to use your account default".to_string()
+        localized(
+            i18n,
+            "Pushover sound, or press Enter to use your account default",
+            "Pushover sound。使用账号默认声音就按 Enter",
+        )
+        .to_string()
     };
     let input = prompt_text(prompt, "failed to read Pushover sound")?;
 
@@ -2576,6 +3148,7 @@ async fn run_start_service(
     loaded: LoadedConfig,
     force_restart: bool,
 ) -> anyhow::Result<()> {
+    let i18n = I18n::new(loaded.config.cli.language);
     ensure_sources_supported_on_current_platform(&loaded.config)?;
     build_providers(&loaded.config).context("provider setup failed")?;
     if loaded.guided_setup.is_some() {
@@ -2613,13 +3186,13 @@ async fn run_start_service(
         }
     };
 
-    print_service_start_outcome(outcome, pid, &log_file, manager_name);
+    print_service_start_outcome(outcome, pid, &log_file, manager_name, i18n);
 
     if let Some(setup) = loaded.guided_setup {
-        finish_guided_setup(setup).await?;
+        finish_guided_setup(setup, i18n).await?;
     } else {
-        print_notification_targets(&loaded.config);
-        offer_test_notification(&loaded.config).await?;
+        print_notification_targets(&loaded.config, i18n);
+        offer_test_notification(&loaded.config, i18n).await?;
     }
 
     Ok(())
@@ -2679,17 +3252,18 @@ fn print_service_start_outcome(
     pid: Option<u32>,
     log_file: &Path,
     manager_name: &str,
+    i18n: I18n,
 ) {
-    print_section("Service");
+    print_section(i18n.text(Text::ServiceSection));
     match outcome {
         ServiceStartOutcome::AlreadyRunning => {
-            print_success_field("status", "already running");
+            print_success_field("status", i18n.text(Text::ServiceStatusAlreadyRunning));
         }
         ServiceStartOutcome::Started => {
-            print_success_field("status", "running");
+            print_success_field("status", i18n.text(Text::ServiceStatusRunning));
         }
         ServiceStartOutcome::UpdatedAndStarted => {
-            print_success_field("status", "updated and restarted");
+            print_success_field("status", i18n.text(Text::ServiceStatusUpdatedAndRestarted));
         }
     }
     print_field("manager", manager_name);
@@ -2699,7 +3273,7 @@ fn print_service_start_outcome(
     print_path_field("log", log_file.display());
 }
 
-fn print_notification_targets(config: &Config) {
+fn print_notification_targets(config: &Config, i18n: I18n) {
     let agents = configured_agents(config);
     let subscriptions = setup::ntfy_subscriptions(config);
     let feishu_lark_targets = setup::feishu_lark_targets(config);
@@ -2713,25 +3287,25 @@ fn print_notification_targets(config: &Config) {
     let microsoft_teams_targets = setup::microsoft_teams_targets(config);
     let email_smtp_targets = setup::email_smtp_targets(config);
 
-    print_section("Notifications");
+    print_section(i18n.text(Text::NotificationsSection));
     print_field(
-        "answer detail",
-        config.notification.answer_detail.display_name(),
+        i18n.text(Text::AnswerDetailField),
+        i18n.answer_detail(config.notification.answer_detail),
     );
     print_field(
-        "prompt detail",
-        config.notification.prompt_detail.display_name(),
+        i18n.text(Text::PromptDetailField),
+        i18n.prompt_detail(config.notification.prompt_detail),
     );
 
     if !agents.is_empty() {
-        print_section("Watched agents");
+        print_section(i18n.text(Text::WatchedAgentsSection));
         for agent in &agents {
-            print_success_field("agent", agent);
+            print_success_field(i18n.text(Text::AgentField), agent);
         }
     }
 
     if !subscriptions.is_empty() {
-        print_section("Phone subscription");
+        print_section(i18n.text(Text::PhoneSubscriptionSection));
         for subscription in &subscriptions {
             print_field("server", &subscription.server);
             print_field("topic", &subscription.topic);
@@ -2746,9 +3320,9 @@ fn print_notification_targets(config: &Config) {
             print_field(
                 "signature verification",
                 if target.signed {
-                    style("configured").green()
+                    style(i18n.text(Text::Configured)).green()
                 } else {
-                    style("not configured").yellow()
+                    style(i18n.text(Text::NotConfigured)).yellow()
                 },
             );
         }
@@ -2766,10 +3340,19 @@ fn print_notification_targets(config: &Config) {
         print_section("Pushover");
         for target in &pushover_targets {
             print_field("provider", &target.provider_id);
-            print_field("device", target.device.as_deref().unwrap_or("all devices"));
+            print_field(
+                "device",
+                target
+                    .device
+                    .as_deref()
+                    .unwrap_or(i18n.text(Text::AllDevices)),
+            );
             print_field(
                 "sound",
-                target.sound.as_deref().unwrap_or("account default"),
+                target
+                    .sound
+                    .as_deref()
+                    .unwrap_or(i18n.text(Text::AccountDefault)),
             );
         }
     }
@@ -2922,7 +3505,10 @@ fn safe_url_host(url: &str) -> String {
 
 fn print_status_notification_targets(config_path: &Path) {
     match Config::from_path(config_path) {
-        Ok(config) => print_notification_targets(&config),
+        Ok(config) => {
+            let i18n = I18n::new(config.cli.language);
+            print_notification_targets(&config, i18n);
+        }
         Err(error) => {
             print_section("Config");
             print_field("status", style(error.to_string()).red());
@@ -3005,101 +3591,92 @@ fn cleanup_legacy_background_service() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
+async fn finish_guided_setup(setup: GuidedSetup, i18n: I18n) -> anyhow::Result<()> {
     let endpoint = ingress_endpoint()?;
     wait_for_service(&endpoint).await?;
 
     match setup {
         GuidedSetup::Ntfy { agent, topic } => {
             println!();
-            println!("Next: connect your phone.");
-            println!("1. Open the ntfy app.");
-            println!("2. Add a subscription.");
-            println!("3. Server: https://ntfy.sh");
+            println!("{}", i18n.text(Text::NextPhone));
+            println!("{}", i18n.text(Text::NtfyFinishStep1));
+            println!("{}", i18n.text(Text::NtfyFinishStep2));
+            println!("{}", i18n.text(Text::NtfyFinishStep3));
             println!("4. Topic: {topic}");
             println!();
-            wait_for_enter(
-                "After your phone is subscribed, press Enter to send a test notification.",
-            )?;
-            print_agent_setup_note(agent);
+            wait_for_enter(i18n.text(Text::SendTestPromptNtfy))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::FeishuLark { agent } => {
             println!();
-            println!("Next: check your Feishu/Lark group.");
-            wait_for_enter("Press Enter to send a test notification to the custom bot.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextFeishuLark));
+            wait_for_enter(i18n.text(Text::SendTestPromptFeishuLark))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Webhook { agent } => {
             println!();
-            println!("Next: check your webhook receiver.");
-            wait_for_enter("Press Enter to send a test JSON payload to the webhook.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextWebhook));
+            wait_for_enter(i18n.text(Text::SendTestPromptWebhook))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Pushover { agent } => {
             println!();
-            println!("Next: check your Pushover devices.");
-            wait_for_enter("Press Enter to send a test notification through Pushover.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextPushover));
+            wait_for_enter(i18n.text(Text::SendTestPromptPushover))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Slack { agent } => {
             println!();
-            println!("Next: check your Slack channel.");
-            wait_for_enter("Press Enter to send a test notification through Slack.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextSlack));
+            wait_for_enter(i18n.text(Text::SendTestPromptSlack))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Discord { agent } => {
             println!();
-            println!("Next: check your Discord channel.");
-            wait_for_enter("Press Enter to send a test notification through Discord.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextDiscord));
+            wait_for_enter(i18n.text(Text::SendTestPromptDiscord))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Telegram { agent } => {
             println!();
-            println!("Next: check your Telegram chat.");
-            wait_for_enter("Press Enter to send a test notification through Telegram.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextTelegram));
+            wait_for_enter(i18n.text(Text::SendTestPromptTelegram))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Whatsapp { agent } => {
             println!();
-            println!("Next: check the recipient WhatsApp chat.");
-            wait_for_enter("Press Enter to send a test notification through WhatsApp.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextWhatsapp));
+            wait_for_enter(i18n.text(Text::SendTestPromptWhatsapp))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::Weixin { agent } => {
             println!();
-            println!("Next: check the linked Weixin chat.");
-            wait_for_enter("Press Enter to send a test notification through Weixin.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextWeixin));
+            wait_for_enter(i18n.text(Text::SendTestPromptWeixin))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::MicrosoftTeams { agent } => {
             println!();
-            println!("Next: check your Microsoft Teams chat or channel.");
-            wait_for_enter("Press Enter to send a test notification through Microsoft Teams.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextTeams));
+            wait_for_enter(i18n.text(Text::SendTestPromptTeams))?;
+            print_agent_setup_note(agent, i18n);
         }
         GuidedSetup::EmailSmtp { agent } => {
             println!();
-            println!("Next: check the recipient email inbox.");
-            wait_for_enter("Press Enter to send a test notification through Email SMTP.")?;
-            print_agent_setup_note(agent);
+            println!("{}", i18n.text(Text::NextEmail));
+            wait_for_enter(i18n.text(Text::SendTestPromptEmail))?;
+            print_agent_setup_note(agent, i18n);
         }
     }
 
     send_test_notification().await?;
 
-    println!("{}", style("Test notification sent.").green());
-    if prompt_yes_no("Did it arrive? [Y/n] ")? {
-        println!(
-            "{}",
-            style("Setup complete. Agent notifications can now be forwarded.").green()
-        );
+    println!("{}", style(i18n.text(Text::TestSent)).green());
+    if prompt_confirm(i18n.text(Text::DidItArrive), true)? {
+        println!("{}", style(i18n.text(Text::SetupComplete)).green());
     } else {
-        println!(
-            "{}",
-            style("The service is still running, but the test notification did not arrive.")
-                .yellow()
-        );
-        println!("Check the provider settings in your config, then run this test again:");
+        println!("{}", style(i18n.text(Text::TestDidNotArrive)).yellow());
+        println!("{}", i18n.text(Text::CheckProviderSettingsAndRetest));
         println!(
             "agents-notifier emit --source agents_notifier --title \"Agents Notifier\" --body \"Test notification from your computer.\""
         );
@@ -3108,7 +3685,66 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_agent_setup_note(agent: setup::AgentSelection) {
+fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
+    if i18n.language() == CliLanguage::SimplifiedChinese {
+        match agent {
+            setup::AgentSelection::CodexDesktop => {
+                println!("Agents Notifier 会监听这台电脑上的 Codex Desktop 完成事件。");
+            }
+            setup::AgentSelection::CodexCli => {
+                println!("Agents Notifier 已准备接收 Codex CLI hook event。");
+                println!("让 Codex CLI hook 调用：`agents-notifier emit --source codex_cli`。");
+            }
+            setup::AgentSelection::ClaudeCode => {
+                println!("Agents Notifier 已准备接收 Claude Code hook event。");
+                println!("让 Claude Code hook 调用：`agents-notifier emit --source claude_code`。");
+            }
+            setup::AgentSelection::CursorCli => {
+                println!("Agents Notifier 已准备接收 Cursor CLI hook event。");
+                println!(
+                    "让 Cursor CLI wrapper 在 CLI 成功退出后调用：`agents-notifier emit --source cursor_cli`。"
+                );
+            }
+            setup::AgentSelection::OpenCodeCli => {
+                println!("Agents Notifier 已准备接收 OpenCode CLI hook event。");
+                println!(
+                    "让 OpenCode plugin 在 session idle 时调用：`agents-notifier emit --source opencode_cli`。"
+                );
+            }
+            setup::AgentSelection::OpenClaw => {
+                println!("Agents Notifier 已准备接收 OpenClaw hook event。");
+                println!(
+                    "让 OpenClaw plugin hook 在 agent_end 调用：`agents-notifier emit --source openclaw`。"
+                );
+            }
+            setup::AgentSelection::HermesAgentCli => {
+                println!("Agents Notifier 已准备接收 Hermes Agent CLI hook event。");
+                println!(
+                    "让 Hermes plugin hook 在 post_llm_call 调用：`agents-notifier emit --source hermes_agent_cli`。"
+                );
+            }
+            setup::AgentSelection::GithubCopilotCli => {
+                println!("Agents Notifier 已准备接收 GitHub Copilot CLI hook event。");
+                println!(
+                    "让 GitHub Copilot CLI notification hook 调用：`agents-notifier emit --source github_copilot_cli`。"
+                );
+            }
+            setup::AgentSelection::GeminiCli => {
+                println!("Agents Notifier 已准备接收 Gemini CLI hook event。");
+                println!(
+                    "让 Gemini CLI AfterAgent 或 Notification hook 调用：`agents-notifier emit --source gemini_cli`。"
+                );
+            }
+            setup::AgentSelection::Aider => {
+                println!("Agents Notifier 已准备接收 Aider notification event。");
+                println!(
+                    "让 Aider notifications-command 调用：`agents-notifier emit --source aider`。"
+                );
+            }
+        }
+        return;
+    }
+
     match agent {
         setup::AgentSelection::CodexDesktop => {
             println!("Agents Notifier will watch Codex Desktop completed jobs on this computer.");
@@ -3170,29 +3806,26 @@ fn print_agent_setup_note(agent: setup::AgentSelection) {
     }
 }
 
-async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
+async fn offer_test_notification(config: &Config, i18n: I18n) -> anyhow::Result<()> {
     if !is_interactive_terminal() || !can_send_test_notification(config) {
         return Ok(());
     }
 
-    if !prompt_yes_no("Send a test notification now? [Y/n] ")? {
+    if !prompt_confirm(i18n.text(Text::SendTestNow), true)? {
         println!("{}", setup::TEST_NOTIFICATION_SKIPPED_MESSAGE);
         return Ok(());
     }
 
     send_test_notification().await?;
-    println!("{}", style("Test notification sent.").green());
-    if prompt_yes_no("Did it arrive? [Y/n] ")? {
-        println!(
-            "{}",
-            style("Agents Notifier is working. Agent notifications can now be forwarded.").green()
-        );
+    println!("{}", style(i18n.text(Text::TestSent)).green());
+    if prompt_confirm(i18n.text(Text::DidItArrive), true)? {
+        println!("{}", style(i18n.text(Text::Working)).green());
     } else {
         println!(
             "{}",
-            style("The service is running, but the test notification did not arrive.").yellow()
+            style(i18n.text(Text::ServiceRunningButTestMissing)).yellow()
         );
-        println!("Check the provider settings printed above.");
+        println!("{}", i18n.text(Text::CheckProviderSettingsPrinted));
     }
 
     Ok(())
@@ -3250,11 +3883,6 @@ async fn wait_for_service(
 fn wait_for_enter(prompt: &str) -> anyhow::Result<()> {
     let _ = prompt_text(prompt, "failed to read input")?;
     Ok(())
-}
-
-fn prompt_yes_no(prompt: &str) -> anyhow::Result<bool> {
-    let prompt = prompt.trim().trim_end_matches("[Y/n]").trim();
-    prompt_confirm(prompt, true)
 }
 
 fn run_stop() -> anyhow::Result<()> {
@@ -3487,16 +4115,18 @@ mod tests {
 
     #[test]
     fn setup_defaults_preserve_existing_config_answers() {
-        let config = setup::build_feishu_lark_config(
+        let mut config = setup::build_feishu_lark_config(
             setup::AgentSelection::ClaudeCode,
             AnswerDetail::Full,
             PromptDetail::On,
             "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
             Some("signing-secret".to_string()),
         );
+        config.cli.language = CliLanguage::SimplifiedChinese;
 
         let defaults = SetupDefaults::from_config(&config);
 
+        assert_eq!(defaults.language, Some(CliLanguage::SimplifiedChinese));
         assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
         assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
         assert_eq!(defaults.prompt_detail, Some(PromptDetail::On));
@@ -3608,28 +4238,29 @@ providers = ["work_chat"]
 
     #[test]
     fn prompt_detail_is_forced_off_for_length_limited_providers() {
+        let i18n = I18n::default();
         assert_eq!(
-            prompt_detail_for_provider(InitialProvider::Ntfy, Some(PromptDetail::On))
+            prompt_detail_for_provider(InitialProvider::Ntfy, Some(PromptDetail::On), i18n)
                 .expect("ntfy prompt detail should resolve"),
             PromptDetail::Off
         );
         assert_eq!(
-            prompt_detail_for_provider(InitialProvider::Pushover, Some(PromptDetail::On))
+            prompt_detail_for_provider(InitialProvider::Pushover, Some(PromptDetail::On), i18n)
                 .expect("Pushover prompt detail should resolve"),
             PromptDetail::Off
         );
         assert_eq!(
-            prompt_detail_for_provider(InitialProvider::Slack, Some(PromptDetail::On))
+            prompt_detail_for_provider(InitialProvider::Slack, Some(PromptDetail::On), i18n)
                 .expect("Slack prompt detail should resolve"),
             PromptDetail::Off
         );
         assert_eq!(
-            prompt_detail_for_provider(InitialProvider::Discord, Some(PromptDetail::On))
+            prompt_detail_for_provider(InitialProvider::Discord, Some(PromptDetail::On), i18n)
                 .expect("Discord prompt detail should resolve"),
             PromptDetail::Off
         );
         assert_eq!(
-            prompt_detail_for_provider(InitialProvider::Weixin, Some(PromptDetail::On))
+            prompt_detail_for_provider(InitialProvider::Weixin, Some(PromptDetail::On), i18n)
                 .expect("Weixin prompt detail should resolve"),
             PromptDetail::Off
         );
@@ -3637,28 +4268,29 @@ providers = ["work_chat"]
 
     #[test]
     fn answer_detail_is_forced_to_preview_for_length_limited_providers() {
+        let i18n = I18n::default();
         assert_eq!(
-            answer_detail_for_provider(InitialProvider::Ntfy, Some(AnswerDetail::Full))
+            answer_detail_for_provider(InitialProvider::Ntfy, Some(AnswerDetail::Full), i18n)
                 .expect("ntfy answer detail should resolve"),
             AnswerDetail::Preview
         );
         assert_eq!(
-            answer_detail_for_provider(InitialProvider::Pushover, Some(AnswerDetail::Full))
+            answer_detail_for_provider(InitialProvider::Pushover, Some(AnswerDetail::Full), i18n)
                 .expect("Pushover answer detail should resolve"),
             AnswerDetail::Preview
         );
         assert_eq!(
-            answer_detail_for_provider(InitialProvider::Slack, Some(AnswerDetail::Full))
+            answer_detail_for_provider(InitialProvider::Slack, Some(AnswerDetail::Full), i18n)
                 .expect("Slack answer detail should resolve"),
             AnswerDetail::Preview
         );
         assert_eq!(
-            answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full))
+            answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full), i18n)
                 .expect("Discord answer detail should resolve"),
             AnswerDetail::Preview
         );
         assert_eq!(
-            answer_detail_for_provider(InitialProvider::Weixin, Some(AnswerDetail::Full))
+            answer_detail_for_provider(InitialProvider::Weixin, Some(AnswerDetail::Full), i18n)
                 .expect("Weixin answer detail should resolve"),
             AnswerDetail::Preview
         );

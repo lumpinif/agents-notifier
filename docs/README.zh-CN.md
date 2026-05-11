@@ -128,7 +128,9 @@ agents-notifier setup
 agents-notifier setup
 ```
 
-只需要回答 2 个必选问题：
+先选择 CLI 语言。默认是英文，也可以选择简体中文。
+
+然后只需要回答 2 个必选问题：
 
 1. 要监听哪个 agent？
 2. 通知要发到哪里？

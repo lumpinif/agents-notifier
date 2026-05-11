@@ -14,6 +14,26 @@ shown by host only. Signing secrets and private provider keys are shown only as 
 
 For a Feishu/Lark signing secret, type `none` to clear the existing secret.
 
+## Language
+
+Setup asks for the CLI language first:
+
+```text
+1. English
+2. 简体中文
+```
+
+English is the default. The chosen language is saved in config:
+
+```toml
+[cli]
+language = "en"
+```
+
+Use `language = "zh-CN"` for Simplified Chinese. You can also set
+`AGENTS_NOTIFIER_LANGUAGE=zh-CN` before running setup to make Chinese the default selection.
+Setup prompts and setup confirmation output use the selected language.
+
 ## Agent
 
 Choose the agent Agents Notifier should watch:
