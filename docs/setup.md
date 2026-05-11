@@ -31,7 +31,7 @@ Choose the agent Agents Notifier should watch:
 10. Aider
 ```
 
-Codex Desktop is currently offered only on macOS. On Linux and Windows, setup starts at Codex CLI and offers the hook-based CLI sources.
+Codex Desktop is offered on macOS and Windows. On Linux, setup starts at Codex CLI and offers the hook-based CLI sources.
 
 ## Provider
 

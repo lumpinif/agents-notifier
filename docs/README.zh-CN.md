@@ -29,7 +29,7 @@ English documentation: [../README.md](../README.md)
 
 Agents：
 
-- macOS 上的 [Codex Desktop App](https://openai.com/codex/)
+- macOS 和 Windows 上的 [Codex Desktop App](https://openai.com/codex/)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Codex CLI](https://github.com/openai/codex)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Claude Code](https://claude.com/product/claude-code)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [GitHub Copilot CLI](https://docs.github.com/copilot/reference/cli-command-reference)

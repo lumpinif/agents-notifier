@@ -1044,23 +1044,60 @@ fn prompt_for_agent(
     Ok(options[selection].1)
 }
 
-fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
-    #[cfg(target_os = "macos")]
-    return vec![
-        ("1", setup::AgentSelection::CodexDesktop),
-        ("2", setup::AgentSelection::CodexCli),
-        ("3", setup::AgentSelection::ClaudeCode),
-        ("4", setup::AgentSelection::CursorCli),
-        ("5", setup::AgentSelection::OpenCodeCli),
-        ("6", setup::AgentSelection::OpenClaw),
-        ("7", setup::AgentSelection::HermesAgentCli),
-        ("8", setup::AgentSelection::GithubCopilotCli),
-        ("9", setup::AgentSelection::GeminiCli),
-        ("10", setup::AgentSelection::Aider),
-    ];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "non-host platform variants keep setup platform rules testable on every OS"
+    )
+)]
+enum RuntimePlatform {
+    Macos,
+    Linux,
+    Windows,
+}
 
-    #[cfg(not(target_os = "macos"))]
-    return vec![
+impl RuntimePlatform {
+    fn current() -> Self {
+        #[cfg(target_os = "macos")]
+        return Self::Macos;
+
+        #[cfg(target_os = "linux")]
+        return Self::Linux;
+
+        #[cfg(windows)]
+        return Self::Windows;
+    }
+
+    fn supports_codex_desktop(self) -> bool {
+        matches!(self, Self::Macos | Self::Windows)
+    }
+}
+
+fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
+    supported_agent_options_for_platform(RuntimePlatform::current())
+}
+
+fn supported_agent_options_for_platform(
+    platform: RuntimePlatform,
+) -> Vec<(&'static str, setup::AgentSelection)> {
+    if platform.supports_codex_desktop() {
+        return vec![
+            ("1", setup::AgentSelection::CodexDesktop),
+            ("2", setup::AgentSelection::CodexCli),
+            ("3", setup::AgentSelection::ClaudeCode),
+            ("4", setup::AgentSelection::CursorCli),
+            ("5", setup::AgentSelection::OpenCodeCli),
+            ("6", setup::AgentSelection::OpenClaw),
+            ("7", setup::AgentSelection::HermesAgentCli),
+            ("8", setup::AgentSelection::GithubCopilotCli),
+            ("9", setup::AgentSelection::GeminiCli),
+            ("10", setup::AgentSelection::Aider),
+        ];
+    }
+
+    vec![
         ("1", setup::AgentSelection::CodexCli),
         ("2", setup::AgentSelection::ClaudeCode),
         ("3", setup::AgentSelection::CursorCli),
@@ -1070,15 +1107,19 @@ fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
         ("7", setup::AgentSelection::GithubCopilotCli),
         ("8", setup::AgentSelection::GeminiCli),
         ("9", setup::AgentSelection::Aider),
-    ];
+    ]
 }
 
 fn default_agent_for_platform() -> setup::AgentSelection {
-    #[cfg(target_os = "macos")]
-    return setup::AgentSelection::CodexDesktop;
+    default_agent_for_runtime_platform(RuntimePlatform::current())
+}
 
-    #[cfg(not(target_os = "macos"))]
-    return setup::AgentSelection::CodexCli;
+fn default_agent_for_runtime_platform(platform: RuntimePlatform) -> setup::AgentSelection {
+    if platform.supports_codex_desktop() {
+        setup::AgentSelection::CodexDesktop
+    } else {
+        setup::AgentSelection::CodexCli
+    }
 }
 
 fn prompt_for_answer_detail(default: Option<AnswerDetail>) -> anyhow::Result<AnswerDetail> {
@@ -2320,7 +2361,7 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
 fn print_agent_setup_note(agent: setup::AgentSelection) {
     match agent {
         setup::AgentSelection::CodexDesktop => {
-            println!("Agents Notifier will watch Codex Desktop completed jobs on this Mac.");
+            println!("Agents Notifier will watch Codex Desktop completed jobs on this computer.");
         }
         setup::AgentSelection::CodexCli => {
             println!("Agents Notifier is ready for Codex CLI hook events.");
@@ -2602,15 +2643,6 @@ async fn run_watch(config: &Config) -> anyhow::Result<()> {
 }
 
 fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
-    #[cfg(not(target_os = "macos"))]
-    if config
-        .sources
-        .iter()
-        .any(|source| source.source_type == SourceType::CodexDesktop)
-    {
-        return None;
-    }
-
     config
         .sources
         .iter()
@@ -2618,13 +2650,13 @@ fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
 }
 
 fn ensure_sources_supported_on_current_platform(config: &Config) -> anyhow::Result<()> {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
     if config
         .sources
         .iter()
         .any(|source| source.source_type == SourceType::CodexDesktop)
     {
-        anyhow::bail!("Codex Desktop source is currently supported only on macOS");
+        anyhow::bail!("Codex Desktop source is supported only on macOS and Windows");
     }
 
     let _ = config;
@@ -2863,6 +2895,50 @@ providers = ["work_chat"]
             answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full))
                 .expect("Discord answer detail should resolve"),
             AnswerDetail::Preview
+        );
+    }
+
+    #[test]
+    fn macos_and_windows_offer_codex_desktop_as_default_agent() {
+        assert_eq!(
+            default_agent_for_runtime_platform(RuntimePlatform::Macos),
+            setup::AgentSelection::CodexDesktop
+        );
+        assert_eq!(
+            default_agent_for_runtime_platform(RuntimePlatform::Windows),
+            setup::AgentSelection::CodexDesktop
+        );
+
+        let macos_options = supported_agent_options_for_platform(RuntimePlatform::Macos);
+        let windows_options = supported_agent_options_for_platform(RuntimePlatform::Windows);
+
+        assert_eq!(
+            macos_options.first(),
+            Some(&("1", setup::AgentSelection::CodexDesktop))
+        );
+        assert_eq!(
+            windows_options.first(),
+            Some(&("1", setup::AgentSelection::CodexDesktop))
+        );
+    }
+
+    #[test]
+    fn linux_starts_setup_at_codex_cli() {
+        assert_eq!(
+            default_agent_for_runtime_platform(RuntimePlatform::Linux),
+            setup::AgentSelection::CodexCli
+        );
+
+        let options = supported_agent_options_for_platform(RuntimePlatform::Linux);
+
+        assert_eq!(
+            options.first(),
+            Some(&("1", setup::AgentSelection::CodexCli))
+        );
+        assert!(
+            !options
+                .iter()
+                .any(|(_, agent)| *agent == setup::AgentSelection::CodexDesktop)
         );
     }
 

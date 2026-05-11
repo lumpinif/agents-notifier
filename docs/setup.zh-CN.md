@@ -30,7 +30,7 @@ Webhook URL 只显示 host，签名 secret 和私有 provider key 只显示已�
 10. Aider
 ```
 
-Codex Desktop 当前只在 macOS 上提供。Linux 和 Windows 上，setup 会从 Codex CLI 开始，提供这些 hook-based CLI sources。
+Codex Desktop 当前在 macOS 和 Windows 上提供。Linux 上，setup 会从 Codex CLI 开始，提供这些 hook-based CLI sources。
 
 ## Provider
 

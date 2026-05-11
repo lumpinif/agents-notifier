@@ -28,7 +28,7 @@ No cloud account. No hosted backend. No extra dashboard.
 
 Agents:
 
-- [Codex Desktop](https://openai.com/codex/) on macOS
+- [Codex Desktop](https://openai.com/codex/) on macOS and Windows
 - [Codex CLI](https://github.com/openai/codex) through hooks on macOS, Linux, and Windows
 - [Claude Code](https://claude.com/product/claude-code) through hooks on macOS, Linux, and Windows
 - [GitHub Copilot CLI](https://docs.github.com/copilot/reference/cli-command-reference) through hooks on macOS, Linux, and Windows
