@@ -6,7 +6,7 @@ Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack
 
 中文文档：[docs/README.zh-CN.md](docs/README.zh-CN.md)
 
-[Quick start](#-install---step-1)
+[Quick start](#quick-start)
 
 > _"Imagine [Codex Desktop App](https://openai.com/codex/) keeps working while you make coffee or do laundry._
 >
@@ -31,25 +31,25 @@ Agents:
 - [Codex Desktop](https://openai.com/codex/) on macOS
 - [Codex CLI](https://github.com/openai/codex) through hooks on macOS, Linux, and Windows
 - [Claude Code](https://claude.com/product/claude-code) through hooks on macOS, Linux, and Windows
-- GitHub Copilot CLI through hooks on macOS, Linux, and Windows
-- Gemini CLI through hooks on macOS, Linux, and Windows
-- Aider through notification commands on macOS, Linux, and Windows
-- Cursor CLI through a completion wrapper on macOS, Linux, and Windows
-- OpenCode CLI through plugins on macOS, Linux, and Windows
-- OpenClaw through plugin hooks on macOS, Linux, and Windows
-- Hermes Agent CLI through plugin hooks on macOS, Linux, and Windows
+- [GitHub Copilot CLI](https://docs.github.com/copilot/reference/cli-command-reference) through hooks on macOS, Linux, and Windows
+- [Gemini CLI](https://google-gemini.github.io/gemini-cli/) through hooks on macOS, Linux, and Windows
+- [Aider](https://aider.chat/) through notification commands on macOS, Linux, and Windows
+- [Cursor CLI](https://docs.cursor.com/en/cli/overview) through a completion wrapper on macOS, Linux, and Windows
+- [OpenCode CLI](https://opencode.ai/) through plugins on macOS, Linux, and Windows
+- [OpenClaw](https://docs.openclaw.ai/) through plugin hooks on macOS, Linux, and Windows
+- [Hermes Agent CLI](https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks) through plugin hooks on macOS, Linux, and Windows
 
 Providers (Where do you want to get the notification?):
 
-- ntfy
-- Slack
-- Discord
-- Telegram
-- WhatsApp
-- Microsoft Teams
-- Email SMTP
-- Feishu/Lark Custom Bot
-- Pushover
+- [ntfy](https://ntfy.sh/)
+- [Slack](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+- [Discord](https://docs.discord.com/developers/resources/webhook)
+- [Telegram](https://core.telegram.org/bots/api)
+- [WhatsApp](https://developers.facebook.com/docs/whatsapp)
+- [Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook)
+- [Email SMTP](https://www.rfc-editor.org/rfc/rfc6409)
+- Feishu/Lark Custom Bot ([Feishu](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot), [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot))
+- [Pushover](https://pushover.net/api)
 - Webhook
 
 ## 🔒 Privacy
@@ -75,6 +75,8 @@ For Codex Desktop, it reads only completion data needed for the notification:
 
 In Feishu/Lark, notifications are sent as Codex-colored interactive cards with a clickable Open in Codex button.
 The button opens a local browser URL first, then hands off to Codex Desktop.
+
+<a id="quick-start"></a>
 
 ## ⚙️ Install - Step 1
 

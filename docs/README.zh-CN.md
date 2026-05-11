@@ -7,7 +7,7 @@
 
 English documentation: [../README.md](../README.md)
 
-[快速开始](#-安装---step-1)
+[快速开始](#quick-start)
 
 > _想象一下：你的 [Codex Desktop App](https://openai.com/codex/) 在后台工作，你去煮咖啡或者洗衣服，或者暂时离开电脑。_
 >
@@ -32,22 +32,25 @@ Agents：
 - macOS 上的 [Codex Desktop App](https://openai.com/codex/)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Codex CLI](https://github.com/openai/codex)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Claude Code](https://claude.com/product/claude-code)
-- 在 macOS、Linux 和 Windows 上通过 hooks 接入的 GitHub Copilot CLI
-- 在 macOS、Linux 和 Windows 上通过 hooks 接入的 Gemini CLI
-- 在 macOS、Linux 和 Windows 上通过 notification command 接入的 Aider
-- Cursor CLI、OpenCode CLI、OpenClaw 和 Hermes Agent CLI
+- 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [GitHub Copilot CLI](https://docs.github.com/copilot/reference/cli-command-reference)
+- 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Gemini CLI](https://google-gemini.github.io/gemini-cli/)
+- 在 macOS、Linux 和 Windows 上通过 notification command 接入的 [Aider](https://aider.chat/)
+- 在 macOS、Linux 和 Windows 上通过 completion wrapper 接入的 [Cursor CLI](https://docs.cursor.com/en/cli/overview)
+- 在 macOS、Linux 和 Windows 上通过 plugins 接入的 [OpenCode CLI](https://opencode.ai/)
+- 在 macOS、Linux 和 Windows 上通过 plugin hooks 接入的 [OpenClaw](https://docs.openclaw.ai/)
+- 在 macOS、Linux 和 Windows 上通过 plugin hooks 接入的 [Hermes Agent CLI](https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks)
 
 Providers（你想在哪里收到通知？）：
 
-- ntfy
-- Slack
-- Discord
-- Telegram
-- WhatsApp
-- Microsoft Teams
-- Email SMTP
-- Feishu/Lark Custom Bot
-- Pushover
+- [ntfy](https://ntfy.sh/)
+- [Slack](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+- [Discord](https://docs.discord.com/developers/resources/webhook)
+- [Telegram](https://core.telegram.org/bots/api)
+- [WhatsApp](https://developers.facebook.com/docs/whatsapp)
+- [Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook)
+- [Email SMTP](https://www.rfc-editor.org/rfc/rfc6409)
+- Feishu/Lark Custom Bot（[飞书](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot) / [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot)）
+- [Pushover](https://pushover.net/api)
 - Webhook
 
 ## 🔒 隐私
@@ -73,6 +76,8 @@ Agents Notifier 在本地运行。
 
 在 Feishu/Lark 中，通知会以 Codex 风格的 interactive card 发送，并带有可点击的 Open in Codex 按钮。
 这个按钮会先打开一个本地浏览器 URL，然后再交给 Codex Desktop。
+
+<a id="quick-start"></a>
 
 ## ⚙️ 安装 - Step 1
 
