@@ -90,9 +90,30 @@ function exitFromResult(result, binaryPath) {
 
 function copyNativeBinary(sourcePath, destinationPath) {
   fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-  fs.copyFileSync(sourcePath, destinationPath);
-  if (process.platform !== "win32") {
-    fs.chmodSync(destinationPath, 0o755);
+  const tempPath = path.join(
+    path.dirname(destinationPath),
+    `.${path.basename(destinationPath)}.${process.pid}.${Date.now()}.tmp`
+  );
+
+  try {
+    // Byte-copy through a new file so macOS npm cache provenance xattrs are not
+    // carried onto the executable that launch services will run.
+    fs.writeFileSync(tempPath, fs.readFileSync(sourcePath), {
+      mode: process.platform === "win32" ? 0o666 : 0o755,
+    });
+
+    if (process.platform !== "win32") {
+      fs.chmodSync(tempPath, 0o755);
+    }
+
+    if (process.platform === "win32") {
+      fs.rmSync(destinationPath, { force: true });
+    }
+
+    fs.renameSync(tempPath, destinationPath);
+  } catch (error) {
+    fs.rmSync(tempPath, { force: true });
+    throw error;
   }
 }
 
