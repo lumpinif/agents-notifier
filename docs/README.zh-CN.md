@@ -81,11 +81,18 @@ Agents Notifier 在本地运行。
 
 ## ⚙️ 安装 - Step 1
 
-安装方式二选一就够。
+安装方式任选一种就够。
 
 推荐方式：
 
 复制到 Terminal 里运行：
+
+```bash
+npm install -g agents-notifier
+agents-notifier setup
+```
+
+不用 npm 的话：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
@@ -166,6 +173,12 @@ Agent 设置教程：
 agents-notifier uninstall
 ```
 
+如果你是用 npm 安装的，本地清理完成后再删除 npm package：
+
+```bash
+npm uninstall -g agents-notifier
+```
+
 ## 🧭 命令
 
 ```bash
@@ -173,7 +186,7 @@ agents-notifier setup    # 设置或修改 agent/provider
 agents-notifier start    # 启动已有 service
 agents-notifier status   # 查看 service 状态
 agents-notifier stop     # 停止 service
-agents-notifier uninstall # 删除 service、配置、日志、状态和二进制
+agents-notifier uninstall # 删除 service、配置、日志和状态
 agents-notifier watch    # 前台 debug worker
 ```
 

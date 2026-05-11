@@ -2754,8 +2754,15 @@ fn run_uninstall() -> anyhow::Result<()> {
     }
 
     let current_binary = std::env::current_exe().context("failed to locate current binary")?;
-    if should_remove_current_binary(&current_binary) {
+    let install_method = std::env::var("AGENTS_NOTIFIER_INSTALL_METHOD").ok();
+    if should_remove_current_binary_for_install_method(&current_binary, install_method.as_deref()) {
         remove_path_if_exists(&current_binary)?;
+    } else if install_method.as_deref() == Some("npm") {
+        println!(
+            "left npm-managed binary in place: {}",
+            current_binary.display()
+        );
+        println!("Remove the npm package with: npm uninstall -g agents-notifier");
     } else {
         println!(
             "left development binary in place: {}",
@@ -2786,7 +2793,19 @@ fn remove_path_if_exists(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn should_remove_current_binary(path: &Path) -> bool {
+    should_remove_current_binary_for_install_method(path, None)
+}
+
+fn should_remove_current_binary_for_install_method(
+    path: &Path,
+    install_method: Option<&str>,
+) -> bool {
+    if install_method == Some("npm") {
+        return false;
+    }
+
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
@@ -2917,6 +2936,22 @@ mod tests {
         assert!(!should_remove_current_binary(Path::new(
             "/repo/target/release/agents-notifier"
         )));
+    }
+
+    #[test]
+    fn uninstall_keeps_npm_managed_binary_paths() {
+        assert!(!should_remove_current_binary_for_install_method(
+            Path::new(
+                "/usr/local/lib/node_modules/agents-notifier-linux-x64-gnu/bin/agents-notifier"
+            ),
+            Some("npm")
+        ));
+        assert!(!should_remove_current_binary_for_install_method(
+            Path::new(
+                r"C:\Users\tester\AppData\Roaming\npm\node_modules\agents-notifier-win32-x64-msvc\bin\agents-notifier.exe"
+            ),
+            Some("npm")
+        ));
     }
 
     #[test]

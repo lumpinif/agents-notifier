@@ -101,6 +101,9 @@ jobs:
       - build-windows
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -125,3 +128,13 @@ jobs:
           else
             gh release create "${TAG}" dist/* --title "${TAG}" --generate-notes
           fi
+
+      - name: Prepare npm package tarballs
+        run: node scripts/prepare-npm-release.js --dist dist --out npm-packages --pack-destination npm-tarballs
+
+      - name: Upload npm package tarballs
+        uses: actions/upload-artifact@v7
+        with:
+          name: agents-notifier-npm-packages
+          path: npm-tarballs/*.tgz
+          if-no-files-found: error

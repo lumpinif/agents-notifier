@@ -87,6 +87,13 @@ Recommended:
 Copy this into your Terminal:
 
 ```bash
+npm install -g agents-notifier
+agents-notifier setup
+```
+
+Without npm:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
 agents-notifier setup
 ```
@@ -165,6 +172,12 @@ Remove Agents Notifier cleanly:
 agents-notifier uninstall
 ```
 
+If you installed it with npm, remove the npm package after local cleanup:
+
+```bash
+npm uninstall -g agents-notifier
+```
+
 ## 🧭 Commands
 
 ```bash
@@ -172,7 +185,7 @@ agents-notifier setup    # set up or change agent/provider
 agents-notifier start    # start existing service
 agents-notifier status   # check service status
 agents-notifier stop     # stop service
-agents-notifier uninstall # remove service, config, logs, state, and binary
+agents-notifier uninstall # remove service, config, logs, and state
 agents-notifier watch    # foreground debug worker
 ```
 
