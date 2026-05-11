@@ -14,6 +14,7 @@ Set up the provider first. Then run `agents-notifier setup`.
 - [Discord](discord.md)
 - [Telegram](telegram.md)
 - [WhatsApp](whatsapp.md)
+- [Weixin](weixin.md)
 - [Microsoft Teams](microsoft-teams.md)
 - [Email SMTP](email-smtp.md)
 - [Webhook](webhook.md)

@@ -478,6 +478,7 @@ mod tests {
         let provider = EmailSmtpProvider::from_config(&ProviderConfig {
             id: "email".to_string(),
             provider_type: ProviderType::EmailSmtp,
+            base_url: None,
             server: None,
             topic: None,
             url: None,
@@ -507,6 +508,12 @@ mod tests {
             from: Some("Agents Notifier <alerts@example.com>".to_string()),
             to: Some(vec!["Felix <felix@example.com>".to_string()]),
             reply_to: Some("reply@example.com".to_string()),
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         })
         .expect("email_smtp provider config should be valid");
 

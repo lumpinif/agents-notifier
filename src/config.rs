@@ -124,6 +124,8 @@ pub struct ProviderConfig {
     #[serde(rename = "type")]
     pub provider_type: ProviderType,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub server: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
@@ -181,6 +183,18 @@ pub struct ProviderConfig {
     pub to: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient_user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_token_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_tag: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -210,6 +224,7 @@ pub enum ProviderType {
     Discord,
     Telegram,
     Whatsapp,
+    Weixin,
     MicrosoftTeams,
     EmailSmtp,
 }
@@ -225,6 +240,7 @@ impl ProviderType {
             Self::Discord => "discord",
             Self::Telegram => "telegram",
             Self::Whatsapp => "whatsapp",
+            Self::Weixin => "weixin",
             Self::MicrosoftTeams => "microsoft_teams",
             Self::EmailSmtp => "email_smtp",
         }
@@ -238,6 +254,7 @@ impl ProviderType {
             | Self::Discord
             | Self::Telegram
             | Self::Whatsapp
+            | Self::Weixin
             | Self::MicrosoftTeams => true,
             Self::Webhook | Self::FeishuLark | Self::EmailSmtp => false,
         }
@@ -304,6 +321,12 @@ pub enum ConfigError {
         "whatsapp provider `{provider_id}` must set exactly one of `access_token` or `access_token_env`"
     )]
     InvalidWhatsappAccessTokenSource { provider_id: String },
+    #[error("weixin provider `{provider_id}` must set exactly one of `token` or `token_env`")]
+    InvalidWeixinTokenSource { provider_id: String },
+    #[error(
+        "weixin provider `{provider_id}` must set exactly one of `context_token` or `context_token_env`"
+    )]
+    InvalidWeixinContextTokenSource { provider_id: String },
     #[error("microsoft_teams provider `{provider_id}` must set exactly one of `url` or `url_env`")]
     InvalidMicrosoftTeamsUrlSource { provider_id: String },
     #[error(
@@ -530,6 +553,24 @@ impl ProviderConfig {
                     self.recipient_phone_number.as_deref(),
                 )?;
             }
+            ProviderType::Weixin => {
+                self.require_present("base_url", self.base_url.as_deref())?;
+                let has_token = is_present(self.token.as_deref());
+                let has_token_env = is_present(self.token_env.as_deref());
+                if has_token == has_token_env {
+                    return Err(ConfigError::InvalidWeixinTokenSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+                self.require_present("recipient_user_id", self.recipient_user_id.as_deref())?;
+                let has_context_token = is_present(self.context_token.as_deref());
+                let has_context_token_env = is_present(self.context_token_env.as_deref());
+                if has_context_token == has_context_token_env {
+                    return Err(ConfigError::InvalidWeixinContextTokenSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
             ProviderType::MicrosoftTeams => {
                 let has_url = is_present(self.url.as_deref());
                 let has_url_env = is_present(self.url_env.as_deref());
@@ -670,6 +711,14 @@ phone_number_id = "123456789"
 recipient_phone_number = "15551234567"
 
 [[providers]]
+id = "weixin"
+type = "weixin"
+base_url = "https://ilinkai.weixin.qq.com"
+token_env = "AGENTS_NOTIFIER_WEIXIN_TOKEN"
+recipient_user_id = "user@im.wechat"
+context_token_env = "AGENTS_NOTIFIER_WEIXIN_CONTEXT_TOKEN"
+
+[[providers]]
 id = "microsoft_teams"
 type = "microsoft_teams"
 url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
@@ -687,7 +736,7 @@ to = ["felix@example.com"]
 
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord", "telegram", "whatsapp", "microsoft_teams", "email"]
+providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord", "telegram", "whatsapp", "weixin", "microsoft_teams", "email"]
 "#;
 
     #[test]
@@ -696,7 +745,7 @@ providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discor
 
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.sources.len(), 2);
-        assert_eq!(config.providers.len(), 10);
+        assert_eq!(config.providers.len(), 11);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
@@ -901,6 +950,42 @@ providers = ["telegram"]
     }
 
     #[test]
+    fn rejects_full_answer_detail_with_weixin_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "weixin"
+type = "weixin"
+base_url = "https://ilinkai.weixin.qq.com"
+token = "test-token"
+recipient_user_id = "user@im.wechat"
+context_token = "test-context-token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["weixin"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Weixin should reject full answer detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::AnswerDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "weixin" && provider_type == "weixin"
+        ));
+    }
+
+    #[test]
     fn parses_on_prompt_detail() {
         let raw = r#"
 schema_version = 1
@@ -1093,6 +1178,42 @@ providers = ["whatsapp"]
                 provider_id,
                 provider_type
             } if provider_id == "whatsapp" && provider_type == "whatsapp"
+        ));
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_weixin_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "weixin"
+type = "weixin"
+base_url = "https://ilinkai.weixin.qq.com"
+token = "test-token"
+recipient_user_id = "user@im.wechat"
+context_token = "test-context-token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["weixin"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("Weixin should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "weixin" && provider_type == "weixin"
         ));
     }
 
@@ -1409,6 +1530,64 @@ providers = ["whatsapp"]
         assert!(matches!(
             err,
             ConfigError::InvalidWhatsappAccessTokenSource { provider_id } if provider_id == "whatsapp"
+        ));
+    }
+
+    #[test]
+    fn rejects_weixin_without_token_source() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "weixin"
+type = "weixin"
+base_url = "https://ilinkai.weixin.qq.com"
+recipient_user_id = "user@im.wechat"
+context_token = "test-context-token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["weixin"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing Weixin token should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidWeixinTokenSource { provider_id } if provider_id == "weixin"
+        ));
+    }
+
+    #[test]
+    fn rejects_weixin_without_context_token_source() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "weixin"
+type = "weixin"
+base_url = "https://ilinkai.weixin.qq.com"
+token = "test-token"
+recipient_user_id = "user@im.wechat"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["weixin"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing Weixin context token should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidWeixinContextTokenSource { provider_id } if provider_id == "weixin"
         ));
     }
 

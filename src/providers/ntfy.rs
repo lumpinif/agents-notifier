@@ -145,6 +145,7 @@ mod tests {
         let provider = NtfyProvider::from_config(&ProviderConfig {
             id: "phone".to_string(),
             provider_type: ProviderType::Ntfy,
+            base_url: None,
             server: Some(server.uri()),
             topic: Some("topic".to_string()),
             url: None,
@@ -174,6 +175,12 @@ mod tests {
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         })
         .expect("provider config should be valid");
 
@@ -201,6 +208,7 @@ mod tests {
         let provider = NtfyProvider::from_config(&ProviderConfig {
             id: "phone".to_string(),
             provider_type: ProviderType::Ntfy,
+            base_url: None,
             server: Some(server.uri()),
             topic: Some("topic".to_string()),
             url: None,
@@ -230,6 +238,12 @@ mod tests {
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         })
         .expect("provider config should be valid");
 

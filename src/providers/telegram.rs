@@ -442,6 +442,7 @@ mod tests {
         let provider = TelegramProvider::from_config(&ProviderConfig {
             id: "telegram".to_string(),
             provider_type: ProviderType::Telegram,
+            base_url: None,
             server: None,
             topic: None,
             url: None,
@@ -471,6 +472,12 @@ mod tests {
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         })
         .expect("Telegram provider config should be valid");
 

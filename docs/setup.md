@@ -46,8 +46,9 @@ Choose where notifications should go:
 6. Webhook
 7. Telegram
 8. WhatsApp
-9. Microsoft Teams
-10. Email SMTP
+9. Weixin
+10. Microsoft Teams
+11. Email SMTP
 ```
 
 Provider guides:
@@ -59,6 +60,7 @@ Provider guides:
 - [Discord](providers/discord.md)
 - [Telegram](providers/telegram.md)
 - [WhatsApp](providers/whatsapp.md)
+- [Weixin](providers/weixin.md)
 - [Microsoft Teams](providers/microsoft-teams.md)
 - [Email SMTP](providers/email-smtp.md)
 - [Webhook](providers/webhook.md)
@@ -75,7 +77,7 @@ Choose how much answer text notifications include:
 Press Enter to keep `Preview`.
 Full Answer includes the visible assistant answer and omits Codex App control directives.
 
-Answer detail is only configurable for providers without a small documented message size limit.
+Answer detail is only configurable for providers without a small message size limit or delivery guard.
 
 Agents Notifier fixes answer detail to `Preview` for:
 
@@ -85,6 +87,7 @@ Agents Notifier fixes answer detail to `Preview` for:
 - Discord, because Discord webhook content is limited to 2000 characters.
 - Telegram, because Telegram Bot API text messages are limited to 4096 characters.
 - WhatsApp, because Agents Notifier uses a 4096-character guard for WhatsApp text bodies.
+- Weixin, because Agents Notifier uses a 3800-character guard for Weixin iLink text messages.
 - Microsoft Teams, because Teams webhook messages have a documented 28 KB size limit.
 
 ## Prompt Detail
@@ -110,7 +113,7 @@ answer_detail = "preview"
 prompt_detail = "off"
 ```
 
-Prompt detail is only configurable for providers without a small documented message size limit.
+Prompt detail is only configurable for providers without a small message size limit or delivery guard.
 
 Agents Notifier disables prompt detail for:
 
@@ -120,6 +123,7 @@ Agents Notifier disables prompt detail for:
 - Discord, because Discord webhook content is limited to 2000 characters.
 - Telegram, because Telegram Bot API text messages are limited to 4096 characters.
 - WhatsApp, because Agents Notifier uses a 4096-character guard for WhatsApp text bodies.
+- Weixin, because Agents Notifier uses a 3800-character guard for Weixin iLink text messages.
 - Microsoft Teams, because Teams webhook messages have a documented 28 KB size limit.
 
 To include prompts:

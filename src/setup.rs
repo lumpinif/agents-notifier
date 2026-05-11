@@ -1,7 +1,13 @@
 use std::fs;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use serde::Deserialize;
+use serde_json::json;
+use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::config::{
@@ -16,6 +22,11 @@ use crate::provider_urls::{
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
 const FEISHU_WEBHOOK_PREFIX: &str = "https://open.feishu.cn/open-apis/bot/v2/hook/";
 const LARK_WEBHOOK_PREFIX: &str = "https://open.larksuite.com/open-apis/bot/v2/hook/";
+pub const DEFAULT_WEIXIN_BASE_URL: &str = "https://ilinkai.weixin.qq.com";
+pub const DEFAULT_WEIXIN_BOT_TYPE: &str = "3";
+pub const DEFAULT_WEIXIN_QR_TIMEOUT: Duration = Duration::from_secs(480);
+pub const DEFAULT_WEIXIN_LINK_TIMEOUT: Duration = Duration::from_secs(180);
+const WEIXIN_SETUP_CHANNEL_VERSION: &str = "agents-notifier-weixin-setup/1.0";
 pub const TEST_NOTIFICATION_SKIPPED_MESSAGE: &str =
     "Service is running. No test notification was sent.";
 
@@ -71,9 +82,37 @@ pub struct WhatsappTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeixinTarget {
+    pub provider_id: String,
+    pub base_url_host: String,
+    pub recipient_user_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MicrosoftTeamsTarget {
     pub provider_id: String,
     pub webhook_host: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeixinQrCode {
+    pub qr_key: String,
+    pub qr_content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeixinQrStatus {
+    pub status: String,
+    pub token: Option<String>,
+    pub account_id: Option<String>,
+    pub base_url: Option<String>,
+    pub scanned_user_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeixinRecipientLink {
+    pub recipient_user_id: String,
+    pub context_token: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,6 +333,69 @@ pub fn resolve_whatsapp_recipient_phone_number(input: &str) -> anyhow::Result<St
     Ok(phone_number.to_string())
 }
 
+pub fn resolve_weixin_base_url(input: &str) -> anyhow::Result<String> {
+    let base_url = input.trim().trim_end_matches('/');
+    let parsed =
+        reqwest::Url::parse(base_url).context("Weixin iLink base URL must be a valid HTTPS URL")?;
+    let has_root_path = parsed.path().is_empty() || parsed.path() == "/";
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || !has_root_path
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        anyhow::bail!(
+            "Weixin iLink base URL must be an HTTPS origin like `https://ilinkai.weixin.qq.com`"
+        );
+    }
+
+    Ok(base_url.to_string())
+}
+
+pub fn resolve_weixin_token(input: &str) -> anyhow::Result<String> {
+    resolve_weixin_secret("Weixin iLink token", input)
+}
+
+pub fn resolve_weixin_recipient_user_id(input: &str) -> anyhow::Result<String> {
+    let recipient_user_id = input.trim();
+    if recipient_user_id.is_empty()
+        || recipient_user_id
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace())
+    {
+        anyhow::bail!("Weixin recipient user id must be non-empty and must not contain whitespace");
+    }
+
+    Ok(recipient_user_id.to_string())
+}
+
+pub fn resolve_weixin_context_token(input: &str) -> anyhow::Result<String> {
+    resolve_weixin_secret("Weixin context token", input)
+}
+
+pub fn resolve_weixin_route_tag(input: &str) -> anyhow::Result<Option<String>> {
+    let route_tag = input.trim();
+    if route_tag.is_empty() || route_tag.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    if route_tag.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        anyhow::bail!("Weixin SKRouteTag must not contain whitespace");
+    }
+
+    Ok(Some(route_tag.to_string()))
+}
+
+fn resolve_weixin_secret(label: &'static str, input: &str) -> anyhow::Result<String> {
+    let token = input.trim();
+    if token.is_empty() || token.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        anyhow::bail!("{label} must be non-empty and must not contain whitespace");
+    }
+
+    Ok(token.to_string())
+}
+
 pub fn resolve_microsoft_teams_webhook_url(input: &str) -> anyhow::Result<String> {
     validate_microsoft_teams_webhook_url(input)
 }
@@ -444,6 +546,7 @@ pub fn build_ntfy_config(
         vec![ProviderConfig {
             id: "phone".to_string(),
             provider_type: ProviderType::Ntfy,
+            base_url: None,
             server: Some(DEFAULT_NTFY_SERVER.to_string()),
             topic: Some(topic.to_string()),
             url: None,
@@ -473,6 +576,12 @@ pub fn build_ntfy_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -491,6 +600,7 @@ pub fn build_feishu_lark_config(
         vec![ProviderConfig {
             id: "work_chat".to_string(),
             provider_type: ProviderType::FeishuLark,
+            base_url: None,
             server: None,
             topic: None,
             url: Some(webhook_url.to_string()),
@@ -520,6 +630,12 @@ pub fn build_feishu_lark_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -537,6 +653,7 @@ pub fn build_webhook_config(
         vec![ProviderConfig {
             id: "webhook".to_string(),
             provider_type: ProviderType::Webhook,
+            base_url: None,
             server: None,
             topic: None,
             url: Some(webhook_url.to_string()),
@@ -566,6 +683,12 @@ pub fn build_webhook_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -586,6 +709,7 @@ pub fn build_pushover_config(
         vec![ProviderConfig {
             id: "pushover".to_string(),
             provider_type: ProviderType::Pushover,
+            base_url: None,
             server: None,
             topic: None,
             url: None,
@@ -615,6 +739,12 @@ pub fn build_pushover_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -632,6 +762,7 @@ pub fn build_slack_config(
         vec![ProviderConfig {
             id: "slack".to_string(),
             provider_type: ProviderType::Slack,
+            base_url: None,
             server: None,
             topic: None,
             url: Some(webhook_url.to_string()),
@@ -661,6 +792,12 @@ pub fn build_slack_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -678,6 +815,7 @@ pub fn build_discord_config(
         vec![ProviderConfig {
             id: "discord".to_string(),
             provider_type: ProviderType::Discord,
+            base_url: None,
             server: None,
             topic: None,
             url: Some(webhook_url.to_string()),
@@ -707,6 +845,12 @@ pub fn build_discord_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -725,6 +869,7 @@ pub fn build_telegram_config(
         vec![ProviderConfig {
             id: "telegram".to_string(),
             provider_type: ProviderType::Telegram,
+            base_url: None,
             server: None,
             topic: None,
             url: None,
@@ -754,6 +899,12 @@ pub fn build_telegram_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -773,6 +924,7 @@ pub fn build_whatsapp_config(
         vec![ProviderConfig {
             id: "whatsapp".to_string(),
             provider_type: ProviderType::Whatsapp,
+            base_url: None,
             server: None,
             topic: None,
             url: None,
@@ -802,6 +954,70 @@ pub fn build_whatsapp_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
+        }],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_weixin_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    base_url: &str,
+    token: &str,
+    recipient_user_id: &str,
+    context_token: &str,
+    route_tag: Option<String>,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "weixin".to_string(),
+            provider_type: ProviderType::Weixin,
+            base_url: Some(base_url.to_string()),
+            server: None,
+            topic: None,
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
+            token: Some(token.to_string()),
+            token_env: None,
+            recipient_user_id: Some(recipient_user_id.to_string()),
+            context_token: Some(context_token.to_string()),
+            context_token_env: None,
+            route_tag,
         }],
     )
 }
@@ -819,6 +1035,7 @@ pub fn build_microsoft_teams_config(
         vec![ProviderConfig {
             id: "microsoft_teams".to_string(),
             provider_type: ProviderType::MicrosoftTeams,
+            base_url: None,
             server: None,
             topic: None,
             url: Some(webhook_url.to_string()),
@@ -848,6 +1065,12 @@ pub fn build_microsoft_teams_config(
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -873,6 +1096,7 @@ pub fn build_email_smtp_config(
         vec![ProviderConfig {
             id: "email".to_string(),
             provider_type: ProviderType::EmailSmtp,
+            base_url: None,
             server: None,
             topic: None,
             url: None,
@@ -902,6 +1126,12 @@ pub fn build_email_smtp_config(
             from: Some(from.to_string()),
             to: Some(to),
             reply_to,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         }],
     )
 }
@@ -1101,6 +1331,22 @@ pub fn whatsapp_targets(config: &Config) -> Vec<WhatsappTarget> {
         .collect()
 }
 
+pub fn weixin_targets(config: &Config) -> Vec<WeixinTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Weixin)
+        .filter_map(|provider| {
+            let base_url = provider.base_url.as_ref()?;
+            Some(WeixinTarget {
+                provider_id: provider.id.clone(),
+                base_url_host: host_label(base_url),
+                recipient_user_id: provider.recipient_user_id.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
 pub fn microsoft_teams_targets(config: &Config) -> Vec<MicrosoftTeamsTarget> {
     config
         .providers
@@ -1130,6 +1376,310 @@ pub fn email_smtp_targets(config: &Config) -> Vec<EmailSmtpTarget> {
             })
         })
         .collect()
+}
+
+pub async fn fetch_weixin_qr_code(
+    base_url: &str,
+    route_tag: Option<&str>,
+    bot_type: &str,
+) -> anyhow::Result<WeixinQrCode> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(40))
+        .build()
+        .context("failed to build Weixin setup HTTP client")?;
+    let mut url = weixin_url(base_url, &["ilink", "bot", "get_bot_qrcode"])?;
+    url.query_pairs_mut().append_pair("bot_type", bot_type);
+
+    let mut request = client.get(url);
+    if let Some(route_tag) = route_tag.filter(|value| !value.trim().is_empty()) {
+        request = request.header("SKRouteTag", route_tag);
+    }
+
+    let response = request
+        .send()
+        .await
+        .context("failed to request Weixin QR code")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("failed to read Weixin QR code response")?;
+    if !status.is_success() {
+        anyhow::bail!(
+            "Weixin QR code request returned HTTP {}: {}",
+            status.as_u16(),
+            short_response_body(&body)
+        );
+    }
+
+    let payload: WeixinQrCodeResponse =
+        serde_json::from_str(&body).context("failed to parse Weixin QR code response")?;
+    let qr_key = payload.qrcode.trim();
+    let qr_content = payload.qrcode_img_content.trim();
+    if qr_key.is_empty() {
+        anyhow::bail!("Weixin QR code response did not include `qrcode`");
+    }
+    if qr_content.is_empty() {
+        anyhow::bail!("Weixin QR code response did not include `qrcode_img_content`");
+    }
+
+    Ok(WeixinQrCode {
+        qr_key: qr_key.to_string(),
+        qr_content: qr_content.to_string(),
+    })
+}
+
+pub async fn poll_weixin_qr_status(
+    base_url: &str,
+    qr_key: &str,
+    route_tag: Option<&str>,
+) -> anyhow::Result<WeixinQrStatus> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(40))
+        .build()
+        .context("failed to build Weixin setup HTTP client")?;
+    let mut url = weixin_url(base_url, &["ilink", "bot", "get_qrcode_status"])?;
+    url.query_pairs_mut().append_pair("qrcode", qr_key);
+
+    let mut request = client.get(url).header("iLink-App-ClientVersion", "1");
+    if let Some(route_tag) = route_tag.filter(|value| !value.trim().is_empty()) {
+        request = request.header("SKRouteTag", route_tag);
+    }
+
+    let response = request
+        .send()
+        .await
+        .context("failed to request Weixin QR status")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("failed to read Weixin QR status response")?;
+    if !status.is_success() {
+        anyhow::bail!(
+            "Weixin QR status request returned HTTP {}: {}",
+            status.as_u16(),
+            short_response_body(&body)
+        );
+    }
+
+    let payload: WeixinQrStatusResponse =
+        serde_json::from_str(&body).context("failed to parse Weixin QR status response")?;
+
+    Ok(WeixinQrStatus {
+        status: payload.status.trim().to_string(),
+        token: present_str(payload.bot_token),
+        account_id: present_str(payload.ilink_bot_id),
+        base_url: present_str(payload.baseurl).map(|value| value.trim_end_matches('/').to_string()),
+        scanned_user_id: present_str(payload.ilink_user_id),
+    })
+}
+
+pub async fn verify_weixin_token(
+    base_url: &str,
+    token: &str,
+    route_tag: Option<&str>,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .context("failed to build Weixin setup HTTP client")?;
+    let url = weixin_url(base_url, &["ilink", "bot", "getupdates"])?;
+    let body = json!({
+        "get_updates_buf": "",
+        "base_info": {
+            "channel_version": WEIXIN_SETUP_CHANNEL_VERSION
+        }
+    });
+
+    let mut request = client
+        .post(url)
+        .bearer_auth(token)
+        .header("AuthorizationType", "ilink_bot_token")
+        .header("X-WECHAT-UIN", random_weixin_uin())
+        .json(&body);
+    if let Some(route_tag) = route_tag.filter(|value| !value.trim().is_empty()) {
+        request = request.header("SKRouteTag", route_tag);
+    }
+
+    let response = request
+        .send()
+        .await
+        .context("failed to verify Weixin iLink token")?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .context("failed to read Weixin token verification response")?;
+    if !status.is_success() {
+        anyhow::bail!(
+            "Weixin token verification returned HTTP {}: {}",
+            status.as_u16(),
+            short_response_body(&body)
+        );
+    }
+    let _: serde_json::Value =
+        serde_json::from_str(&body).context("Weixin token verification returned invalid JSON")?;
+
+    Ok(())
+}
+
+pub async fn poll_weixin_recipient_link(
+    base_url: &str,
+    token: &str,
+    route_tag: Option<&str>,
+    expected_user_id: Option<&str>,
+    timeout: Duration,
+) -> anyhow::Result<WeixinRecipientLink> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(40))
+        .build()
+        .context("failed to build Weixin setup HTTP client")?;
+    let url = weixin_url(base_url, &["ilink", "bot", "getupdates"])?;
+    let deadline = Instant::now() + timeout;
+    let mut get_updates_buf = String::new();
+
+    while Instant::now() < deadline {
+        let body = json!({
+            "get_updates_buf": get_updates_buf,
+            "base_info": {
+                "channel_version": WEIXIN_SETUP_CHANNEL_VERSION
+            }
+        });
+        let mut request = client
+            .post(url.clone())
+            .bearer_auth(token)
+            .header("AuthorizationType", "ilink_bot_token")
+            .header("X-WECHAT-UIN", random_weixin_uin())
+            .json(&body);
+        if let Some(route_tag) = route_tag.filter(|value| !value.trim().is_empty()) {
+            request = request.header("SKRouteTag", route_tag);
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("failed to poll Weixin recipient link message")?;
+        let status = response.status();
+        let response_body = response
+            .text()
+            .await
+            .context("failed to read Weixin recipient link response")?;
+        if !status.is_success() {
+            anyhow::bail!(
+                "Weixin recipient link poll returned HTTP {}: {}",
+                status.as_u16(),
+                short_response_body(&response_body)
+            );
+        }
+
+        let payload: WeixinGetUpdatesResponse = serde_json::from_str(&response_body)
+            .context("failed to parse Weixin recipient link response")?;
+        if payload.ret != 0 || payload.errcode != 0 {
+            anyhow::bail!(
+                "Weixin recipient link poll returned ret={} errcode={}: {}",
+                payload.ret,
+                payload.errcode,
+                payload.errmsg
+            );
+        }
+        get_updates_buf = payload.get_updates_buf.unwrap_or_default();
+
+        for message in payload.msgs {
+            let from_user_id = message.from_user_id.trim();
+            let context_token = message.context_token.trim();
+            if message.message_type == Some(2) {
+                continue;
+            }
+            if from_user_id.is_empty() || context_token.is_empty() {
+                continue;
+            }
+            if expected_user_id.is_some_and(|expected| expected != from_user_id) {
+                continue;
+            }
+
+            return Ok(WeixinRecipientLink {
+                recipient_user_id: from_user_id.to_string(),
+                context_token: context_token.to_string(),
+            });
+        }
+
+        sleep(Duration::from_secs(1)).await;
+    }
+
+    anyhow::bail!("timed out waiting for a Weixin message with context_token")
+}
+
+#[derive(Debug, Deserialize)]
+struct WeixinQrCodeResponse {
+    qrcode: String,
+    qrcode_img_content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WeixinQrStatusResponse {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    bot_token: String,
+    #[serde(default)]
+    ilink_bot_id: String,
+    #[serde(default)]
+    baseurl: String,
+    #[serde(default)]
+    ilink_user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WeixinGetUpdatesResponse {
+    #[serde(default)]
+    ret: i64,
+    #[serde(default)]
+    errcode: i64,
+    #[serde(default)]
+    errmsg: String,
+    #[serde(default)]
+    msgs: Vec<WeixinUpdateMessage>,
+    #[serde(default)]
+    get_updates_buf: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WeixinUpdateMessage {
+    #[serde(default)]
+    from_user_id: String,
+    #[serde(default)]
+    context_token: String,
+    #[serde(default)]
+    message_type: Option<i64>,
+}
+
+fn weixin_url(base_url: &str, path: &[&str]) -> anyhow::Result<reqwest::Url> {
+    let mut url = reqwest::Url::parse(&resolve_weixin_base_url(base_url)?)?;
+    url.path_segments_mut()
+        .map_err(|_| anyhow::anyhow!("Weixin iLink base URL cannot be a base URL"))?
+        .extend(path);
+    Ok(url)
+}
+
+fn short_response_body(body: &str) -> String {
+    let body = body.trim();
+    if body.chars().count() <= 256 {
+        return body.to_string();
+    }
+
+    format!("{}...", body.chars().take(256).collect::<String>())
+}
+
+fn present_str(value: String) -> Option<String> {
+    let value = value.trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn random_weixin_uin() -> String {
+    let bytes = Uuid::new_v4().into_bytes();
+    let value = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    BASE64_STANDARD.encode(value.to_string())
 }
 
 pub fn missing_config_message(path: &str) -> String {
@@ -1543,6 +2093,42 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_weixin_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_weixin_config(
+            AgentSelection::Aider,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            DEFAULT_WEIXIN_BASE_URL,
+            "test-token",
+            "user@im.wechat",
+            "test-context-token",
+            Some("test-route".to_string()),
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("weixin")
+                .and_then(|provider| provider.base_url.as_deref()),
+            Some(DEFAULT_WEIXIN_BASE_URL)
+        );
+        assert_eq!(
+            parsed
+                .provider("weixin")
+                .and_then(|provider| provider.recipient_user_id.as_deref()),
+            Some("user@im.wechat")
+        );
+        let source = parsed
+            .source("aider")
+            .expect("Aider source should be configured");
+        assert_eq!(source.source_type, SourceType::AgentHook);
+    }
+
+    #[test]
     fn writes_parseable_microsoft_teams_config() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
@@ -1654,7 +2240,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_telegram_whatsapp_and_microsoft_teams_inputs() {
+    fn accepts_telegram_whatsapp_weixin_and_microsoft_teams_inputs() {
         assert_eq!(
             resolve_telegram_bot_token("123456:test-token")
                 .expect("Telegram bot token should be valid"),
@@ -1678,6 +2264,29 @@ mod tests {
             resolve_whatsapp_recipient_phone_number("15551234567")
                 .expect("WhatsApp recipient should be valid"),
             "15551234567"
+        );
+        assert_eq!(
+            resolve_weixin_base_url(DEFAULT_WEIXIN_BASE_URL)
+                .expect("Weixin base URL should be valid"),
+            DEFAULT_WEIXIN_BASE_URL
+        );
+        assert_eq!(
+            resolve_weixin_token("test-token").expect("Weixin token should be valid"),
+            "test-token"
+        );
+        assert_eq!(
+            resolve_weixin_recipient_user_id("user@im.wechat")
+                .expect("Weixin recipient user id should be valid"),
+            "user@im.wechat"
+        );
+        assert_eq!(
+            resolve_weixin_context_token("test-context-token")
+                .expect("Weixin context token should be valid"),
+            "test-context-token"
+        );
+        assert_eq!(
+            resolve_weixin_route_tag("test-route").expect("Weixin route tag should be valid"),
+            Some("test-route".to_string())
         );
         assert_eq!(
             resolve_microsoft_teams_webhook_url("https://example.com/workflow?sig=secret")
@@ -1908,6 +2517,16 @@ mod tests {
             "123456789",
             "15551234567",
         );
+        let weixin_config = build_weixin_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            DEFAULT_WEIXIN_BASE_URL,
+            "test-token",
+            "user@im.wechat",
+            "test-context-token",
+            None,
+        );
         let teams_config = build_microsoft_teams_config(
             AgentSelection::CodexDesktop,
             AnswerDetail::Preview,
@@ -1940,6 +2559,14 @@ mod tests {
             vec![WhatsappTarget {
                 provider_id: "whatsapp".to_string(),
                 recipient_phone_number: "15551234567".to_string(),
+            }]
+        );
+        assert_eq!(
+            weixin_targets(&weixin_config),
+            vec![WeixinTarget {
+                provider_id: "weixin".to_string(),
+                base_url_host: "ilinkai.weixin.qq.com".to_string(),
+                recipient_user_id: "user@im.wechat".to_string(),
             }]
         );
         assert_eq!(

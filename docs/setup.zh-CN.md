@@ -45,8 +45,9 @@ Codex Desktop 当前在 macOS 和 Windows 上提供。Linux 上，setup 会从 C
 6. Webhook
 7. Telegram
 8. WhatsApp
-9. Microsoft Teams
-10. Email SMTP
+9. Weixin
+10. Microsoft Teams
+11. Email SMTP
 ```
 
 Provider 教程：
@@ -58,6 +59,7 @@ Provider 教程：
 - [Discord](providers/discord.zh-CN.md)
 - [Telegram](providers/telegram.zh-CN.md)
 - [WhatsApp](providers/whatsapp.zh-CN.md)
+- [Weixin](providers/weixin.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
 - [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
@@ -74,7 +76,7 @@ Provider 教程：
 直接按 Enter 会使用 `Preview`。
 Full Answer 会包含用户能看到的 assistant 回答，并忽略 Codex App 控制指令。
 
-Answer detail 只对没有小型官方消息长度限制的 provider 开放。
+Answer detail 只对没有小型消息长度限制或本地发送保护线的 provider 开放。
 
 Agents Notifier 会对这些 provider 固定使用 `Preview`：
 
@@ -84,6 +86,7 @@ Agents Notifier 会对这些 provider 固定使用 `Preview`：
 - Discord，因为 Discord webhook content 最多 2000 个字符。
 - Telegram，因为 Telegram Bot API text message 最多 4096 个字符。
 - WhatsApp，因为 Agents Notifier 对 WhatsApp text body 使用 4096 字符本地保护线。
+- Weixin，因为 Agents Notifier 对 Weixin iLink text message 使用 3800 字符本地保护线。
 - Microsoft Teams，因为 Teams webhook message 有官方文档记录的 28 KB 大小限制。
 
 ## Prompt Detail
@@ -107,7 +110,7 @@ answer_detail = "preview"
 prompt_detail = "off"
 ```
 
-Prompt detail 只对没有小型官方消息长度限制的 provider 开放。
+Prompt detail 只对没有小型消息长度限制或本地发送保护线的 provider 开放。
 
 Agents Notifier 会对这些 provider 禁用 prompt detail：
 
@@ -117,6 +120,7 @@ Agents Notifier 会对这些 provider 禁用 prompt detail：
 - Discord，因为 Discord webhook content 最多 2000 个字符。
 - Telegram，因为 Telegram Bot API text message 最多 4096 个字符。
 - WhatsApp，因为 Agents Notifier 对 WhatsApp text body 使用 4096 字符本地保护线。
+- Weixin，因为 Agents Notifier 对 Weixin iLink text message 使用 3800 字符本地保护线。
 - Microsoft Teams，因为 Teams webhook message 有官方文档记录的 28 KB 大小限制。
 
 如果要包含 prompt：

@@ -342,6 +342,7 @@ mod tests {
         let err = SlackProvider::from_config(&ProviderConfig {
             id: "slack".to_string(),
             provider_type: ProviderType::Webhook,
+            base_url: None,
             server: None,
             topic: None,
             url: Some("https://example.com/slack".to_string()),
@@ -371,6 +372,12 @@ mod tests {
             from: None,
             to: None,
             reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
         })
         .expect_err("wrong provider type should fail");
 

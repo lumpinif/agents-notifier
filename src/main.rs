@@ -9,6 +9,8 @@ use clap::{Parser, Subcommand};
 use console::style;
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
+use qrcode::QrCode;
+use qrcode::render::unicode;
 use tokio::time::sleep;
 
 use agents_notifier::config::{
@@ -164,6 +166,9 @@ enum GuidedSetup {
     Whatsapp {
         agent: setup::AgentSelection,
     },
+    Weixin {
+        agent: setup::AgentSelection,
+    },
     MicrosoftTeams {
         agent: setup::AgentSelection,
     },
@@ -182,8 +187,21 @@ enum InitialProvider {
     Discord,
     Telegram,
     Whatsapp,
+    Weixin,
     MicrosoftTeams,
     EmailSmtp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WeixinSetupMethod {
+    QrLogin,
+    ExistingToken,
+}
+
+struct WeixinLogin {
+    token: String,
+    base_url: String,
+    scanned_user_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -207,6 +225,11 @@ struct SetupDefaults {
     whatsapp_access_token: Option<String>,
     whatsapp_phone_number_id: Option<String>,
     whatsapp_recipient_phone_number: Option<String>,
+    weixin_base_url: Option<String>,
+    weixin_token: Option<String>,
+    weixin_recipient_user_id: Option<String>,
+    weixin_context_token: Option<String>,
+    weixin_route_tag: Option<String>,
     microsoft_teams_webhook_url: Option<String>,
     email_smtp_host: Option<String>,
     email_smtp_port: Option<u16>,
@@ -255,6 +278,16 @@ impl SetupDefaults {
                 .and_then(|provider| provider.phone_number_id.clone()),
             whatsapp_recipient_phone_number: first_provider_of_type(config, ProviderType::Whatsapp)
                 .and_then(|provider| provider.recipient_phone_number.clone()),
+            weixin_base_url: first_provider_of_type(config, ProviderType::Weixin)
+                .and_then(|provider| provider.base_url.clone()),
+            weixin_token: first_provider_of_type(config, ProviderType::Weixin)
+                .and_then(|provider| provider.token.clone()),
+            weixin_recipient_user_id: first_provider_of_type(config, ProviderType::Weixin)
+                .and_then(|provider| provider.recipient_user_id.clone()),
+            weixin_context_token: first_provider_of_type(config, ProviderType::Weixin)
+                .and_then(|provider| provider.context_token.clone()),
+            weixin_route_tag: first_provider_of_type(config, ProviderType::Weixin)
+                .and_then(|provider| provider.route_tag.clone()),
             microsoft_teams_webhook_url: first_provider_of_type(
                 config,
                 ProviderType::MicrosoftTeams,
@@ -315,6 +348,7 @@ impl InitialProvider {
             Self::Discord => "Discord",
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
+            Self::Weixin => "Weixin",
             Self::MicrosoftTeams => "Microsoft Teams",
             Self::EmailSmtp => "Email SMTP",
         }
@@ -331,21 +365,21 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let allow_setup = config_path.is_none();
             let config_path = resolve_config_path(config_path)?;
-            let loaded = load_config(&config_path, allow_setup)?;
+            let loaded = load_config(&config_path, allow_setup).await?;
             run_start_service(&config_path, loaded, false).await
         }
         Command::Setup {
             config: config_path,
         } => {
             let config_path = resolve_config_path(config_path)?;
-            let loaded = run_provider_setup(&config_path)?;
+            let loaded = run_provider_setup(&config_path).await?;
             run_start_service(&config_path, loaded, true).await
         }
         Command::Watch {
             config: config_path,
         } => {
             let config_path = resolve_config_path(config_path)?;
-            let loaded = load_config(&config_path, false)?;
+            let loaded = load_config(&config_path, false).await?;
             init_tracing(&loaded.config.log.level)?;
             run_watch(&loaded.config).await
         }
@@ -364,14 +398,14 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-fn load_config(path: &Path, allow_setup: bool) -> anyhow::Result<LoadedConfig> {
+async fn load_config(path: &Path, allow_setup: bool) -> anyhow::Result<LoadedConfig> {
     match Config::from_path(path) {
         Ok(config) => Ok(LoadedConfig {
             config,
             guided_setup: None,
         }),
         Err(ConfigError::NotFound { path }) if allow_setup && is_interactive_terminal() => {
-            run_first_start_setup(Path::new(&path))
+            run_first_start_setup(Path::new(&path)).await
         }
         Err(ConfigError::NotFound { path }) => {
             anyhow::bail!("{}", setup::missing_config_message(&path))
@@ -500,17 +534,17 @@ fn print_provider_configured(provider: &str) {
     println!("{provider}: {}", style("configured").green());
 }
 
-fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+async fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     println!("No Agents Notifier config found at `{}`.", path.display());
     println!();
     println!("Starting setup now.");
     println!("Setup connects one agent to one notification provider.");
     println!();
 
-    run_guided_provider_setup(path, ConfigWriteMode::Created, SetupDefaults::default())
+    run_guided_provider_setup(path, ConfigWriteMode::Created, SetupDefaults::default()).await
 }
 
-fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+async fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     if !is_interactive_terminal() {
         anyhow::bail!(
             "`agents-notifier setup` must be run in an interactive terminal so you can choose an agent and a provider."
@@ -531,10 +565,10 @@ fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
         ConfigWriteMode::Created
     };
     let defaults = SetupDefaults::from_path(path)?;
-    run_guided_provider_setup(path, mode, defaults)
+    run_guided_provider_setup(path, mode, defaults).await
 }
 
-fn run_guided_provider_setup(
+async fn run_guided_provider_setup(
     path: &Path,
     mode: ConfigWriteMode,
     defaults: SetupDefaults,
@@ -568,6 +602,9 @@ fn run_guided_provider_setup(
         }
         InitialProvider::Whatsapp => {
             run_whatsapp_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
+        InitialProvider::Weixin => {
+            run_weixin_setup(path, mode, agent, answer_detail, prompt_detail, &defaults).await
         }
         InitialProvider::MicrosoftTeams => {
             run_microsoft_teams_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
@@ -622,6 +659,13 @@ fn answer_detail_for_provider(
             println!();
             println!(
                 "Answer detail is fixed to Preview for WhatsApp because Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::Weixin => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for Weixin because Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages."
             );
             Ok(AnswerDetail::Preview)
         }
@@ -682,6 +726,13 @@ fn prompt_detail_for_provider(
             println!();
             println!(
                 "Prompt detail is disabled for WhatsApp because Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::Weixin => {
+            println!();
+            println!(
+                "Prompt detail is disabled for Weixin because Agents Notifier uses a 3800-character delivery guard for Weixin iLink text messages."
             );
             Ok(PromptDetail::Off)
         }
@@ -951,6 +1002,94 @@ fn run_whatsapp_setup(
     Ok(LoadedConfig {
         config,
         guided_setup: Some(GuidedSetup::Whatsapp { agent }),
+    })
+}
+
+async fn run_weixin_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Weixin sends notifications through a personal WeChat iLink bot connection.");
+    println!("This is personal WeChat through iLink, not WeChat Work and not WhatsApp Business.");
+    println!();
+
+    let mut base_url = prompt_for_weixin_base_url(defaults.weixin_base_url.as_deref())?;
+    let route_tag = prompt_for_weixin_route_tag(defaults.weixin_route_tag.as_deref())?;
+    let setup_method = prompt_for_weixin_setup_method()?;
+
+    let (token, scanned_user_id) = match setup_method {
+        WeixinSetupMethod::QrLogin => {
+            let login = run_weixin_qr_login(&base_url, route_tag.as_deref()).await?;
+            base_url = login.base_url;
+            (login.token, login.scanned_user_id)
+        }
+        WeixinSetupMethod::ExistingToken => {
+            let token = prompt_for_weixin_token(defaults.weixin_token.as_deref())?;
+            println!("Verifying Weixin iLink token...");
+            setup::verify_weixin_token(&base_url, &token, route_tag.as_deref()).await?;
+            println!("{}", style("Token verified.").green());
+            (token, None)
+        }
+    };
+
+    let token_changed = defaults.weixin_token.as_deref() != Some(token.as_str());
+    let linked_recipient = if let (false, Some(recipient_user_id), Some(context_token)) = (
+        token_changed,
+        defaults.weixin_recipient_user_id.as_ref(),
+        defaults.weixin_context_token.as_ref(),
+    ) {
+        if prompt_confirm("Keep the current linked Weixin recipient?", true)? {
+            setup::WeixinRecipientLink {
+                recipient_user_id: recipient_user_id.clone(),
+                context_token: context_token.clone(),
+            }
+        } else {
+            link_weixin_recipient(
+                &base_url,
+                &token,
+                route_tag.as_deref(),
+                scanned_user_id.as_deref(),
+            )
+            .await?
+        }
+    } else {
+        link_weixin_recipient(
+            &base_url,
+            &token,
+            route_tag.as_deref(),
+            scanned_user_id.as_deref(),
+        )
+        .await?
+    };
+
+    let config = setup::build_weixin_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        &base_url,
+        &token,
+        &linked_recipient.recipient_user_id,
+        &linked_recipient.context_token,
+        route_tag,
+    );
+    setup::write_config(path, &config)?;
+
+    println!();
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    println!(
+        "Weixin recipient: {}",
+        style(&linked_recipient.recipient_user_id).cyan()
+    );
+    print_provider_configured("Weixin");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Weixin { agent }),
     })
 }
 
@@ -1228,6 +1367,7 @@ fn prompt_for_initial_provider(
         InitialProvider::Webhook,
         InitialProvider::Telegram,
         InitialProvider::Whatsapp,
+        InitialProvider::Weixin,
         InitialProvider::MicrosoftTeams,
         InitialProvider::EmailSmtp,
     ];
@@ -1538,6 +1678,229 @@ fn prompt_for_whatsapp_recipient_phone_number(
             }
         }
     }
+}
+
+fn prompt_for_weixin_base_url(current_base_url: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        let default_base_url = current_base_url.unwrap_or(setup::DEFAULT_WEIXIN_BASE_URL);
+        let prompt = if let Some(current_base_url) = current_base_url {
+            format!(
+                "Weixin gateway URL [{current_base_url}, press Enter to keep unless your iLink provider gave you another URL]"
+            )
+        } else {
+            format!(
+                "Weixin gateway URL [{}; press Enter for the default]",
+                setup::DEFAULT_WEIXIN_BASE_URL
+            )
+        };
+        let input = prompt_text(prompt, "failed to read Weixin iLink base URL")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            default_base_url
+        } else {
+            input
+        };
+
+        match setup::resolve_weixin_base_url(candidate) {
+            Ok(base_url) => return Ok(base_url),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_weixin_route_tag(current_route_tag: Option<&str>) -> anyhow::Result<Option<String>> {
+    loop {
+        let prompt = if let Some(current_route_tag) = current_route_tag {
+            format!(
+                "Optional Weixin route tag [{current_route_tag}, press Enter to keep, type `none` to clear]"
+            )
+        } else {
+            "Optional Weixin route tag (advanced; press Enter to skip unless your iLink provider gave you an SKRouteTag)"
+                .to_string()
+        };
+        let input = prompt_text(prompt, "failed to read Weixin SKRouteTag")?;
+
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(current_route_tag.map(ToOwned::to_owned));
+        }
+        if current_route_tag.is_some() && input.eq_ignore_ascii_case("none") {
+            return Ok(None);
+        }
+
+        match setup::resolve_weixin_route_tag(input) {
+            Ok(route_tag) => return Ok(route_tag),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_weixin_setup_method() -> anyhow::Result<WeixinSetupMethod> {
+    let options = [WeixinSetupMethod::QrLogin, WeixinSetupMethod::ExistingToken];
+    let default_index = options
+        .iter()
+        .position(|method| *method == WeixinSetupMethod::QrLogin)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|method| match method {
+            WeixinSetupMethod::QrLogin => "Scan WeChat QR code",
+            WeixinSetupMethod::ExistingToken => "Paste existing iLink token",
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt("How should Agents Notifier connect to Weixin?")
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read Weixin setup method")?;
+
+    Ok(options[selection])
+}
+
+fn prompt_for_weixin_token(current_token: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        let prompt = if current_token.is_some() {
+            "Weixin iLink token [configured, press Enter to keep]"
+        } else {
+            "Weixin iLink token"
+        };
+        let input = prompt_secret(prompt, "failed to read Weixin iLink token")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_token.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_weixin_token(candidate) {
+            Ok(token) => return Ok(token),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+async fn run_weixin_qr_login(
+    base_url: &str,
+    route_tag: Option<&str>,
+) -> anyhow::Result<WeixinLogin> {
+    let mut qr =
+        setup::fetch_weixin_qr_code(base_url, route_tag, setup::DEFAULT_WEIXIN_BOT_TYPE).await?;
+    print_weixin_qr_code(&qr.qr_content)?;
+
+    let deadline = Instant::now() + setup::DEFAULT_WEIXIN_QR_TIMEOUT;
+    let mut refresh_count = 1;
+    let mut scanned_message_printed = false;
+
+    while Instant::now() < deadline {
+        let status = setup::poll_weixin_qr_status(base_url, &qr.qr_key, route_tag).await?;
+        match status.status.as_str() {
+            "" | "wait" => {
+                sleep(Duration::from_secs(1)).await;
+            }
+            "scaned" | "scanned" => {
+                if !scanned_message_printed {
+                    println!("QR code scanned. Confirm the login in WeChat.");
+                    scanned_message_printed = true;
+                }
+                sleep(Duration::from_secs(1)).await;
+            }
+            "expired" => {
+                refresh_count += 1;
+                if refresh_count > 3 {
+                    anyhow::bail!("Weixin QR code expired too many times; run setup again");
+                }
+                println!("QR code expired. Fetching a new one...");
+                qr = setup::fetch_weixin_qr_code(
+                    base_url,
+                    route_tag,
+                    setup::DEFAULT_WEIXIN_BOT_TYPE,
+                )
+                .await?;
+                print_weixin_qr_code(&qr.qr_content)?;
+                scanned_message_printed = false;
+            }
+            "confirmed" => {
+                let token = status
+                    .token
+                    .ok_or_else(|| anyhow::anyhow!("Weixin login confirmed without token"))?;
+                let token = setup::resolve_weixin_token(&token)?;
+                let base_url = status
+                    .base_url
+                    .as_deref()
+                    .unwrap_or(base_url)
+                    .trim_end_matches('/');
+                let base_url = setup::resolve_weixin_base_url(base_url)?;
+                println!("{}", style("Weixin QR login confirmed.").green());
+                return Ok(WeixinLogin {
+                    token,
+                    base_url,
+                    scanned_user_id: status.scanned_user_id,
+                });
+            }
+            _ => {
+                sleep(Duration::from_secs(1)).await;
+            }
+        }
+    }
+
+    anyhow::bail!("timed out waiting for Weixin QR login")
+}
+
+async fn link_weixin_recipient(
+    base_url: &str,
+    token: &str,
+    route_tag: Option<&str>,
+    expected_user_id: Option<&str>,
+) -> anyhow::Result<setup::WeixinRecipientLink> {
+    println!();
+    println!(
+        "{}",
+        style("ACTION REQUIRED: Open WeChat now.").yellow().bold()
+    );
+    println!(
+        "1. Find the bot chat that appeared after login: {}",
+        style("WeixinClawBot").cyan().bold()
+    );
+    println!(
+        "2. Send this exact message in that WeChat chat: {}",
+        style("hi").green().bold()
+    );
+    println!(
+        "{}",
+        style("Do not type `hi` here in Terminal. Send it inside WeChat.")
+            .red()
+            .bold()
+    );
+    let prompt = format!(
+        "{} Press Enter only after you sent {} in the Weixin bot chat.",
+        style("DONE?").green().bold(),
+        style("hi").green().bold()
+    );
+    wait_for_enter(&prompt)?;
+    println!("Waiting for the Weixin bot message you just sent...");
+    setup::poll_weixin_recipient_link(
+        base_url,
+        token,
+        route_tag,
+        expected_user_id,
+        setup::DEFAULT_WEIXIN_LINK_TIMEOUT,
+    )
+    .await
+}
+
+fn print_weixin_qr_code(qr_content: &str) -> anyhow::Result<()> {
+    println!();
+    println!("Scan this QR code with WeChat:");
+    let code = QrCode::new(qr_content.as_bytes()).context("failed to render Weixin QR code")?;
+    let image = code.render::<unicode::Dense1x2>().quiet_zone(true).build();
+    println!("{image}");
+    println!("QR content: {qr_content}");
+    println!();
+    Ok(())
 }
 
 fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
@@ -2019,6 +2382,7 @@ fn print_notification_targets(config: &Config) {
     let discord_targets = setup::discord_targets(config);
     let telegram_targets = setup::telegram_targets(config);
     let whatsapp_targets = setup::whatsapp_targets(config);
+    let weixin_targets = setup::weixin_targets(config);
     let microsoft_teams_targets = setup::microsoft_teams_targets(config);
     let email_smtp_targets = setup::email_smtp_targets(config);
 
@@ -2115,6 +2479,15 @@ fn print_notification_targets(config: &Config) {
         }
     }
 
+    if !weixin_targets.is_empty() {
+        print_section("Weixin");
+        for target in &weixin_targets {
+            print_field("provider", &target.provider_id);
+            print_field("endpoint", &target.base_url_host);
+            print_field("recipient", &target.recipient_user_id);
+        }
+    }
+
     if !microsoft_teams_targets.is_empty() {
         print_section("Microsoft Teams");
         for target in &microsoft_teams_targets {
@@ -2178,6 +2551,7 @@ fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
             ProviderType::Discord => InitialProvider::Discord,
             ProviderType::Telegram => InitialProvider::Telegram,
             ProviderType::Whatsapp => InitialProvider::Whatsapp,
+            ProviderType::Weixin => InitialProvider::Weixin,
             ProviderType::MicrosoftTeams => InitialProvider::MicrosoftTeams,
             ProviderType::EmailSmtp => InitialProvider::EmailSmtp,
         })
@@ -2362,6 +2736,12 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             println!();
             println!("Next: check the recipient WhatsApp chat.");
             wait_for_enter("Press Enter to send a test notification through WhatsApp.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::Weixin { agent } => {
+            println!();
+            println!("Next: check the linked Weixin chat.");
+            wait_for_enter("Press Enter to send a test notification through Weixin.")?;
             print_agent_setup_note(agent);
         }
         GuidedSetup::MicrosoftTeams { agent } => {
@@ -2921,6 +3301,11 @@ providers = ["work_chat"]
                 .expect("Discord prompt detail should resolve"),
             PromptDetail::Off
         );
+        assert_eq!(
+            prompt_detail_for_provider(InitialProvider::Weixin, Some(PromptDetail::On))
+                .expect("Weixin prompt detail should resolve"),
+            PromptDetail::Off
+        );
     }
 
     #[test]
@@ -2943,6 +3328,11 @@ providers = ["work_chat"]
         assert_eq!(
             answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full))
                 .expect("Discord answer detail should resolve"),
+            AnswerDetail::Preview
+        );
+        assert_eq!(
+            answer_detail_for_provider(InitialProvider::Weixin, Some(AnswerDetail::Full))
+                .expect("Weixin answer detail should resolve"),
             AnswerDetail::Preview
         );
     }

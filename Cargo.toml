@@ -13,6 +13,7 @@ dialoguer = { version = "0.12.0", default-features = false, features = ["passwor
 hmac = "0.13.0"
 indicatif = "0.18.4"
 lettre = { version = "0.11.21", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
+qrcode = { version = "0.14.1", default-features = false }
 regex = "1.12.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0.228", features = ["derive"] }
