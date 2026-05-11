@@ -210,6 +210,12 @@ agents-notifier emit \
 
 ## ✨ Example
 
+Codex Desktop + Lark integration, including Apple Watch push notifications.
+
+| Lark push preview | Apple Watch notification |
+| --- | --- |
+| <img src="docs/assets/examples/codex-lark-watch-cover.png" alt="Agents Notifier Apple Watch push preview with Lark" width="260"> | <img src="docs/assets/examples/codex-lark-watch-notification.png" alt="Agents Notifier Apple Watch notification sent through Lark" width="260"> |
+
 ```text
 Codex Desktop
 
