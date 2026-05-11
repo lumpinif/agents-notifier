@@ -161,6 +161,42 @@ pub struct ProviderConfig {
     pub phone_number_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recipient_phone_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub security: Option<EmailSmtpSecurity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EmailSmtpSecurity {
+    Starttls,
+    ImplicitTls,
+}
+
+impl EmailSmtpSecurity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Starttls => "starttls",
+            Self::ImplicitTls => "implicit_tls",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -175,6 +211,7 @@ pub enum ProviderType {
     Telegram,
     Whatsapp,
     MicrosoftTeams,
+    EmailSmtp,
 }
 
 impl ProviderType {
@@ -189,6 +226,7 @@ impl ProviderType {
             Self::Telegram => "telegram",
             Self::Whatsapp => "whatsapp",
             Self::MicrosoftTeams => "microsoft_teams",
+            Self::EmailSmtp => "email_smtp",
         }
     }
 
@@ -201,7 +239,7 @@ impl ProviderType {
             | Self::Telegram
             | Self::Whatsapp
             | Self::MicrosoftTeams => true,
-            Self::Webhook | Self::FeishuLark => false,
+            Self::Webhook | Self::FeishuLark | Self::EmailSmtp => false,
         }
     }
 }
@@ -268,6 +306,16 @@ pub enum ConfigError {
     InvalidWhatsappAccessTokenSource { provider_id: String },
     #[error("microsoft_teams provider `{provider_id}` must set exactly one of `url` or `url_env`")]
     InvalidMicrosoftTeamsUrlSource { provider_id: String },
+    #[error(
+        "email_smtp provider `{provider_id}` must set at most one of `username` or `username_env`"
+    )]
+    InvalidEmailSmtpUsernameSource { provider_id: String },
+    #[error(
+        "email_smtp provider `{provider_id}` must set at most one of `password` or `password_env`"
+    )]
+    InvalidEmailSmtpPasswordSource { provider_id: String },
+    #[error("email_smtp provider `{provider_id}` must set both username and password, or neither")]
+    InvalidEmailSmtpCredentials { provider_id: String },
     #[error(
         "`prompt_detail = \"on\"` is not supported with `{provider_type}` provider `{provider_id}` because that provider has a message size limit"
     )]
@@ -491,6 +539,54 @@ impl ProviderConfig {
                     });
                 }
             }
+            ProviderType::EmailSmtp => {
+                self.require_present("host", self.host.as_deref())?;
+                if self.port.is_none() {
+                    return Err(ConfigError::MissingProviderField {
+                        provider_id: self.id.clone(),
+                        field: "port",
+                    });
+                }
+                if self.security.is_none() {
+                    return Err(ConfigError::MissingProviderField {
+                        provider_id: self.id.clone(),
+                        field: "security",
+                    });
+                }
+                self.require_present("from", self.from.as_deref())?;
+                if self
+                    .to
+                    .as_ref()
+                    .is_none_or(|recipients| recipients.is_empty())
+                {
+                    return Err(ConfigError::MissingProviderField {
+                        provider_id: self.id.clone(),
+                        field: "to",
+                    });
+                }
+
+                let has_username = is_present(self.username.as_deref());
+                let has_username_env = is_present(self.username_env.as_deref());
+                if has_username && has_username_env {
+                    return Err(ConfigError::InvalidEmailSmtpUsernameSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+
+                let has_password = is_present(self.password.as_deref());
+                let has_password_env = is_present(self.password_env.as_deref());
+                if has_password && has_password_env {
+                    return Err(ConfigError::InvalidEmailSmtpPasswordSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+
+                if (has_username || has_username_env) != (has_password || has_password_env) {
+                    return Err(ConfigError::InvalidEmailSmtpCredentials {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -578,9 +674,20 @@ id = "microsoft_teams"
 type = "microsoft_teams"
 url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
 
+[[providers]]
+id = "email"
+type = "email_smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+username_env = "AGENTS_NOTIFIER_EMAIL_SMTP_USERNAME"
+password_env = "AGENTS_NOTIFIER_EMAIL_SMTP_PASSWORD"
+from = "Agents Notifier <alerts@example.com>"
+to = ["felix@example.com"]
+
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord", "telegram", "whatsapp", "microsoft_teams"]
+providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord", "telegram", "whatsapp", "microsoft_teams", "email"]
 "#;
 
     #[test]
@@ -589,7 +696,7 @@ providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discor
 
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.sources.len(), 2);
-        assert_eq!(config.providers.len(), 9);
+        assert_eq!(config.providers.len(), 10);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
@@ -1331,6 +1438,69 @@ providers = ["microsoft_teams"]
         assert!(matches!(
             err,
             ConfigError::InvalidMicrosoftTeamsUrlSource { provider_id } if provider_id == "microsoft_teams"
+        ));
+    }
+
+    #[test]
+    fn rejects_email_smtp_without_required_fields() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "email"
+type = "email_smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+from = "alerts@example.com"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["email"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing recipients should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::MissingProviderField { provider_id, field }
+                if provider_id == "email" && field == "to"
+        ));
+    }
+
+    #[test]
+    fn rejects_email_smtp_partial_credentials() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "email"
+type = "email_smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+username = "alerts@example.com"
+from = "alerts@example.com"
+to = ["felix@example.com"]
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["email"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("partial credentials should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidEmailSmtpCredentials { provider_id } if provider_id == "email"
         ));
     }
 }

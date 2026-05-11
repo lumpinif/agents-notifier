@@ -1,4 +1,5 @@
 pub mod discord;
+pub mod email_smtp;
 pub mod feishu_lark;
 mod formatting;
 mod http;
@@ -16,6 +17,7 @@ use crate::config::{Config, ProviderType};
 use crate::router::Provider;
 
 pub use discord::DiscordProvider;
+pub use email_smtp::EmailSmtpProvider;
 pub use feishu_lark::FeishuLarkProvider;
 pub use microsoft_teams::MicrosoftTeamsProvider;
 pub use ntfy::NtfyProvider;
@@ -56,6 +58,9 @@ pub fn build_providers(config: &Config) -> anyhow::Result<Vec<Box<dyn Provider>>
             }
             ProviderType::MicrosoftTeams => {
                 Ok(Box::new(MicrosoftTeamsProvider::from_config(provider)?) as Box<dyn Provider>)
+            }
+            ProviderType::EmailSmtp => {
+                Ok(Box::new(EmailSmtpProvider::from_config(provider)?) as Box<dyn Provider>)
             }
         })
         .collect::<Result<Vec<_>, anyhow::Error>>()

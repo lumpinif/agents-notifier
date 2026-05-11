@@ -10,8 +10,8 @@ use clap::{Parser, Subcommand};
 use tokio::time::sleep;
 
 use agents_notifier::config::{
-    AnswerDetail, Config, ConfigError, PromptDetail, ProviderConfig, ProviderType, SourceConfig,
-    SourceType,
+    AnswerDetail, Config, ConfigError, EmailSmtpSecurity, PromptDetail, ProviderConfig,
+    ProviderType, SourceConfig, SourceType,
 };
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
 use agents_notifier::local_open_bridge;
@@ -174,6 +174,9 @@ enum GuidedSetup {
     MicrosoftTeams {
         agent: setup::AgentSelection,
     },
+    EmailSmtp {
+        agent: setup::AgentSelection,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +190,7 @@ enum InitialProvider {
     Telegram,
     Whatsapp,
     MicrosoftTeams,
+    EmailSmtp,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -211,6 +215,14 @@ struct SetupDefaults {
     whatsapp_phone_number_id: Option<String>,
     whatsapp_recipient_phone_number: Option<String>,
     microsoft_teams_webhook_url: Option<String>,
+    email_smtp_host: Option<String>,
+    email_smtp_port: Option<u16>,
+    email_smtp_security: Option<EmailSmtpSecurity>,
+    email_smtp_username: Option<String>,
+    email_smtp_password: Option<String>,
+    email_smtp_from: Option<String>,
+    email_smtp_to: Option<Vec<String>>,
+    email_smtp_reply_to: Option<String>,
 }
 
 impl SetupDefaults {
@@ -255,6 +267,22 @@ impl SetupDefaults {
                 ProviderType::MicrosoftTeams,
             )
             .and_then(configured_provider_url),
+            email_smtp_host: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.host.clone()),
+            email_smtp_port: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.port),
+            email_smtp_security: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.security),
+            email_smtp_username: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.username.clone()),
+            email_smtp_password: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.password.clone()),
+            email_smtp_from: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.from.clone()),
+            email_smtp_to: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.to.clone()),
+            email_smtp_reply_to: first_provider_of_type(config, ProviderType::EmailSmtp)
+                .and_then(|provider| provider.reply_to.clone()),
         }
     }
 
@@ -295,6 +323,7 @@ impl InitialProvider {
             Self::Telegram => "Telegram",
             Self::Whatsapp => "WhatsApp",
             Self::MicrosoftTeams => "Microsoft Teams",
+            Self::EmailSmtp => "Email SMTP",
         }
     }
 }
@@ -434,6 +463,9 @@ fn run_guided_provider_setup(
         InitialProvider::MicrosoftTeams => {
             run_microsoft_teams_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
         }
+        InitialProvider::EmailSmtp => {
+            run_email_smtp_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
     }
 }
 
@@ -491,7 +523,9 @@ fn answer_detail_for_provider(
             );
             Ok(AnswerDetail::Preview)
         }
-        InitialProvider::FeishuLark | InitialProvider::Webhook => prompt_for_answer_detail(default),
+        InitialProvider::FeishuLark | InitialProvider::Webhook | InitialProvider::EmailSmtp => {
+            prompt_for_answer_detail(default)
+        }
     }
 }
 
@@ -549,7 +583,9 @@ fn prompt_detail_for_provider(
             );
             Ok(PromptDetail::Off)
         }
-        InitialProvider::FeishuLark | InitialProvider::Webhook => prompt_for_prompt_detail(default),
+        InitialProvider::FeishuLark | InitialProvider::Webhook | InitialProvider::EmailSmtp => {
+            prompt_for_prompt_detail(default)
+        }
     }
 }
 
@@ -867,6 +903,67 @@ fn run_microsoft_teams_setup(
     })
 }
 
+fn run_email_smtp_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Email SMTP sends notifications through your SMTP server as plain text email.");
+    println!("Use STARTTLS on port 587 unless your provider explicitly gives you port 465.");
+    println!();
+
+    let host = prompt_for_email_smtp_host(defaults.email_smtp_host.as_deref())?;
+    let security = prompt_for_email_smtp_security(defaults.email_smtp_security)?;
+    let default_port = defaults
+        .email_smtp_port
+        .unwrap_or_else(|| default_email_smtp_port(security));
+    let port = prompt_for_email_smtp_port(default_port)?;
+    let username = prompt_for_email_smtp_username(defaults.email_smtp_username.as_deref())?;
+    let password = if username.is_some() {
+        Some(prompt_for_email_smtp_password(
+            defaults.email_smtp_password.as_deref(),
+        )?)
+    } else {
+        None
+    };
+    let from = prompt_for_email_smtp_mailbox("From email", defaults.email_smtp_from.as_deref())?;
+    let to = prompt_for_email_smtp_recipients(defaults.email_smtp_to.as_deref())?;
+    let reply_to = prompt_for_email_smtp_optional_mailbox(
+        "Reply-To email",
+        defaults.email_smtp_reply_to.as_deref(),
+    )?;
+    let config = setup::build_email_smtp_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        &host,
+        port,
+        security,
+        username,
+        password,
+        &from,
+        to,
+        reply_to,
+    );
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("Email SMTP: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::EmailSmtp { agent }),
+    })
+}
+
 fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
 ) -> anyhow::Result<setup::AgentSelection> {
@@ -1036,11 +1133,12 @@ fn prompt_for_initial_provider(
         println!("7. Telegram");
         println!("8. WhatsApp");
         println!("9. Microsoft Teams");
+        println!("10. Email SMTP");
         if let Some(default) = default {
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose a provider [1/2/3/4/5/6/7/8/9, {}]: ",
+            "Choose a provider [1/2/3/4/5/6/7/8/9/10, {}]: ",
             choice_prompt_hint(
                 default.map(provider_choice),
                 provider_choice(effective_default)
@@ -1064,7 +1162,8 @@ fn prompt_for_initial_provider(
             "7" => return Ok(InitialProvider::Telegram),
             "8" => return Ok(InitialProvider::Whatsapp),
             "9" => return Ok(InitialProvider::MicrosoftTeams),
-            _ => println!("Please enter 1, 2, 3, 4, 5, 6, 7, 8, or 9."),
+            "10" => return Ok(InitialProvider::EmailSmtp),
+            _ => println!("Please enter 1, 2, 3, 4, 5, 6, 7, 8, 9, or 10."),
         }
         println!();
     }
@@ -1442,6 +1541,250 @@ fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::
     }
 }
 
+fn prompt_for_email_smtp_host(current_host: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_host) = current_host {
+            print!("SMTP host [{current_host}, press Enter to keep]: ");
+        } else {
+            print!("SMTP host, for example smtp.gmail.com: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read SMTP host")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_host.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_email_smtp_host(candidate) {
+            Ok(host) => return Ok(host),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_email_smtp_security(
+    current_security: Option<EmailSmtpSecurity>,
+) -> anyhow::Result<EmailSmtpSecurity> {
+    loop {
+        let effective_default = current_security.unwrap_or(EmailSmtpSecurity::Starttls);
+
+        println!("SMTP security:");
+        println!("1. STARTTLS on an SMTP submission connection (Recommended)");
+        println!("2. Implicit TLS");
+        if let Some(current_security) = current_security {
+            println!("Current: {}", email_smtp_security_display(current_security));
+        }
+        print!(
+            "Choose SMTP security [1/2, {}]: ",
+            choice_prompt_hint(
+                current_security.map(email_smtp_security_choice),
+                email_smtp_security_choice(effective_default)
+            )
+        );
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read SMTP security")?;
+
+        match input.trim() {
+            "" => return Ok(effective_default),
+            "1" => return Ok(EmailSmtpSecurity::Starttls),
+            "2" => return Ok(EmailSmtpSecurity::ImplicitTls),
+            _ => println!("Please enter 1 or 2."),
+        }
+        println!();
+    }
+}
+
+fn prompt_for_email_smtp_port(default_port: u16) -> anyhow::Result<u16> {
+    loop {
+        print!("SMTP port [{default_port}, press Enter to keep]: ");
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read SMTP port")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            default_port.to_string()
+        } else {
+            input.to_string()
+        };
+
+        match setup::resolve_email_smtp_port(&candidate) {
+            Ok(port) => return Ok(port),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_email_smtp_username(
+    current_username: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    loop {
+        if let Some(current_username) = current_username {
+            print!(
+                "SMTP username [{current_username}, press Enter to keep, type `none` for no auth]: "
+            );
+        } else {
+            print!("SMTP username, or press Enter for no auth: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read SMTP username")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_username.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_email_smtp_optional_username(candidate) {
+            Ok(username) => return Ok(username),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_email_smtp_password(current_password: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if current_password.is_some() {
+            print!("SMTP password [configured, press Enter to keep]: ");
+        } else {
+            print!("SMTP password or SMTP API key: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read SMTP password")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_password.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_email_smtp_password(candidate) {
+            Ok(password) => return Ok(password),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_email_smtp_mailbox(
+    label: &'static str,
+    current_mailbox: Option<&str>,
+) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_mailbox) = current_mailbox {
+            print!("{label} [{current_mailbox}, press Enter to keep]: ");
+        } else {
+            print!("{label}, for example Agents Notifier <alerts@example.com>: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .with_context(|| format!("failed to read {label}"))?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_mailbox.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_email_smtp_mailbox(candidate, label) {
+            Ok(mailbox) => return Ok(mailbox),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_email_smtp_optional_mailbox(
+    label: &'static str,
+    current_mailbox: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    loop {
+        if let Some(current_mailbox) = current_mailbox {
+            print!("{label} [{current_mailbox}, press Enter to keep, type `none` to clear]: ");
+        } else {
+            print!("{label}, or press Enter to skip: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .with_context(|| format!("failed to read {label}"))?;
+
+        let input = input.trim();
+        if input.is_empty() {
+            return Ok(current_mailbox.map(ToOwned::to_owned));
+        }
+        if input.eq_ignore_ascii_case("none") {
+            return Ok(None);
+        }
+
+        match setup::resolve_email_smtp_mailbox(input, label) {
+            Ok(mailbox) => return Ok(Some(mailbox)),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
+fn prompt_for_email_smtp_recipients(
+    current_recipients: Option<&[String]>,
+) -> anyhow::Result<Vec<String>> {
+    loop {
+        if let Some(current_recipients) = current_recipients {
+            print!(
+                "Recipient emails [{}; press Enter to keep]: ",
+                current_recipients.join(", ")
+            );
+        } else {
+            print!("Recipient emails, comma-separated: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read recipient emails")?;
+
+        let input = input.trim();
+        if input.is_empty()
+            && let Some(current_recipients) = current_recipients
+        {
+            return Ok(current_recipients.to_vec());
+        }
+
+        match setup::resolve_email_smtp_recipients(input) {
+            Ok(recipients) => return Ok(recipients),
+            Err(error) => println!("{error}"),
+        }
+    }
+}
+
 fn prompt_for_pushover_app_token(current_token: Option<&str>) -> anyhow::Result<String> {
     loop {
         if current_token.is_some() {
@@ -1701,6 +2044,7 @@ fn print_notification_targets(config: &Config) {
     let telegram_targets = setup::telegram_targets(config);
     let whatsapp_targets = setup::whatsapp_targets(config);
     let microsoft_teams_targets = setup::microsoft_teams_targets(config);
+    let email_smtp_targets = setup::email_smtp_targets(config);
 
     println!();
     println!("Notification:");
@@ -1873,6 +2217,29 @@ fn print_notification_targets(config: &Config) {
             println!("webhook: {}", target.webhook_host);
         }
     }
+
+    if !email_smtp_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+            || !pushover_targets.is_empty()
+            || !slack_targets.is_empty()
+            || !discord_targets.is_empty()
+            || !telegram_targets.is_empty()
+            || !whatsapp_targets.is_empty()
+            || !microsoft_teams_targets.is_empty()
+        {
+            println!();
+        }
+        println!("Email SMTP:");
+        for target in &email_smtp_targets {
+            println!("provider: {}", target.provider_id);
+            println!("server: {}:{}", target.host, target.port);
+            println!("from: {}", target.from);
+            println!("to: {}", target.to.join(", "));
+        }
+    }
 }
 
 fn configured_agents(config: &Config) -> Vec<String> {
@@ -1920,6 +2287,7 @@ fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
             ProviderType::Telegram => InitialProvider::Telegram,
             ProviderType::Whatsapp => InitialProvider::Whatsapp,
             ProviderType::MicrosoftTeams => InitialProvider::MicrosoftTeams,
+            ProviderType::EmailSmtp => InitialProvider::EmailSmtp,
         })
 }
 
@@ -1980,6 +2348,28 @@ fn provider_choice(provider: InitialProvider) -> &'static str {
         InitialProvider::Telegram => "7",
         InitialProvider::Whatsapp => "8",
         InitialProvider::MicrosoftTeams => "9",
+        InitialProvider::EmailSmtp => "10",
+    }
+}
+
+fn email_smtp_security_choice(security: EmailSmtpSecurity) -> &'static str {
+    match security {
+        EmailSmtpSecurity::Starttls => "1",
+        EmailSmtpSecurity::ImplicitTls => "2",
+    }
+}
+
+fn email_smtp_security_display(security: EmailSmtpSecurity) -> &'static str {
+    match security {
+        EmailSmtpSecurity::Starttls => "STARTTLS",
+        EmailSmtpSecurity::ImplicitTls => "Implicit TLS",
+    }
+}
+
+fn default_email_smtp_port(security: EmailSmtpSecurity) -> u16 {
+    match security {
+        EmailSmtpSecurity::Starttls => 587,
+        EmailSmtpSecurity::ImplicitTls => 465,
     }
 }
 
@@ -2142,6 +2532,12 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             println!();
             println!("Next: check your Microsoft Teams chat or channel.");
             wait_for_enter("Press Enter to send a test notification through Microsoft Teams.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::EmailSmtp { agent } => {
+            println!();
+            println!("Next: check the recipient email inbox.");
+            wait_for_enter("Press Enter to send a test notification through Email SMTP.")?;
             print_agent_setup_note(agent);
         }
     }

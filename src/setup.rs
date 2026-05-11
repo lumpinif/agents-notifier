@@ -5,8 +5,8 @@ use anyhow::Context;
 use uuid::Uuid;
 
 use crate::config::{
-    AnswerDetail, CONFIG_SCHEMA_VERSION, Config, LogConfig, NotificationConfig, PromptDetail,
-    ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
+    AnswerDetail, CONFIG_SCHEMA_VERSION, Config, EmailSmtpSecurity, LogConfig, NotificationConfig,
+    PromptDetail, ProviderConfig, ProviderType, RouteConfig, SourceConfig, SourceType,
 };
 use crate::provider_urls::{
     host_label, validate_custom_webhook_url, validate_discord_webhook_url,
@@ -74,6 +74,15 @@ pub struct WhatsappTarget {
 pub struct MicrosoftTeamsTarget {
     pub provider_id: String,
     pub webhook_host: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmailSmtpTarget {
+    pub provider_id: String,
+    pub host: String,
+    pub port: u16,
+    pub from: String,
+    pub to: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,6 +298,90 @@ pub fn resolve_microsoft_teams_webhook_url(input: &str) -> anyhow::Result<String
     validate_microsoft_teams_webhook_url(input)
 }
 
+pub fn resolve_email_smtp_host(input: &str) -> anyhow::Result<String> {
+    let host = input.trim();
+    if host.is_empty() {
+        anyhow::bail!("Email SMTP host is required");
+    }
+    if host.contains("://")
+        || host.contains('/')
+        || host.contains('@')
+        || host.bytes().any(|byte| byte.is_ascii_whitespace())
+    {
+        anyhow::bail!("Email SMTP host must be a hostname, not a URL");
+    }
+
+    Ok(host.to_string())
+}
+
+pub fn resolve_email_smtp_port(input: &str) -> anyhow::Result<u16> {
+    let port = input
+        .trim()
+        .parse::<u16>()
+        .context("Email SMTP port must be a number")?;
+    if port == 0 {
+        anyhow::bail!("Email SMTP port must be greater than 0");
+    }
+
+    Ok(port)
+}
+
+pub fn resolve_email_smtp_security(input: &str) -> anyhow::Result<EmailSmtpSecurity> {
+    match input.trim() {
+        "starttls" => Ok(EmailSmtpSecurity::Starttls),
+        "implicit_tls" => Ok(EmailSmtpSecurity::ImplicitTls),
+        _ => anyhow::bail!("Email SMTP security must be `starttls` or `implicit_tls`"),
+    }
+}
+
+pub fn resolve_email_smtp_optional_username(input: &str) -> anyhow::Result<Option<String>> {
+    let username = input.trim();
+    if username.is_empty() || username.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    if username.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        anyhow::bail!("Email SMTP username must not contain whitespace");
+    }
+
+    Ok(Some(username.to_string()))
+}
+
+pub fn resolve_email_smtp_password(input: &str) -> anyhow::Result<String> {
+    let password = input.trim();
+    if password.is_empty() {
+        anyhow::bail!("Email SMTP password is required when username is configured");
+    }
+
+    Ok(password.to_string())
+}
+
+pub fn resolve_email_smtp_mailbox(input: &str, field: &'static str) -> anyhow::Result<String> {
+    let mailbox = input.trim();
+    if mailbox.is_empty() {
+        anyhow::bail!("Email SMTP {field} is required");
+    }
+    mailbox
+        .parse::<lettre::message::Mailbox>()
+        .with_context(|| format!("Email SMTP {field} must be a valid email mailbox"))?;
+
+    Ok(mailbox.to_string())
+}
+
+pub fn resolve_email_smtp_recipients(input: &str) -> anyhow::Result<Vec<String>> {
+    let recipients = input
+        .split(',')
+        .map(str::trim)
+        .filter(|recipient| !recipient.is_empty())
+        .map(|recipient| resolve_email_smtp_mailbox(recipient, "recipient"))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    if recipients.is_empty() {
+        anyhow::bail!("Email SMTP recipients are required");
+    }
+
+    Ok(recipients)
+}
+
 pub fn resolve_pushover_app_token(input: &str) -> anyhow::Result<String> {
     let token = input.trim();
     if !is_pushover_identifier(token) {
@@ -370,6 +463,16 @@ pub fn build_ntfy_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -407,6 +510,16 @@ pub fn build_feishu_lark_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -443,6 +556,16 @@ pub fn build_webhook_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -482,6 +605,16 @@ pub fn build_pushover_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -518,6 +651,16 @@ pub fn build_slack_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -554,6 +697,16 @@ pub fn build_discord_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -591,6 +744,16 @@ pub fn build_telegram_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -629,6 +792,16 @@ pub fn build_whatsapp_config(
             access_token_env: None,
             phone_number_id: Some(phone_number_id.to_string()),
             recipient_phone_number: Some(recipient_phone_number.to_string()),
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         }],
     )
 }
@@ -665,6 +838,70 @@ pub fn build_microsoft_teams_config(
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
+        }],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_email_smtp_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    host: &str,
+    port: u16,
+    security: EmailSmtpSecurity,
+    username: Option<String>,
+    password: Option<String>,
+    from: &str,
+    to: Vec<String>,
+    reply_to: Option<String>,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "email".to_string(),
+            provider_type: ProviderType::EmailSmtp,
+            server: None,
+            topic: None,
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
+            host: Some(host.to_string()),
+            port: Some(port),
+            security: Some(security),
+            username,
+            username_env: None,
+            password,
+            password_env: None,
+            from: Some(from.to_string()),
+            to: Some(to),
+            reply_to,
         }],
     )
 }
@@ -873,6 +1110,23 @@ pub fn microsoft_teams_targets(config: &Config) -> Vec<MicrosoftTeamsTarget> {
             provider_url_host(provider).map(|webhook_host| MicrosoftTeamsTarget {
                 provider_id: provider.id.clone(),
                 webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn email_smtp_targets(config: &Config) -> Vec<EmailSmtpTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::EmailSmtp)
+        .filter_map(|provider| {
+            Some(EmailSmtpTarget {
+                provider_id: provider.id.clone(),
+                host: provider.host.as_ref()?.clone(),
+                port: provider.port?,
+                from: provider.from.as_ref()?.clone(),
+                to: provider.to.as_ref()?.clone(),
             })
         })
         .collect()
@@ -1315,6 +1569,40 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_email_smtp_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_email_smtp_config(
+            AgentSelection::CodexCli,
+            AnswerDetail::Full,
+            PromptDetail::On,
+            "smtp.example.com",
+            587,
+            EmailSmtpSecurity::Starttls,
+            Some("alerts@example.com".to_string()),
+            Some("smtp-password".to_string()),
+            "Agents Notifier <alerts@example.com>",
+            vec!["Felix <felix@example.com>".to_string()],
+            Some("reply@example.com".to_string()),
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        let provider = parsed
+            .provider("email")
+            .expect("email provider should be configured");
+        assert_eq!(provider.host.as_deref(), Some("smtp.example.com"));
+        assert_eq!(provider.port, Some(587));
+        assert_eq!(provider.security, Some(EmailSmtpSecurity::Starttls));
+        assert_eq!(
+            provider.to.as_ref().expect("recipients should exist"),
+            &vec!["Felix <felix@example.com>".to_string()]
+        );
+        assert!(parsed.source("codex_cli").is_some());
+    }
+
+    #[test]
     fn accepts_feishu_and_lark_webhook_urls() {
         assert_eq!(
             resolve_feishu_lark_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/abc")
@@ -1395,6 +1683,44 @@ mod tests {
             resolve_microsoft_teams_webhook_url("https://example.com/workflow?sig=secret")
                 .expect("Microsoft Teams webhook should be valid"),
             "https://example.com/workflow?sig=secret"
+        );
+    }
+
+    #[test]
+    fn accepts_email_smtp_inputs() {
+        assert_eq!(
+            resolve_email_smtp_host("smtp.example.com").expect("SMTP host should be valid"),
+            "smtp.example.com"
+        );
+        assert_eq!(
+            resolve_email_smtp_port("587").expect("SMTP port should be valid"),
+            587
+        );
+        assert_eq!(
+            resolve_email_smtp_security("starttls").expect("SMTP security should be valid"),
+            EmailSmtpSecurity::Starttls
+        );
+        assert_eq!(
+            resolve_email_smtp_optional_username("alerts@example.com")
+                .expect("SMTP username should be valid"),
+            Some("alerts@example.com".to_string())
+        );
+        assert_eq!(
+            resolve_email_smtp_password("smtp-password").expect("SMTP password should be valid"),
+            "smtp-password"
+        );
+        assert_eq!(
+            resolve_email_smtp_mailbox("Agents Notifier <alerts@example.com>", "from")
+                .expect("SMTP mailbox should be valid"),
+            "Agents Notifier <alerts@example.com>"
+        );
+        assert_eq!(
+            resolve_email_smtp_recipients("Felix <felix@example.com>, team@example.com")
+                .expect("SMTP recipients should be valid"),
+            vec![
+                "Felix <felix@example.com>".to_string(),
+                "team@example.com".to_string()
+            ]
         );
     }
 
@@ -1588,6 +1914,19 @@ mod tests {
             PromptDetail::Off,
             "https://example.com/workflow?sig=secret",
         );
+        let email_config = build_email_smtp_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "smtp.example.com",
+            587,
+            EmailSmtpSecurity::Starttls,
+            Some("alerts@example.com".to_string()),
+            Some("smtp-password".to_string()),
+            "Agents Notifier <alerts@example.com>",
+            vec!["Felix <felix@example.com>".to_string()],
+            None,
+        );
 
         assert_eq!(
             telegram_targets(&telegram_config),
@@ -1608,6 +1947,16 @@ mod tests {
             vec![MicrosoftTeamsTarget {
                 provider_id: "microsoft_teams".to_string(),
                 webhook_host: "example.com".to_string(),
+            }]
+        );
+        assert_eq!(
+            email_smtp_targets(&email_config),
+            vec![EmailSmtpTarget {
+                provider_id: "email".to_string(),
+                host: "smtp.example.com".to_string(),
+                port: 587,
+                from: "Agents Notifier <alerts@example.com>".to_string(),
+                to: vec!["Felix <felix@example.com>".to_string()],
             }]
         );
     }

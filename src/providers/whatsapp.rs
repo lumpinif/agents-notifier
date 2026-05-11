@@ -454,7 +454,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            &"a".repeat(4100),
+            "a".repeat(4100),
             test_timestamp(),
             BTreeMap::new(),
         );
@@ -499,6 +499,16 @@ mod tests {
             access_token_env: None,
             phone_number_id: Some("123456789".to_string()),
             recipient_phone_number: Some("15551234567".to_string()),
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         })
         .expect("WhatsApp provider config should be valid");
 

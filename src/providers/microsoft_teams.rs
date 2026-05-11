@@ -376,7 +376,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            &"a".repeat(MICROSOFT_TEAMS_MESSAGE_LIMIT_BYTES),
+            "a".repeat(MICROSOFT_TEAMS_MESSAGE_LIMIT_BYTES),
             test_timestamp(),
             BTreeMap::new(),
         );

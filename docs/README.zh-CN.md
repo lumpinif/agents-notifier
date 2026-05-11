@@ -1,7 +1,7 @@
 # agents-notifier
 
 两三分钟就能 setup 好。
-然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、Microsoft Teams、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
+然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、Microsoft Teams、Email、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
 
 ---
 
@@ -45,6 +45,7 @@ Providers（你想在哪里收到通知？）：
 - Telegram
 - WhatsApp
 - Microsoft Teams
+- Email SMTP
 - Feishu/Lark Custom Bot
 - Pushover
 - Webhook
@@ -137,6 +138,7 @@ Provider 设置教程：
 - [Telegram](providers/telegram.zh-CN.md)
 - [WhatsApp](providers/whatsapp.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
+- [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
 Agent 设置教程：

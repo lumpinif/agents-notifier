@@ -46,6 +46,7 @@ Codex Desktop 当前只在 macOS 上提供。Linux 和 Windows 上，setup 会�
 7. Telegram
 8. WhatsApp
 9. Microsoft Teams
+10. Email SMTP
 ```
 
 Provider 教程：
@@ -58,6 +59,7 @@ Provider 教程：
 - [Telegram](providers/telegram.zh-CN.md)
 - [WhatsApp](providers/whatsapp.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
+- [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
 ## Answer Detail

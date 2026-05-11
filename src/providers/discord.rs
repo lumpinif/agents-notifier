@@ -378,7 +378,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            &"a".repeat(2100),
+            "a".repeat(2100),
             test_timestamp(),
             BTreeMap::new(),
         );

@@ -15,4 +15,5 @@ Set up the provider first. Then run `agents-notifier setup`.
 - [Telegram](telegram.md)
 - [WhatsApp](whatsapp.md)
 - [Microsoft Teams](microsoft-teams.md)
+- [Email SMTP](email-smtp.md)
 - [Webhook](webhook.md)

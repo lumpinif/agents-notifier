@@ -152,6 +152,16 @@ mod tests {
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         })
         .expect("provider config should be valid");
 
@@ -185,6 +195,16 @@ mod tests {
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         })
         .expect_err("ambiguous URL config should fail");
 
@@ -222,6 +242,16 @@ mod tests {
             access_token_env: None,
             phone_number_id: None,
             recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
         })
         .expect("provider config should be valid");
 

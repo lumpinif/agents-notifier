@@ -1,6 +1,6 @@
 # agents-notifier
 
-Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, Microsoft Teams, Feishu/Lark, Pushover, or webhook.
+Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, Microsoft Teams, email, Feishu/Lark, Pushover, or webhook.
 
 ---
 
@@ -47,6 +47,7 @@ Providers (Where do you want to get the notification?):
 - Telegram
 - WhatsApp
 - Microsoft Teams
+- Email SMTP
 - Feishu/Lark Custom Bot
 - Pushover
 - Webhook
@@ -139,6 +140,7 @@ Provider setup guides:
 - [Telegram](docs/providers/telegram.md)
 - [WhatsApp](docs/providers/whatsapp.md)
 - [Microsoft Teams](docs/providers/microsoft-teams.md)
+- [Email SMTP](docs/providers/email-smtp.md)
 - [Webhook](docs/providers/webhook.md)
 
 Agent setup guides:

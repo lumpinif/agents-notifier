@@ -47,6 +47,7 @@ Choose where notifications should go:
 7. Telegram
 8. WhatsApp
 9. Microsoft Teams
+10. Email SMTP
 ```
 
 Provider guides:
@@ -59,6 +60,7 @@ Provider guides:
 - [Telegram](providers/telegram.md)
 - [WhatsApp](providers/whatsapp.md)
 - [Microsoft Teams](providers/microsoft-teams.md)
+- [Email SMTP](providers/email-smtp.md)
 - [Webhook](providers/webhook.md)
 
 ## Answer Detail
