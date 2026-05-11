@@ -79,6 +79,13 @@ mod tests {
                 user_key_env: None,
                 device: None,
                 sound: None,
+                bot_token: None,
+                bot_token_env: None,
+                chat_id: None,
+                access_token: None,
+                access_token_env: None,
+                phone_number_id: None,
+                recipient_phone_number: None,
             }],
             routes: vec![RouteConfig {
                 sources: vec!["codex_cli".to_string()],

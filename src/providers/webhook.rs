@@ -145,6 +145,13 @@ mod tests {
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         })
         .expect("provider config should be valid");
 
@@ -171,6 +178,13 @@ mod tests {
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         })
         .expect_err("ambiguous URL config should fail");
 
@@ -201,6 +215,13 @@ mod tests {
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         })
         .expect("provider config should be valid");
 

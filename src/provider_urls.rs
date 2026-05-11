@@ -64,6 +64,30 @@ pub fn validate_custom_webhook_url(input: &str) -> anyhow::Result<String> {
     Ok(parsed.to_string())
 }
 
+pub fn validate_microsoft_teams_webhook_url(input: &str) -> anyhow::Result<String> {
+    let url = input.trim();
+    if url.is_empty() {
+        anyhow::bail!("Microsoft Teams webhook URL is required");
+    }
+
+    let parsed = Url::parse(url)
+        .map_err(|_| anyhow::anyhow!("Microsoft Teams webhook URL must be a valid URL"))?;
+    if parsed.scheme() != "https" {
+        anyhow::bail!("Microsoft Teams webhook URL must use HTTPS");
+    }
+    if parsed.host_str().is_none() {
+        anyhow::bail!("Microsoft Teams webhook URL must include a host");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        anyhow::bail!("Microsoft Teams webhook URL must not include username or password");
+    }
+    if parsed.fragment().is_some() {
+        anyhow::bail!("Microsoft Teams webhook URL must not include a fragment");
+    }
+
+    Ok(parsed.to_string())
+}
+
 pub fn host_label(url: &str) -> String {
     Url::parse(url)
         .ok()
@@ -160,6 +184,25 @@ mod tests {
                 .expect("local HTTP webhook should be valid"),
             "http://127.0.0.1:8080/hook"
         );
+    }
+
+    #[test]
+    fn accepts_microsoft_teams_workflow_urls_with_query_strings() {
+        assert_eq!(
+            validate_microsoft_teams_webhook_url(
+                "https://prod-01.westus.logic.azure.com/workflows/id/triggers/manual/paths/invoke?api-version=2016-06-01&sig=secret"
+            )
+            .expect("Microsoft Teams workflow webhook should be valid"),
+            "https://prod-01.westus.logic.azure.com/workflows/id/triggers/manual/paths/invoke?api-version=2016-06-01&sig=secret"
+        );
+    }
+
+    #[test]
+    fn rejects_insecure_microsoft_teams_webhook_urls() {
+        let err = validate_microsoft_teams_webhook_url("http://example.com/hook")
+            .expect_err("remote HTTP Microsoft Teams webhook should fail");
+
+        assert!(err.to_string().contains("must use HTTPS"));
     }
 
     fn slack_test_url(host: &str) -> String {

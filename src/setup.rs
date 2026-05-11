@@ -10,7 +10,7 @@ use crate::config::{
 };
 use crate::provider_urls::{
     host_label, validate_custom_webhook_url, validate_discord_webhook_url,
-    validate_slack_webhook_url,
+    validate_microsoft_teams_webhook_url, validate_slack_webhook_url,
 };
 
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
@@ -58,6 +58,24 @@ pub struct DiscordTarget {
     pub webhook_host: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TelegramTarget {
+    pub provider_id: String,
+    pub chat_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhatsappTarget {
+    pub provider_id: String,
+    pub recipient_phone_number: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MicrosoftTeamsTarget {
+    pub provider_id: String,
+    pub webhook_host: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentSelection {
     CodexDesktop,
@@ -67,6 +85,9 @@ pub enum AgentSelection {
     OpenCodeCli,
     OpenClaw,
     HermesAgentCli,
+    GithubCopilotCli,
+    GeminiCli,
+    Aider,
 }
 
 impl AgentSelection {
@@ -79,6 +100,9 @@ impl AgentSelection {
             Self::OpenCodeCli => "OpenCode CLI",
             Self::OpenClaw => "OpenClaw",
             Self::HermesAgentCli => "Hermes Agent CLI",
+            Self::GithubCopilotCli => "GitHub Copilot CLI",
+            Self::GeminiCli => "Gemini CLI",
+            Self::Aider => "Aider",
         }
     }
 
@@ -91,6 +115,9 @@ impl AgentSelection {
             Self::OpenCodeCli => "opencode_cli",
             Self::OpenClaw => "openclaw",
             Self::HermesAgentCli => "hermes_agent_cli",
+            Self::GithubCopilotCli => "github_copilot_cli",
+            Self::GeminiCli => "gemini_cli",
+            Self::Aider => "aider",
         }
     }
 
@@ -100,6 +127,9 @@ impl AgentSelection {
             "opencode_cli" => Some(Self::OpenCodeCli),
             "openclaw" => Some(Self::OpenClaw),
             "hermes_agent_cli" => Some(Self::HermesAgentCli),
+            "github_copilot_cli" => Some(Self::GithubCopilotCli),
+            "gemini_cli" => Some(Self::GeminiCli),
+            "aider" => Some(Self::Aider),
             _ => None,
         }
     }
@@ -118,12 +148,16 @@ impl AgentSelection {
                 id: self.source_id().to_string(),
                 source_type: SourceType::ClaudeCode,
             },
-            Self::CursorCli | Self::OpenCodeCli | Self::OpenClaw | Self::HermesAgentCli => {
-                SourceConfig {
-                    id: self.source_id().to_string(),
-                    source_type: SourceType::AgentHook,
-                }
-            }
+            Self::CursorCli
+            | Self::OpenCodeCli
+            | Self::OpenClaw
+            | Self::HermesAgentCli
+            | Self::GithubCopilotCli
+            | Self::GeminiCli
+            | Self::Aider => SourceConfig {
+                id: self.source_id().to_string(),
+                source_type: SourceType::AgentHook,
+            },
         }
     }
 }
@@ -182,6 +216,77 @@ pub fn resolve_slack_webhook_url(input: &str) -> anyhow::Result<String> {
 
 pub fn resolve_discord_webhook_url(input: &str) -> anyhow::Result<String> {
     validate_discord_webhook_url(input)
+}
+
+pub fn resolve_telegram_bot_token(input: &str) -> anyhow::Result<String> {
+    let token = input.trim();
+    let Some((bot_id, secret)) = token.split_once(':') else {
+        anyhow::bail!("Telegram bot token must look like `123456:ABC...`");
+    };
+
+    let valid = !bot_id.is_empty()
+        && bot_id.bytes().all(|byte| byte.is_ascii_digit())
+        && !secret.is_empty()
+        && secret.bytes().all(|byte| !byte.is_ascii_whitespace());
+    if !valid {
+        anyhow::bail!("Telegram bot token must look like `123456:ABC...`");
+    }
+
+    Ok(token.to_string())
+}
+
+pub fn resolve_telegram_chat_id(input: &str) -> anyhow::Result<String> {
+    let chat_id = input.trim();
+    let valid = if let Some(username) = chat_id.strip_prefix('@') {
+        !username.is_empty()
+            && username
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    } else {
+        let digits = chat_id.strip_prefix('-').unwrap_or(chat_id);
+        !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+    };
+
+    if !valid {
+        anyhow::bail!("Telegram chat id must be a numeric chat id or an `@channelusername`");
+    }
+
+    Ok(chat_id.to_string())
+}
+
+pub fn resolve_whatsapp_access_token(input: &str) -> anyhow::Result<String> {
+    let access_token = input.trim();
+    if access_token.is_empty() || access_token.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        anyhow::bail!("WhatsApp access token must be non-empty and must not contain whitespace");
+    }
+
+    Ok(access_token.to_string())
+}
+
+pub fn resolve_whatsapp_phone_number_id(input: &str) -> anyhow::Result<String> {
+    let phone_number_id = input.trim();
+    if phone_number_id.is_empty() || !phone_number_id.bytes().all(|byte| byte.is_ascii_digit()) {
+        anyhow::bail!("WhatsApp phone number ID must contain only digits");
+    }
+
+    Ok(phone_number_id.to_string())
+}
+
+pub fn resolve_whatsapp_recipient_phone_number(input: &str) -> anyhow::Result<String> {
+    let phone_number = input.trim();
+    if !(7..=15).contains(&phone_number.len())
+        || !phone_number.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        anyhow::bail!(
+            "WhatsApp recipient phone number must be 7 to 15 digits without spaces or punctuation"
+        );
+    }
+
+    Ok(phone_number.to_string())
+}
+
+pub fn resolve_microsoft_teams_webhook_url(input: &str) -> anyhow::Result<String> {
+    validate_microsoft_teams_webhook_url(input)
 }
 
 pub fn resolve_pushover_app_token(input: &str) -> anyhow::Result<String> {
@@ -258,6 +363,13 @@ pub fn build_ntfy_config(
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         }],
     )
 }
@@ -288,6 +400,13 @@ pub fn build_feishu_lark_config(
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         }],
     )
 }
@@ -317,6 +436,13 @@ pub fn build_webhook_config(
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         }],
     )
 }
@@ -349,6 +475,13 @@ pub fn build_pushover_config(
             user_key_env: None,
             device,
             sound,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         }],
     )
 }
@@ -378,6 +511,13 @@ pub fn build_slack_config(
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         }],
     )
 }
@@ -407,6 +547,124 @@ pub fn build_discord_config(
             user_key_env: None,
             device: None,
             sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
+        }],
+    )
+}
+
+pub fn build_telegram_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    bot_token: &str,
+    chat_id: &str,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "telegram".to_string(),
+            provider_type: ProviderType::Telegram,
+            server: None,
+            topic: None,
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+            bot_token: Some(bot_token.to_string()),
+            bot_token_env: None,
+            chat_id: Some(chat_id.to_string()),
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
+        }],
+    )
+}
+
+pub fn build_whatsapp_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    access_token: &str,
+    phone_number_id: &str,
+    recipient_phone_number: &str,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "whatsapp".to_string(),
+            provider_type: ProviderType::Whatsapp,
+            server: None,
+            topic: None,
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: Some(access_token.to_string()),
+            access_token_env: None,
+            phone_number_id: Some(phone_number_id.to_string()),
+            recipient_phone_number: Some(recipient_phone_number.to_string()),
+        }],
+    )
+}
+
+pub fn build_microsoft_teams_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    build_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        vec![ProviderConfig {
+            id: "microsoft_teams".to_string(),
+            provider_type: ProviderType::MicrosoftTeams,
+            server: None,
+            topic: None,
+            url: Some(webhook_url.to_string()),
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
         }],
     )
 }
@@ -571,6 +829,48 @@ pub fn discord_targets(config: &Config) -> Vec<DiscordTarget> {
         .filter(|provider| provider.provider_type == ProviderType::Discord)
         .filter_map(|provider| {
             provider_url_host(provider).map(|webhook_host| DiscordTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn telegram_targets(config: &Config) -> Vec<TelegramTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Telegram)
+        .filter_map(|provider| {
+            Some(TelegramTarget {
+                provider_id: provider.id.clone(),
+                chat_id: provider.chat_id.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn whatsapp_targets(config: &Config) -> Vec<WhatsappTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Whatsapp)
+        .filter_map(|provider| {
+            Some(WhatsappTarget {
+                provider_id: provider.id.clone(),
+                recipient_phone_number: provider.recipient_phone_number.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn microsoft_teams_targets(config: &Config) -> Vec<MicrosoftTeamsTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::MicrosoftTeams)
+        .filter_map(|provider| {
+            provider_url_host(provider).map(|webhook_host| MicrosoftTeamsTarget {
                 provider_id: provider.id.clone(),
                 webhook_host,
             })
@@ -922,6 +1222,99 @@ mod tests {
     }
 
     #[test]
+    fn writes_parseable_telegram_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_telegram_config(
+            AgentSelection::GithubCopilotCli,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456:test-token",
+            "123456789",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("telegram")
+                .and_then(|provider| provider.chat_id.as_deref()),
+            Some("123456789")
+        );
+        assert_eq!(
+            parsed
+                .provider("telegram")
+                .and_then(|provider| provider.bot_token.as_deref()),
+            Some("123456:test-token")
+        );
+        let source = parsed
+            .source("github_copilot_cli")
+            .expect("GitHub Copilot CLI source should be configured");
+        assert_eq!(source.source_type, SourceType::AgentHook);
+    }
+
+    #[test]
+    fn writes_parseable_whatsapp_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_whatsapp_config(
+            AgentSelection::GeminiCli,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "test-access-token",
+            "123456789",
+            "15551234567",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("whatsapp")
+                .and_then(|provider| provider.phone_number_id.as_deref()),
+            Some("123456789")
+        );
+        assert_eq!(
+            parsed
+                .provider("whatsapp")
+                .and_then(|provider| provider.recipient_phone_number.as_deref()),
+            Some("15551234567")
+        );
+        let source = parsed
+            .source("gemini_cli")
+            .expect("Gemini CLI source should be configured");
+        assert_eq!(source.source_type, SourceType::AgentHook);
+    }
+
+    #[test]
+    fn writes_parseable_microsoft_teams_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        let config = build_microsoft_teams_config(
+            AgentSelection::Aider,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "https://example.com/workflow?sig=secret",
+        );
+
+        write_config(&path, &config).expect("config should be written");
+
+        let parsed = Config::from_path(&path).expect("written config should parse");
+        assert_eq!(
+            parsed
+                .provider("microsoft_teams")
+                .and_then(|provider| provider.url.as_deref()),
+            Some("https://example.com/workflow?sig=secret")
+        );
+        let source = parsed
+            .source("aider")
+            .expect("Aider source should be configured");
+        assert_eq!(source.source_type, SourceType::AgentHook);
+    }
+
+    #[test]
     fn accepts_feishu_and_lark_webhook_urls() {
         assert_eq!(
             resolve_feishu_lark_webhook_url("https://open.feishu.cn/open-apis/bot/v2/hook/abc")
@@ -969,6 +1362,39 @@ mod tests {
             )
             .expect("Discord webhook should be valid"),
             "https://discord.com/api/webhooks/123456789012345678/token"
+        );
+    }
+
+    #[test]
+    fn accepts_telegram_whatsapp_and_microsoft_teams_inputs() {
+        assert_eq!(
+            resolve_telegram_bot_token("123456:test-token")
+                .expect("Telegram bot token should be valid"),
+            "123456:test-token"
+        );
+        assert_eq!(
+            resolve_telegram_chat_id("@agents_notifier").expect("Telegram chat id should be valid"),
+            "@agents_notifier"
+        );
+        assert_eq!(
+            resolve_whatsapp_access_token("test-access-token")
+                .expect("WhatsApp access token should be valid"),
+            "test-access-token"
+        );
+        assert_eq!(
+            resolve_whatsapp_phone_number_id("123456789")
+                .expect("WhatsApp phone number id should be valid"),
+            "123456789"
+        );
+        assert_eq!(
+            resolve_whatsapp_recipient_phone_number("15551234567")
+                .expect("WhatsApp recipient should be valid"),
+            "15551234567"
+        );
+        assert_eq!(
+            resolve_microsoft_teams_webhook_url("https://example.com/workflow?sig=secret")
+                .expect("Microsoft Teams webhook should be valid"),
+            "https://example.com/workflow?sig=secret"
         );
     }
 
@@ -1135,6 +1561,53 @@ mod tests {
             vec![DiscordTarget {
                 provider_id: "discord".to_string(),
                 webhook_host: "discord.com".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn extracts_new_provider_targets_without_printing_private_tokens() {
+        let telegram_config = build_telegram_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "123456:test-token",
+            "@agents_notifier",
+        );
+        let whatsapp_config = build_whatsapp_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "test-access-token",
+            "123456789",
+            "15551234567",
+        );
+        let teams_config = build_microsoft_teams_config(
+            AgentSelection::CodexDesktop,
+            AnswerDetail::Preview,
+            PromptDetail::Off,
+            "https://example.com/workflow?sig=secret",
+        );
+
+        assert_eq!(
+            telegram_targets(&telegram_config),
+            vec![TelegramTarget {
+                provider_id: "telegram".to_string(),
+                chat_id: "@agents_notifier".to_string(),
+            }]
+        );
+        assert_eq!(
+            whatsapp_targets(&whatsapp_config),
+            vec![WhatsappTarget {
+                provider_id: "whatsapp".to_string(),
+                recipient_phone_number: "15551234567".to_string(),
+            }]
+        );
+        assert_eq!(
+            microsoft_teams_targets(&teams_config),
+            vec![MicrosoftTeamsTarget {
+                provider_id: "microsoft_teams".to_string(),
+                webhook_host: "example.com".to_string(),
             }]
         );
     }

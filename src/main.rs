@@ -165,6 +165,15 @@ enum GuidedSetup {
     Discord {
         agent: setup::AgentSelection,
     },
+    Telegram {
+        agent: setup::AgentSelection,
+    },
+    Whatsapp {
+        agent: setup::AgentSelection,
+    },
+    MicrosoftTeams {
+        agent: setup::AgentSelection,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,6 +184,9 @@ enum InitialProvider {
     Pushover,
     Slack,
     Discord,
+    Telegram,
+    Whatsapp,
+    MicrosoftTeams,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -193,6 +205,12 @@ struct SetupDefaults {
     pushover_sound: Option<String>,
     slack_webhook_url: Option<String>,
     discord_webhook_url: Option<String>,
+    telegram_bot_token: Option<String>,
+    telegram_chat_id: Option<String>,
+    whatsapp_access_token: Option<String>,
+    whatsapp_phone_number_id: Option<String>,
+    whatsapp_recipient_phone_number: Option<String>,
+    microsoft_teams_webhook_url: Option<String>,
 }
 
 impl SetupDefaults {
@@ -222,6 +240,21 @@ impl SetupDefaults {
                 .and_then(configured_provider_url),
             discord_webhook_url: first_provider_of_type(config, ProviderType::Discord)
                 .and_then(configured_provider_url),
+            telegram_bot_token: first_provider_of_type(config, ProviderType::Telegram)
+                .and_then(|provider| provider.bot_token.clone()),
+            telegram_chat_id: first_provider_of_type(config, ProviderType::Telegram)
+                .and_then(|provider| provider.chat_id.clone()),
+            whatsapp_access_token: first_provider_of_type(config, ProviderType::Whatsapp)
+                .and_then(|provider| provider.access_token.clone()),
+            whatsapp_phone_number_id: first_provider_of_type(config, ProviderType::Whatsapp)
+                .and_then(|provider| provider.phone_number_id.clone()),
+            whatsapp_recipient_phone_number: first_provider_of_type(config, ProviderType::Whatsapp)
+                .and_then(|provider| provider.recipient_phone_number.clone()),
+            microsoft_teams_webhook_url: first_provider_of_type(
+                config,
+                ProviderType::MicrosoftTeams,
+            )
+            .and_then(configured_provider_url),
         }
     }
 
@@ -259,6 +292,9 @@ impl InitialProvider {
             Self::Pushover => "Pushover",
             Self::Slack => "Slack",
             Self::Discord => "Discord",
+            Self::Telegram => "Telegram",
+            Self::Whatsapp => "WhatsApp",
+            Self::MicrosoftTeams => "Microsoft Teams",
         }
     }
 }
@@ -389,6 +425,15 @@ fn run_guided_provider_setup(
         InitialProvider::Discord => {
             run_discord_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
         }
+        InitialProvider::Telegram => {
+            run_telegram_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
+        InitialProvider::Whatsapp => {
+            run_whatsapp_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
+        InitialProvider::MicrosoftTeams => {
+            run_microsoft_teams_setup(path, mode, agent, answer_detail, prompt_detail, &defaults)
+        }
     }
 }
 
@@ -422,6 +467,27 @@ fn answer_detail_for_provider(
             println!();
             println!(
                 "Answer detail is fixed to Preview for Discord because Discord webhook content is limited to 2000 characters. Agents Notifier will keep Discord notifications short enough for reliable delivery."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::Telegram => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for Telegram because Telegram Bot API text messages are limited to 4096 characters. Agents Notifier will keep Telegram notifications short enough for reliable delivery."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::Whatsapp => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for WhatsApp because Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies."
+            );
+            Ok(AnswerDetail::Preview)
+        }
+        InitialProvider::MicrosoftTeams => {
+            println!();
+            println!(
+                "Answer detail is fixed to Preview for Microsoft Teams because incoming webhook messages have a 28 KB size limit. Agents Notifier will keep Teams notifications short enough for reliable delivery."
             );
             Ok(AnswerDetail::Preview)
         }
@@ -459,6 +525,27 @@ fn prompt_detail_for_provider(
             println!();
             println!(
                 "Prompt detail is disabled for Discord because Discord webhook content is limited to 2000 characters. Agents Notifier will keep prompts out of Discord notifications for reliable delivery."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::Telegram => {
+            println!();
+            println!(
+                "Prompt detail is disabled for Telegram because Telegram Bot API text messages are limited to 4096 characters. Agents Notifier will keep prompts out of Telegram notifications for reliable delivery."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::Whatsapp => {
+            println!();
+            println!(
+                "Prompt detail is disabled for WhatsApp because Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies."
+            );
+            Ok(PromptDetail::Off)
+        }
+        InitialProvider::MicrosoftTeams => {
+            println!();
+            println!(
+                "Prompt detail is disabled for Microsoft Teams because incoming webhook messages have a 28 KB size limit. Agents Notifier will keep prompts out of Teams notifications for reliable delivery."
             );
             Ok(PromptDetail::Off)
         }
@@ -668,6 +755,118 @@ fn run_discord_setup(
     })
 }
 
+fn run_telegram_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("Telegram sends notifications through a Telegram bot to one chat or channel.");
+    println!(
+        "Create a bot with BotFather, add it to the target chat if needed, then paste the bot token and chat id."
+    );
+    println!();
+
+    let bot_token = prompt_for_telegram_bot_token(defaults.telegram_bot_token.as_deref())?;
+    let chat_id = prompt_for_telegram_chat_id(defaults.telegram_chat_id.as_deref())?;
+    let config =
+        setup::build_telegram_config(agent, answer_detail, prompt_detail, &bot_token, &chat_id);
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("Telegram: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Telegram { agent }),
+    })
+}
+
+fn run_whatsapp_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!("WhatsApp sends notifications through the WhatsApp Business Platform Cloud API.");
+    println!(
+        "Use a WhatsApp Business phone number ID, a system user access token, and one recipient phone number."
+    );
+    println!();
+
+    let access_token = prompt_for_whatsapp_access_token(defaults.whatsapp_access_token.as_deref())?;
+    let phone_number_id =
+        prompt_for_whatsapp_phone_number_id(defaults.whatsapp_phone_number_id.as_deref())?;
+    let recipient_phone_number = prompt_for_whatsapp_recipient_phone_number(
+        defaults.whatsapp_recipient_phone_number.as_deref(),
+    )?;
+    let config = setup::build_whatsapp_config(
+        agent,
+        answer_detail,
+        prompt_detail,
+        &access_token,
+        &phone_number_id,
+        &recipient_phone_number,
+    );
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("WhatsApp: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::Whatsapp { agent }),
+    })
+}
+
+fn run_microsoft_teams_setup(
+    path: &Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    defaults: &SetupDefaults,
+) -> anyhow::Result<LoadedConfig> {
+    println!();
+    println!(
+        "Microsoft Teams sends notifications to one chat or channel through an incoming webhook."
+    );
+    println!("Create a Teams workflow or incoming webhook, then paste its webhook URL.");
+    println!();
+
+    let webhook_url =
+        prompt_for_microsoft_teams_webhook_url(defaults.microsoft_teams_webhook_url.as_deref())?;
+    let config =
+        setup::build_microsoft_teams_config(agent, answer_detail, prompt_detail, &webhook_url);
+    setup::write_config(path, &config)?;
+
+    println!();
+    println!("{} config: {}", mode.past_tense(), path.display());
+    println!("agent: {}", agent.display_name());
+    println!("answer detail: {}", answer_detail.display_name());
+    println!("prompt detail: {}", prompt_detail.display_name());
+    println!("Microsoft Teams: configured");
+
+    Ok(LoadedConfig {
+        config,
+        guided_setup: Some(GuidedSetup::MicrosoftTeams { agent }),
+    })
+}
+
 fn prompt_for_agent(
     default: Option<setup::AgentSelection>,
 ) -> anyhow::Result<setup::AgentSelection> {
@@ -726,6 +925,9 @@ fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
         ("5", setup::AgentSelection::OpenCodeCli),
         ("6", setup::AgentSelection::OpenClaw),
         ("7", setup::AgentSelection::HermesAgentCli),
+        ("8", setup::AgentSelection::GithubCopilotCli),
+        ("9", setup::AgentSelection::GeminiCli),
+        ("10", setup::AgentSelection::Aider),
     ];
 
     #[cfg(not(target_os = "macos"))]
@@ -736,6 +938,9 @@ fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
         ("4", setup::AgentSelection::OpenCodeCli),
         ("5", setup::AgentSelection::OpenClaw),
         ("6", setup::AgentSelection::HermesAgentCli),
+        ("7", setup::AgentSelection::GithubCopilotCli),
+        ("8", setup::AgentSelection::GeminiCli),
+        ("9", setup::AgentSelection::Aider),
     ];
 }
 
@@ -828,11 +1033,14 @@ fn prompt_for_initial_provider(
         println!("4. Pushover");
         println!("5. Feishu/Lark custom bot");
         println!("6. Webhook");
+        println!("7. Telegram");
+        println!("8. WhatsApp");
+        println!("9. Microsoft Teams");
         if let Some(default) = default {
             println!("Current: {}", default.display_name());
         }
         print!(
-            "Choose a provider [1/2/3/4/5/6, {}]: ",
+            "Choose a provider [1/2/3/4/5/6/7/8/9, {}]: ",
             choice_prompt_hint(
                 default.map(provider_choice),
                 provider_choice(effective_default)
@@ -853,7 +1061,10 @@ fn prompt_for_initial_provider(
             "4" => return Ok(InitialProvider::Pushover),
             "5" => return Ok(InitialProvider::FeishuLark),
             "6" => return Ok(InitialProvider::Webhook),
-            _ => println!("Please enter 1, 2, 3, 4, 5, or 6."),
+            "7" => return Ok(InitialProvider::Telegram),
+            "8" => return Ok(InitialProvider::Whatsapp),
+            "9" => return Ok(InitialProvider::MicrosoftTeams),
+            _ => println!("Please enter 1, 2, 3, 4, 5, 6, 7, 8, or 9."),
         }
         println!();
     }
@@ -1034,6 +1245,195 @@ fn prompt_for_discord_webhook_url(current_url: Option<&str>) -> anyhow::Result<S
         };
 
         match setup::resolve_discord_webhook_url(candidate) {
+            Ok(url) => return Ok(url),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_telegram_bot_token(current_token: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if current_token.is_some() {
+            print!("Telegram bot token [configured, press Enter to keep]: ");
+        } else {
+            print!("Telegram bot token: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Telegram bot token")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_token.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_telegram_bot_token(candidate) {
+            Ok(token) => return Ok(token),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_telegram_chat_id(current_chat_id: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_chat_id) = current_chat_id {
+            print!("Telegram chat id [{current_chat_id}, press Enter to keep]: ");
+        } else {
+            print!("Telegram chat id, for example 123456789 or @channelusername: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Telegram chat id")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_chat_id.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_telegram_chat_id(candidate) {
+            Ok(chat_id) => return Ok(chat_id),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_whatsapp_access_token(current_token: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if current_token.is_some() {
+            print!("WhatsApp access token [configured, press Enter to keep]: ");
+        } else {
+            print!("WhatsApp access token: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read WhatsApp access token")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_token.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_whatsapp_access_token(candidate) {
+            Ok(token) => return Ok(token),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_whatsapp_phone_number_id(
+    current_phone_number_id: Option<&str>,
+) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_phone_number_id) = current_phone_number_id {
+            print!("WhatsApp phone number ID [{current_phone_number_id}, press Enter to keep]: ");
+        } else {
+            print!("WhatsApp phone number ID: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read WhatsApp phone number ID")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_phone_number_id.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_whatsapp_phone_number_id(candidate) {
+            Ok(phone_number_id) => return Ok(phone_number_id),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_whatsapp_recipient_phone_number(
+    current_phone_number: Option<&str>,
+) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_phone_number) = current_phone_number {
+            print!(
+                "WhatsApp recipient phone number [{current_phone_number}, press Enter to keep]: "
+            );
+        } else {
+            print!("WhatsApp recipient phone number, digits only with country code: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read WhatsApp recipient phone number")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_phone_number.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_whatsapp_recipient_phone_number(candidate) {
+            Ok(phone_number) => return Ok(phone_number),
+            Err(error) => {
+                println!("{error}");
+            }
+        }
+    }
+}
+
+fn prompt_for_microsoft_teams_webhook_url(current_url: Option<&str>) -> anyhow::Result<String> {
+    loop {
+        if let Some(current_url) = current_url {
+            print!(
+                "Microsoft Teams webhook URL [configured: {}, press Enter to keep]: ",
+                safe_url_host(current_url)
+            );
+        } else {
+            print!("Microsoft Teams webhook URL: ");
+        }
+        io::stdout().flush().context("failed to flush stdout")?;
+
+        let mut input = String::new();
+        io::stdin()
+            .read_line(&mut input)
+            .context("failed to read Microsoft Teams webhook URL")?;
+
+        let input = input.trim();
+        let candidate = if input.is_empty() {
+            current_url.unwrap_or(input)
+        } else {
+            input
+        };
+
+        match setup::resolve_microsoft_teams_webhook_url(candidate) {
             Ok(url) => return Ok(url),
             Err(error) => {
                 println!("{error}");
@@ -1298,6 +1698,9 @@ fn print_notification_targets(config: &Config) {
     let pushover_targets = setup::pushover_targets(config);
     let slack_targets = setup::slack_targets(config);
     let discord_targets = setup::discord_targets(config);
+    let telegram_targets = setup::telegram_targets(config);
+    let whatsapp_targets = setup::whatsapp_targets(config);
+    let microsoft_teams_targets = setup::microsoft_teams_targets(config);
 
     println!();
     println!("Notification:");
@@ -1413,6 +1816,63 @@ fn print_notification_targets(config: &Config) {
             println!("webhook: {}", target.webhook_host);
         }
     }
+
+    if !telegram_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+            || !pushover_targets.is_empty()
+            || !slack_targets.is_empty()
+            || !discord_targets.is_empty()
+        {
+            println!();
+        }
+        println!("Telegram:");
+        for target in &telegram_targets {
+            println!("provider: {}", target.provider_id);
+            println!("chat id: {}", target.chat_id);
+        }
+    }
+
+    if !whatsapp_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+            || !pushover_targets.is_empty()
+            || !slack_targets.is_empty()
+            || !discord_targets.is_empty()
+            || !telegram_targets.is_empty()
+        {
+            println!();
+        }
+        println!("WhatsApp:");
+        for target in &whatsapp_targets {
+            println!("provider: {}", target.provider_id);
+            println!("recipient: {}", target.recipient_phone_number);
+        }
+    }
+
+    if !microsoft_teams_targets.is_empty() {
+        if !agents.is_empty()
+            || !subscriptions.is_empty()
+            || !feishu_lark_targets.is_empty()
+            || !webhook_targets.is_empty()
+            || !pushover_targets.is_empty()
+            || !slack_targets.is_empty()
+            || !discord_targets.is_empty()
+            || !telegram_targets.is_empty()
+            || !whatsapp_targets.is_empty()
+        {
+            println!();
+        }
+        println!("Microsoft Teams:");
+        for target in &microsoft_teams_targets {
+            println!("provider: {}", target.provider_id);
+            println!("webhook: {}", target.webhook_host);
+        }
+    }
 }
 
 fn configured_agents(config: &Config) -> Vec<String> {
@@ -1457,6 +1917,9 @@ fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
             ProviderType::Pushover => InitialProvider::Pushover,
             ProviderType::Slack => InitialProvider::Slack,
             ProviderType::Discord => InitialProvider::Discord,
+            ProviderType::Telegram => InitialProvider::Telegram,
+            ProviderType::Whatsapp => InitialProvider::Whatsapp,
+            ProviderType::MicrosoftTeams => InitialProvider::MicrosoftTeams,
         })
 }
 
@@ -1514,6 +1977,9 @@ fn provider_choice(provider: InitialProvider) -> &'static str {
         InitialProvider::Pushover => "4",
         InitialProvider::FeishuLark => "5",
         InitialProvider::Webhook => "6",
+        InitialProvider::Telegram => "7",
+        InitialProvider::Whatsapp => "8",
+        InitialProvider::MicrosoftTeams => "9",
     }
 }
 
@@ -1660,6 +2126,24 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
             wait_for_enter("Press Enter to send a test notification through Discord.")?;
             print_agent_setup_note(agent);
         }
+        GuidedSetup::Telegram { agent } => {
+            println!();
+            println!("Next: check your Telegram chat.");
+            wait_for_enter("Press Enter to send a test notification through Telegram.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::Whatsapp { agent } => {
+            println!();
+            println!("Next: check the recipient WhatsApp chat.");
+            wait_for_enter("Press Enter to send a test notification through WhatsApp.")?;
+            print_agent_setup_note(agent);
+        }
+        GuidedSetup::MicrosoftTeams { agent } => {
+            println!();
+            println!("Next: check your Microsoft Teams chat or channel.");
+            wait_for_enter("Press Enter to send a test notification through Microsoft Teams.")?;
+            print_agent_setup_note(agent);
+        }
     }
 
     send_test_notification().await?;
@@ -1717,6 +2201,24 @@ fn print_agent_setup_note(agent: setup::AgentSelection) {
             println!("Agents Notifier is ready for Hermes Agent CLI hook events.");
             println!(
                 "Configure your Hermes plugin hook to call `agents-notifier emit --source hermes_agent_cli` from post_llm_call."
+            );
+        }
+        setup::AgentSelection::GithubCopilotCli => {
+            println!("Agents Notifier is ready for GitHub Copilot CLI hook events.");
+            println!(
+                "Configure your GitHub Copilot CLI notification hook to call `agents-notifier emit --source github_copilot_cli`."
+            );
+        }
+        setup::AgentSelection::GeminiCli => {
+            println!("Agents Notifier is ready for Gemini CLI hook events.");
+            println!(
+                "Configure your Gemini CLI AfterAgent or Notification hook to call `agents-notifier emit --source gemini_cli`."
+            );
+        }
+        setup::AgentSelection::Aider => {
+            println!("Agents Notifier is ready for Aider notification events.");
+            println!(
+                "Configure Aider notifications-command to call `agents-notifier emit --source aider`."
             );
         }
     }

@@ -1,7 +1,7 @@
 # agents-notifier
 
 两三分钟就能 setup 好。
-然后你就可以在手机、Slack、Discord、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
+然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、Microsoft Teams、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
 
 ---
 
@@ -15,7 +15,7 @@ English documentation: [../README.md](../README.md)
 
 ⚡ 为 AI coding agents 提供本地优先的通知。
 
-适用于 [Codex Desktop](https://openai.com/codex/)、[Codex CLI](https://github.com/openai/codex)、[Claude Code](https://claude.com/product/claude-code) 这类本地 agent。
+适用于 [Codex Desktop](https://openai.com/codex/)、[Codex CLI](https://github.com/openai/codex)、[Claude Code](https://claude.com/product/claude-code)、GitHub Copilot CLI、Gemini CLI、Aider 这类本地 agent。
 
 使用 Rust 🦀 构建。快速、小巧，并且安静地在后台运行。
 
@@ -32,17 +32,22 @@ Agents：
 - macOS 上的 [Codex Desktop App](https://openai.com/codex/)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Codex CLI](https://github.com/openai/codex)
 - 在 macOS、Linux 和 Windows 上通过 hooks 接入的 [Claude Code](https://claude.com/product/claude-code)
-- 更多本地 agents 即将支持
+- 在 macOS、Linux 和 Windows 上通过 hooks 接入的 GitHub Copilot CLI
+- 在 macOS、Linux 和 Windows 上通过 hooks 接入的 Gemini CLI
+- 在 macOS、Linux 和 Windows 上通过 notification command 接入的 Aider
+- Cursor CLI、OpenCode CLI、OpenClaw 和 Hermes Agent CLI
 
 Providers（你想在哪里收到通知？）：
 
 - ntfy
 - Slack
 - Discord
+- Telegram
+- WhatsApp
+- Microsoft Teams
 - Feishu/Lark Custom Bot
 - Pushover
 - Webhook
-- 更多 providers 即将支持
 
 ## 🔒 隐私
 
@@ -129,12 +134,22 @@ Provider 设置教程：
 - [Pushover](providers/pushover.zh-CN.md)
 - [Slack](providers/slack.zh-CN.md)
 - [Discord](providers/discord.zh-CN.md)
+- [Telegram](providers/telegram.zh-CN.md)
+- [WhatsApp](providers/whatsapp.zh-CN.md)
+- [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
 Agent 设置教程：
 
 - [Codex CLI](agents/codex-cli.zh-CN.md)
 - [Claude Code](agents/claude-code.zh-CN.md)
+- [GitHub Copilot CLI](agents/github-copilot-cli.zh-CN.md)
+- [Gemini CLI](agents/gemini-cli.zh-CN.md)
+- [Aider](agents/aider.zh-CN.md)
+- [Cursor CLI](agents/cursor-cli.md)
+- [OpenCode CLI](agents/opencode-cli.md)
+- [OpenClaw](agents/openclaw.md)
+- [Hermes Agent CLI](agents/hermes-agent-cli.md)
 
 ## 🧹 卸载
 
@@ -169,6 +184,13 @@ agents-notifier emit \
   --source claude_code \
   --title "Claude Code" \
   --body "Claude Code finished a task."
+```
+
+```bash
+agents-notifier emit \
+  --source gemini_cli \
+  --title "Gemini CLI" \
+  --body "Gemini CLI finished a task."
 ```
 
 `emit` 只和本地 service 通信。真正发送到 provider 的动作由 service 完成。

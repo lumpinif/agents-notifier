@@ -12,4 +12,7 @@ Set up the provider first. Then run `agents-notifier setup`.
 - [Pushover](pushover.md)
 - [Slack](slack.md)
 - [Discord](discord.md)
+- [Telegram](telegram.md)
+- [WhatsApp](whatsapp.md)
+- [Microsoft Teams](microsoft-teams.md)
 - [Webhook](webhook.md)

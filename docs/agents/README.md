@@ -9,6 +9,9 @@ Set up the agent after Agents Notifier is installed.
 
 - [Codex CLI](codex-cli.md)
 - [Claude Code](claude-code.md)
+- [GitHub Copilot CLI](github-copilot-cli.md)
+- [Gemini CLI](gemini-cli.md)
+- [Aider](aider.md)
 - [Cursor CLI](cursor-cli.md)
 - [OpenCode CLI](opencode-cli.md)
 - [OpenClaw](openclaw.md)

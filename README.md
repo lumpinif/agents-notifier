@@ -1,6 +1,6 @@
 # agents-notifier
 
-Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Feishu/Lark, Pushover, or webhook.
+Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, Microsoft Teams, Feishu/Lark, Pushover, or webhook.
 
 ---
 
@@ -14,7 +14,7 @@ Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack
 
 ⚡ Local-only notifications for AI coding agents.
 
-Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex CLI](https://github.com/openai/codex), [Claude Code](https://claude.com/product/claude-code), Cursor CLI, OpenCode CLI, OpenClaw, and Hermes Agent CLI.
+Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex CLI](https://github.com/openai/codex), [Claude Code](https://claude.com/product/claude-code), GitHub Copilot CLI, Gemini CLI, Aider, Cursor CLI, OpenCode CLI, OpenClaw, and Hermes Agent CLI.
 
 Built in Rust 🦀. Fast, small, and quiet in the background.
 
@@ -31,6 +31,9 @@ Agents:
 - [Codex Desktop](https://openai.com/codex/) on macOS
 - [Codex CLI](https://github.com/openai/codex) through hooks on macOS, Linux, and Windows
 - [Claude Code](https://claude.com/product/claude-code) through hooks on macOS, Linux, and Windows
+- GitHub Copilot CLI through hooks on macOS, Linux, and Windows
+- Gemini CLI through hooks on macOS, Linux, and Windows
+- Aider through notification commands on macOS, Linux, and Windows
 - Cursor CLI through a completion wrapper on macOS, Linux, and Windows
 - OpenCode CLI through plugins on macOS, Linux, and Windows
 - OpenClaw through plugin hooks on macOS, Linux, and Windows
@@ -41,10 +44,12 @@ Providers (Where do you want to get the notification?):
 - ntfy
 - Slack
 - Discord
+- Telegram
+- WhatsApp
+- Microsoft Teams
 - Feishu/Lark Custom Bot
 - Pushover
 - Webhook
-- More providers soon
 
 ## 🔒 Privacy
 
@@ -131,12 +136,18 @@ Provider setup guides:
 - [Pushover](docs/providers/pushover.md)
 - [Slack](docs/providers/slack.md)
 - [Discord](docs/providers/discord.md)
+- [Telegram](docs/providers/telegram.md)
+- [WhatsApp](docs/providers/whatsapp.md)
+- [Microsoft Teams](docs/providers/microsoft-teams.md)
 - [Webhook](docs/providers/webhook.md)
 
 Agent setup guides:
 
 - [Codex CLI](docs/agents/codex-cli.md)
 - [Claude Code](docs/agents/claude-code.md)
+- [GitHub Copilot CLI](docs/agents/github-copilot-cli.md)
+- [Gemini CLI](docs/agents/gemini-cli.md)
+- [Aider](docs/agents/aider.md)
 - [Cursor CLI](docs/agents/cursor-cli.md)
 - [OpenCode CLI](docs/agents/opencode-cli.md)
 - [OpenClaw](docs/agents/openclaw.md)
@@ -182,6 +193,13 @@ agents-notifier emit \
   --source opencode_cli \
   --title "OpenCode CLI" \
   --body "OpenCode CLI finished a task."
+```
+
+```bash
+agents-notifier emit \
+  --source gemini_cli \
+  --title "Gemini CLI" \
+  --body "Gemini CLI finished a task."
 ```
 
 `emit` only talks to the local service. Providers are sent by the service.

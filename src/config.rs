@@ -147,6 +147,20 @@ pub struct ProviderConfig {
     pub device: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sound: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bot_token_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_token_env: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone_number_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient_phone_number: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -158,6 +172,9 @@ pub enum ProviderType {
     Pushover,
     Slack,
     Discord,
+    Telegram,
+    Whatsapp,
+    MicrosoftTeams,
 }
 
 impl ProviderType {
@@ -169,12 +186,21 @@ impl ProviderType {
             Self::Pushover => "pushover",
             Self::Slack => "slack",
             Self::Discord => "discord",
+            Self::Telegram => "telegram",
+            Self::Whatsapp => "whatsapp",
+            Self::MicrosoftTeams => "microsoft_teams",
         }
     }
 
     pub fn has_message_size_limit(&self) -> bool {
         match self {
-            Self::Ntfy | Self::Pushover | Self::Slack | Self::Discord => true,
+            Self::Ntfy
+            | Self::Pushover
+            | Self::Slack
+            | Self::Discord
+            | Self::Telegram
+            | Self::Whatsapp
+            | Self::MicrosoftTeams => true,
             Self::Webhook | Self::FeishuLark => false,
         }
     }
@@ -232,6 +258,16 @@ pub enum ConfigError {
     InvalidSlackUrlSource { provider_id: String },
     #[error("discord provider `{provider_id}` must set exactly one of `url` or `url_env`")]
     InvalidDiscordUrlSource { provider_id: String },
+    #[error(
+        "telegram provider `{provider_id}` must set exactly one of `bot_token` or `bot_token_env`"
+    )]
+    InvalidTelegramBotTokenSource { provider_id: String },
+    #[error(
+        "whatsapp provider `{provider_id}` must set exactly one of `access_token` or `access_token_env`"
+    )]
+    InvalidWhatsappAccessTokenSource { provider_id: String },
+    #[error("microsoft_teams provider `{provider_id}` must set exactly one of `url` or `url_env`")]
+    InvalidMicrosoftTeamsUrlSource { provider_id: String },
     #[error(
         "`prompt_detail = \"on\"` is not supported with `{provider_type}` provider `{provider_id}` because that provider has a message size limit"
     )]
@@ -422,6 +458,39 @@ impl ProviderConfig {
                     });
                 }
             }
+            ProviderType::Telegram => {
+                let has_bot_token = is_present(self.bot_token.as_deref());
+                let has_bot_token_env = is_present(self.bot_token_env.as_deref());
+                if has_bot_token == has_bot_token_env {
+                    return Err(ConfigError::InvalidTelegramBotTokenSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+                self.require_present("chat_id", self.chat_id.as_deref())?;
+            }
+            ProviderType::Whatsapp => {
+                let has_access_token = is_present(self.access_token.as_deref());
+                let has_access_token_env = is_present(self.access_token_env.as_deref());
+                if has_access_token == has_access_token_env {
+                    return Err(ConfigError::InvalidWhatsappAccessTokenSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+                self.require_present("phone_number_id", self.phone_number_id.as_deref())?;
+                self.require_present(
+                    "recipient_phone_number",
+                    self.recipient_phone_number.as_deref(),
+                )?;
+            }
+            ProviderType::MicrosoftTeams => {
+                let has_url = is_present(self.url.as_deref());
+                let has_url_env = is_present(self.url_env.as_deref());
+                if has_url == has_url_env {
+                    return Err(ConfigError::InvalidMicrosoftTeamsUrlSource {
+                        provider_id: self.id.clone(),
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -491,9 +560,27 @@ id = "discord"
 type = "discord"
 url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
 
+[[providers]]
+id = "telegram"
+type = "telegram"
+bot_token_env = "AGENTS_NOTIFIER_TELEGRAM_BOT_TOKEN"
+chat_id = "123456789"
+
+[[providers]]
+id = "whatsapp"
+type = "whatsapp"
+access_token_env = "AGENTS_NOTIFIER_WHATSAPP_ACCESS_TOKEN"
+phone_number_id = "123456789"
+recipient_phone_number = "15551234567"
+
+[[providers]]
+id = "microsoft_teams"
+type = "microsoft_teams"
+url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
+
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
-providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord"]
+providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord", "telegram", "whatsapp", "microsoft_teams"]
 "#;
 
     #[test]
@@ -502,7 +589,7 @@ providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discor
 
         assert_eq!(config.schema_version, 1);
         assert_eq!(config.sources.len(), 2);
-        assert_eq!(config.providers.len(), 6);
+        assert_eq!(config.providers.len(), 9);
         assert_eq!(config.routes.len(), 1);
         assert_eq!(config.log.level, "info");
         assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
@@ -672,6 +759,41 @@ providers = ["discord"]
     }
 
     #[test]
+    fn rejects_full_answer_detail_with_telegram_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "telegram"
+type = "telegram"
+bot_token = "123456:test-token"
+chat_id = "123456789"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["telegram"]
+"#;
+
+        let err =
+            Config::from_toml_str(raw).expect_err("Telegram should reject full answer detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::AnswerDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "telegram" && provider_type == "telegram"
+        ));
+    }
+
+    #[test]
     fn parses_on_prompt_detail() {
         let raw = r#"
 schema_version = 1
@@ -829,6 +951,75 @@ providers = ["discord"]
                 provider_id,
                 provider_type
             } if provider_id == "discord" && provider_type == "discord"
+        ));
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_whatsapp_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "whatsapp"
+type = "whatsapp"
+access_token = "test-access-token"
+phone_number_id = "123456789"
+recipient_phone_number = "15551234567"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["whatsapp"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("WhatsApp should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "whatsapp" && provider_type == "whatsapp"
+        ));
+    }
+
+    #[test]
+    fn rejects_prompt_detail_on_with_microsoft_teams_provider() {
+        let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "microsoft_teams"
+type = "microsoft_teams"
+url = "https://example.com/workflow"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["microsoft_teams"]
+"#;
+
+        let err =
+            Config::from_toml_str(raw).expect_err("Microsoft Teams should reject prompt detail");
+
+        assert!(matches!(
+            err,
+            ConfigError::PromptDetailNotSupportedForProvider {
+                provider_id,
+                provider_type
+            } if provider_id == "microsoft_teams" && provider_type == "microsoft_teams"
         ));
     }
 
@@ -1055,6 +1246,91 @@ providers = ["discord"]
         assert!(matches!(
             err,
             ConfigError::InvalidDiscordUrlSource { provider_id } if provider_id == "discord"
+        ));
+    }
+
+    #[test]
+    fn rejects_telegram_without_bot_token_source() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "telegram"
+type = "telegram"
+chat_id = "123456789"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["telegram"]
+"#;
+
+        let err = Config::from_toml_str(raw).expect_err("missing Telegram bot token should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidTelegramBotTokenSource { provider_id } if provider_id == "telegram"
+        ));
+    }
+
+    #[test]
+    fn rejects_whatsapp_without_access_token_source() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "whatsapp"
+type = "whatsapp"
+phone_number_id = "123456789"
+recipient_phone_number = "15551234567"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["whatsapp"]
+"#;
+
+        let err =
+            Config::from_toml_str(raw).expect_err("missing WhatsApp access token should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidWhatsappAccessTokenSource { provider_id } if provider_id == "whatsapp"
+        ));
+    }
+
+    #[test]
+    fn rejects_microsoft_teams_with_both_url_sources() {
+        let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "microsoft_teams"
+type = "microsoft_teams"
+url = "https://example.com/workflow"
+url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["microsoft_teams"]
+"#;
+
+        let err =
+            Config::from_toml_str(raw).expect_err("ambiguous Microsoft Teams URL should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidMicrosoftTeamsUrlSource { provider_id } if provider_id == "microsoft_teams"
         ));
     }
 }

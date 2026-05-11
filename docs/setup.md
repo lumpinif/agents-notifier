@@ -22,9 +22,16 @@ Choose the agent Agents Notifier should watch:
 1. Codex Desktop
 2. Codex CLI
 3. Claude Code
+4. Cursor CLI
+5. OpenCode CLI
+6. OpenClaw
+7. Hermes Agent CLI
+8. GitHub Copilot CLI
+9. Gemini CLI
+10. Aider
 ```
 
-Codex Desktop is currently offered only on macOS. On Linux and Windows, setup offers Codex CLI and Claude Code hook sources.
+Codex Desktop is currently offered only on macOS. On Linux and Windows, setup starts at Codex CLI and offers the hook-based CLI sources.
 
 ## Provider
 
@@ -37,6 +44,9 @@ Choose where notifications should go:
 4. Pushover
 5. Feishu/Lark custom bot
 6. Webhook
+7. Telegram
+8. WhatsApp
+9. Microsoft Teams
 ```
 
 Provider guides:
@@ -46,6 +56,9 @@ Provider guides:
 - [Pushover](providers/pushover.md)
 - [Slack](providers/slack.md)
 - [Discord](providers/discord.md)
+- [Telegram](providers/telegram.md)
+- [WhatsApp](providers/whatsapp.md)
+- [Microsoft Teams](providers/microsoft-teams.md)
 - [Webhook](providers/webhook.md)
 
 ## Answer Detail
@@ -68,6 +81,9 @@ Agents Notifier fixes answer detail to `Preview` for:
 - Pushover, because Pushover messages are limited to 1024 characters.
 - Slack, because Slack has documented message length and truncation limits.
 - Discord, because Discord webhook content is limited to 2000 characters.
+- Telegram, because Telegram Bot API text messages are limited to 4096 characters.
+- WhatsApp, because Agents Notifier uses a 4096-character guard for WhatsApp text bodies.
+- Microsoft Teams, because Teams webhook messages have a documented 28 KB size limit.
 
 ## Prompt Detail
 
@@ -100,6 +116,9 @@ Agents Notifier disables prompt detail for:
 - Pushover, because Pushover messages are limited to 1024 characters.
 - Slack, because Slack has documented message length and truncation limits.
 - Discord, because Discord webhook content is limited to 2000 characters.
+- Telegram, because Telegram Bot API text messages are limited to 4096 characters.
+- WhatsApp, because Agents Notifier uses a 4096-character guard for WhatsApp text bodies.
+- Microsoft Teams, because Teams webhook messages have a documented 28 KB size limit.
 
 To include prompts:
 
