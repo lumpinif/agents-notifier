@@ -30,6 +30,12 @@ node scripts/publish-npm-release.js --packages dist/npm-packages
 The main package depends on the native packages at the exact same version, so
 publishing the main package first will make fresh installs fail.
 
+For the first manual publish after a GitHub Release already exists, use:
+
+```bash
+just npm-publish 0.6.0
+```
+
 GitHub Actions can publish with npm Trusted Publishing/OIDC or with a repository
 secret named `NPM_TOKEN`. Trusted Publishing is preferred because it avoids a
 long-lived publish token.

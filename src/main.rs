@@ -81,8 +81,8 @@ impl ProgressLine {
         spinner.finish_and_clear();
 
         match outcome {
-            ProgressOutcome::Ready => println!("{} ready.", self.message),
-            ProgressOutcome::Failed => println!("{} failed.", self.message),
+            ProgressOutcome::Ready => println!("{} {}", self.message, style("ready.").green()),
+            ProgressOutcome::Failed => println!("{} {}", self.message, style("failed.").red()),
         }
         Ok(())
     }
@@ -457,6 +457,49 @@ fn print_field(label: &str, value: impl Display) {
     println!("  {} {}", style(format!("{label}:")).dim(), value);
 }
 
+fn print_success_field(label: &str, value: impl Display) {
+    print_field(label, style(value.to_string()).green());
+}
+
+fn print_path_field(label: &str, value: impl Display) {
+    print_field(label, style(value.to_string()).cyan());
+}
+
+fn print_bool_field(label: &str, value: bool) {
+    if value {
+        print_success_field(label, "yes");
+    } else {
+        print_field(label, style("no").yellow());
+    }
+}
+
+fn print_setup_summary(
+    mode: ConfigWriteMode,
+    path: &Path,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+) {
+    println!(
+        "{} config: {}",
+        style(mode.past_tense()).green(),
+        style(path.display()).cyan()
+    );
+    println!("agent: {}", style(agent.display_name()).green());
+    println!(
+        "answer detail: {}",
+        style(answer_detail.display_name()).green()
+    );
+    println!(
+        "prompt detail: {}",
+        style(prompt_detail.display_name()).green()
+    );
+}
+
+fn print_provider_configured(provider: &str) {
+    println!("{provider}: {}", style("configured").green());
+}
+
 fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     println!("No Agents Notifier config found at `{}`.", path.display());
     println!();
@@ -675,12 +718,9 @@ fn run_ntfy_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("ntfy server: https://ntfy.sh");
-    println!("ntfy topic: {topic}");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    println!("ntfy server: {}", style("https://ntfy.sh").cyan());
+    println!("ntfy topic: {}", style(&topic).cyan());
 
     Ok(LoadedConfig {
         config,
@@ -712,11 +752,8 @@ fn run_feishu_lark_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Feishu/Lark custom bot: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Feishu/Lark custom bot");
 
     Ok(LoadedConfig {
         config,
@@ -742,11 +779,8 @@ fn run_webhook_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("webhook: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("webhook");
 
     Ok(LoadedConfig {
         config,
@@ -785,11 +819,8 @@ fn run_pushover_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Pushover: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Pushover");
 
     Ok(LoadedConfig {
         config,
@@ -815,11 +846,8 @@ fn run_slack_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Slack: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Slack");
 
     Ok(LoadedConfig {
         config,
@@ -845,11 +873,8 @@ fn run_discord_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Discord: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Discord");
 
     Ok(LoadedConfig {
         config,
@@ -879,11 +904,8 @@ fn run_telegram_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Telegram: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Telegram");
 
     Ok(LoadedConfig {
         config,
@@ -923,11 +945,8 @@ fn run_whatsapp_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("WhatsApp: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("WhatsApp");
 
     Ok(LoadedConfig {
         config,
@@ -957,11 +976,8 @@ fn run_microsoft_teams_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Microsoft Teams: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Microsoft Teams");
 
     Ok(LoadedConfig {
         config,
@@ -1018,11 +1034,8 @@ fn run_email_smtp_setup(
     setup::write_config(path, &config)?;
 
     println!();
-    println!("{} config: {}", mode.past_tense(), path.display());
-    println!("agent: {}", agent.display_name());
-    println!("answer detail: {}", answer_detail.display_name());
-    println!("prompt detail: {}", prompt_detail.display_name());
-    println!("Email SMTP: configured");
+    print_setup_summary(mode, path, agent, answer_detail, prompt_detail);
+    print_provider_configured("Email SMTP");
 
     Ok(LoadedConfig {
         config,
@@ -1297,9 +1310,9 @@ fn prompt_for_feishu_lark_webhook_url(current_url: Option<&str>) -> anyhow::Resu
 
 fn prompt_for_feishu_lark_secret(current_secret: Option<&str>) -> anyhow::Result<Option<String>> {
     let prompt = if current_secret.is_some() {
-        "Signing secret [configured, press Enter to keep, type `none` to clear]"
+        "Signing secret (optional) [configured, press Enter to keep, type `none` to clear]"
     } else {
-        "Signing secret, or press Enter if you did not enable Signature Verification"
+        "Signing secret (optional)"
     };
     let input = prompt_secret(prompt, "failed to read signing secret")?;
 
@@ -1875,6 +1888,9 @@ async fn run_start_service(
 ) -> anyhow::Result<()> {
     ensure_sources_supported_on_current_platform(&loaded.config)?;
     build_providers(&loaded.config).context("provider setup failed")?;
+    if loaded.guided_setup.is_some() {
+        println!();
+    }
     let progress = ProgressLine::start("Starting agents-notifier")?;
     let start_result = async {
         cleanup_legacy_background_service()?;
@@ -1977,20 +1993,20 @@ fn print_service_start_outcome(
     print_section("Service");
     match outcome {
         ServiceStartOutcome::AlreadyRunning => {
-            print_field("status", "already running");
+            print_success_field("status", "already running");
         }
         ServiceStartOutcome::Started => {
-            print_field("status", "running");
+            print_success_field("status", "running");
         }
         ServiceStartOutcome::UpdatedAndStarted => {
-            print_field("status", "updated and restarted");
+            print_success_field("status", "updated and restarted");
         }
     }
     print_field("manager", manager_name);
     if let Some(pid) = pid {
         print_field("pid", pid);
     }
-    print_field("log", log_file.display());
+    print_path_field("log", log_file.display());
 }
 
 fn print_notification_targets(config: &Config) {
@@ -2019,7 +2035,7 @@ fn print_notification_targets(config: &Config) {
     if !agents.is_empty() {
         print_section("Watched agents");
         for agent in &agents {
-            print_field("agent", agent);
+            print_success_field("agent", agent);
         }
     }
 
@@ -2039,9 +2055,9 @@ fn print_notification_targets(config: &Config) {
             print_field(
                 "signature verification",
                 if target.signed {
-                    "configured"
+                    style("configured").green()
                 } else {
-                    "not configured"
+                    style("not configured").yellow()
                 },
             );
         }
@@ -2208,7 +2224,7 @@ fn print_status_notification_targets(config_path: &Path) {
         Ok(config) => print_notification_targets(&config),
         Err(error) => {
             print_section("Config");
-            print_field("status", error);
+            print_field("status", style(error.to_string()).red());
         }
     }
 }
@@ -2224,18 +2240,18 @@ fn run_status() -> anyhow::Result<()> {
     print_heading("agents-notifier status");
     print_section("Service");
     print_field("manager", status.platform);
-    print_field("installed", yes_no(status.installed));
-    print_field("running", yes_no(status.running));
+    print_bool_field("installed", status.installed);
+    print_bool_field("running", status.running);
     if let Some(pid) = status.pid {
         print_field("pid", pid);
     }
     if let Some(service_file) = service_file {
-        print_field("service file", service_file.display());
+        print_path_field("service file", service_file.display());
     }
-    print_field("ingress", endpoint.display());
-    print_field(
+    print_path_field("ingress", endpoint.display());
+    print_bool_field(
         "ingress ready",
-        yes_no(local_ingress_ready_now(&endpoint, status.running)),
+        local_ingress_ready_now(&endpoint, status.running),
     );
 
     let config_path = metadata
@@ -2248,8 +2264,8 @@ fn run_status() -> anyhow::Result<()> {
         .unwrap_or(log_file_path()?);
 
     print_section("Files");
-    print_field("config", config_path.display());
-    print_field("log", log_file.display());
+    print_path_field("config", config_path.display());
+    print_path_field("log", log_file.display());
     print_status_notification_targets(&config_path);
 
     Ok(())
@@ -2268,10 +2284,6 @@ fn local_ingress_ready_now(
         #[cfg(windows)]
         agents_notifier::paths::IngressEndpoint::WindowsNamedPipe(_) => service_running,
     }
-}
-
-fn yes_no(value: bool) -> &'static str {
-    if value { "yes" } else { "no" }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -2368,11 +2380,18 @@ async fn finish_guided_setup(setup: GuidedSetup) -> anyhow::Result<()> {
 
     send_test_notification().await?;
 
-    println!("Test notification sent.");
+    println!("{}", style("Test notification sent.").green());
     if prompt_yes_no("Did it arrive? [Y/n] ")? {
-        println!("Setup complete. Agent notifications can now be forwarded.");
+        println!(
+            "{}",
+            style("Setup complete. Agent notifications can now be forwarded.").green()
+        );
     } else {
-        println!("The service is still running, but the test notification did not arrive.");
+        println!(
+            "{}",
+            style("The service is still running, but the test notification did not arrive.")
+                .yellow()
+        );
         println!("Check the provider settings in your config, then run this test again:");
         println!(
             "agents-notifier emit --source agents_notifier --title \"Agents Notifier\" --body \"Test notification from your computer.\""
@@ -2455,11 +2474,17 @@ async fn offer_test_notification(config: &Config) -> anyhow::Result<()> {
     }
 
     send_test_notification().await?;
-    println!("Test notification sent.");
+    println!("{}", style("Test notification sent.").green());
     if prompt_yes_no("Did it arrive? [Y/n] ")? {
-        println!("Agents Notifier is working. Agent notifications can now be forwarded.");
+        println!(
+            "{}",
+            style("Agents Notifier is working. Agent notifications can now be forwarded.").green()
+        );
     } else {
-        println!("The service is running, but the test notification did not arrive.");
+        println!(
+            "{}",
+            style("The service is running, but the test notification did not arrive.").yellow()
+        );
         println!("Check the provider settings printed above.");
     }
 

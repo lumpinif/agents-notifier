@@ -77,7 +77,12 @@ function publishPackage(packageDir) {
     return;
   }
 
-  run("npm", ["publish", packageDir, "--provenance"]);
+  const publishArgs = ["publish", packageDir];
+  if (process.env.GITHUB_ACTIONS === "true") {
+    publishArgs.push("--provenance");
+  }
+
+  run("npm", publishArgs);
 }
 
 function main() {

@@ -137,13 +137,17 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
       - name: Publish npm packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: node scripts/publish-npm-release.js --packages npm-packages
+        run: |
+          set -euo pipefail
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            npm config set //registry.npmjs.org/:_authToken "${NODE_AUTH_TOKEN}"
+          fi
+          node scripts/publish-npm-release.js --packages npm-packages
 
       - name: Upload npm package tarballs
         uses: actions/upload-artifact@v7

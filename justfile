@@ -20,3 +20,6 @@ install-local:
 
 release version:
     ./scripts/release.sh {{version}}
+
+npm-publish version:
+    node scripts/publish-npm-local.js {{version}}
