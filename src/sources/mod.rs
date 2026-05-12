@@ -6,3 +6,4 @@ pub mod codex_desktop;
 pub mod gemini_cli;
 pub mod github_copilot_cli;
 pub(crate) mod hook_payload;
+pub mod opencode_cli;

@@ -22,7 +22,15 @@ type = "agent_hook"
 
 Then route `opencode_cli` to your provider.
 
-Agents Notifier only needs an OpenCode plugin to run this command when the session becomes idle:
+For structured notifications, configure an OpenCode plugin to submit the idle session event:
+
+```bash
+agents-notifier ingest --source opencode_cli --format opencode_cli_session
+```
+
+`ingest` reads JSON from stdin and preserves fields OpenCode exposes through the plugin event and context, including project path, session id, status, worktree, and model when your plugin includes it.
+
+If you only need a simple custom message, OpenCode can run this command when the session becomes idle:
 
 ```bash
 agents-notifier emit \
@@ -36,7 +44,33 @@ agents-notifier emit \
 Create `.opencode/plugins/agents-notifier.js`:
 
 ```javascript
-export const AgentsNotifier = async ({ $ }) => {
+import { spawn } from "node:child_process";
+
+function submitAgentsNotifierEvent(payload) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("agents-notifier", [
+      "ingest",
+      "--source",
+      "opencode_cli",
+      "--format",
+      "opencode_cli_session",
+    ], {
+      stdio: ["pipe", "ignore", "ignore"],
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`agents-notifier exited with code ${code}`));
+      }
+    });
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+export const AgentsNotifier = async ({ directory, worktree }) => {
   return {
     event: async ({ event }) => {
       if (
@@ -46,13 +80,19 @@ export const AgentsNotifier = async ({ $ }) => {
         return;
       }
 
-      await $`agents-notifier emit --source opencode_cli --title "OpenCode CLI" --body "OpenCode CLI finished a task."`;
+      await submitAgentsNotifierEvent({
+        event,
+        cwd: directory ?? process.cwd(),
+        worktree,
+      });
     },
   };
 };
 ```
 
 Project plugins in `.opencode/plugins/` are loaded by OpenCode at startup.
+
+If your OpenCode plugin receives `directory`, `worktree`, or model information in its plugin context, include those fields in the payload as `cwd`, `worktree`, and `model`.
 
 ## Test the Route
 
@@ -73,4 +113,5 @@ Check these first:
 - Your config includes the `opencode_cli` source with `type = "agent_hook"`.
 - Your route includes `opencode_cli`.
 - The OpenCode plugin file is in `.opencode/plugins/` or `~/.config/opencode/plugins/`.
+- Structured plugins call `agents-notifier ingest --source opencode_cli --format opencode_cli_session`.
 - `agents-notifier` is available in the shell environment OpenCode uses for plugins.

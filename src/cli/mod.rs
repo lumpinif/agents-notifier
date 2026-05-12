@@ -36,7 +36,7 @@ use agents_notifier::service::{
 };
 use agents_notifier::setup;
 use agents_notifier::sources::{
-    claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli,
+    claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
 };
 
 mod setup_flow;
@@ -176,6 +176,7 @@ enum IngestFormat {
     CodexCliStop,
     GeminiCliHook,
     GithubCopilotCliNotification,
+    OpencodeCliSession,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -797,7 +798,7 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
             setup::AgentSelection::OpenCodeCli => {
                 println!("Agents Notifier 已准备接收 OpenCode CLI hook event。");
                 println!(
-                    "让 OpenCode plugin 在 session idle 时调用：`agents-notifier emit --source opencode_cli`。"
+                    "让 OpenCode plugin 在 session idle 时调用：`agents-notifier ingest --source opencode_cli --format opencode_cli_session`。"
                 );
             }
             setup::AgentSelection::OpenClaw => {
@@ -859,7 +860,7 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
         setup::AgentSelection::OpenCodeCli => {
             println!("Agents Notifier is ready for OpenCode CLI hook events.");
             println!(
-                "Configure your OpenCode plugin to call `agents-notifier emit --source opencode_cli` when the session becomes idle."
+                "Configure your OpenCode plugin to call `agents-notifier ingest --source opencode_cli --format opencode_cli_session` when the session becomes idle."
             );
         }
         setup::AgentSelection::OpenClaw => {
@@ -1166,6 +1167,11 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
             let input = serde_json::from_str(&raw)
                 .context("failed to parse github_copilot_cli notification hook JSON")?;
             github_copilot_cli::local_event_from_notification_hook(source_id, input)?
+        }
+        IngestFormat::OpencodeCliSession => {
+            let input =
+                serde_json::from_str(&raw).context("failed to parse opencode_cli session JSON")?;
+            opencode_cli::local_event_from_session_input(source_id, input)?
         }
     };
 
