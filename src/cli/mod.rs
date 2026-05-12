@@ -1,11 +1,11 @@
 use std::fmt::Display;
 use std::fs;
-use std::io::{self, IsTerminal};
+use std::io::{self, IsTerminal, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use console::style;
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -35,7 +35,7 @@ use agents_notifier::service::{
     load_metadata,
 };
 use agents_notifier::setup;
-use agents_notifier::sources::codex_desktop;
+use agents_notifier::sources::{codex_cli, codex_desktop};
 
 mod setup_flow;
 
@@ -158,6 +158,19 @@ enum Command {
         #[arg(long, help = "Notification body")]
         body: String,
     },
+    #[command(about = "Submit a structured hook event from stdin")]
+    Ingest {
+        #[arg(long, help = "Configured source id for this event")]
+        source: String,
+        #[arg(long, value_enum, help = "Structured hook input format")]
+        format: IngestFormat,
+    },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[clap(rename_all = "snake_case")]
+enum IngestFormat {
+    CodexCliStop,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -199,6 +212,7 @@ pub async fn run() -> anyhow::Result<()> {
             title,
             body,
         } => run_emit(&source, title, body).await,
+        Command::Ingest { source, format } => run_ingest(&source, format).await,
     }
 }
 
@@ -914,13 +928,11 @@ async fn send_test_notification() -> anyhow::Result<()> {
 
     local_ingress::submit_event(
         &endpoint,
-        &LocalSignalEvent {
-            source_id: "agents_notifier".to_string(),
-            title: "Agents Notifier".to_string(),
-            body:
-                "Test notification from your computer. If this arrived, Agents Notifier is working."
-                    .to_string(),
-        },
+        &LocalSignalEvent::new(
+            "agents_notifier",
+            "Agents Notifier",
+            "Test notification from your computer. If this arrived, Agents Notifier is working.",
+        ),
     )
     .await
     .context("failed to send test notification through the local service")
@@ -1115,12 +1127,25 @@ fn ensure_sources_supported_on_current_platform(config: &Config) -> anyhow::Resu
 
 async fn run_emit(source_id: &str, title: String, body: String) -> anyhow::Result<()> {
     let endpoint = ingress_endpoint()?;
-    let event = LocalSignalEvent {
-        source_id: source_id.to_string(),
-        title,
-        body,
-    };
+    let event = LocalSignalEvent::new(source_id, title, body);
     local_ingress::submit_event(&endpoint, &event).await
+}
+
+async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()> {
+    let mut raw = String::new();
+    io::stdin()
+        .read_to_string(&mut raw)
+        .context("failed to read hook event from stdin")?;
+
+    let event = match format {
+        IngestFormat::CodexCliStop => {
+            let input =
+                serde_json::from_str(&raw).context("failed to parse codex_cli stop hook JSON")?;
+            codex_cli::local_event_from_stop_hook(source_id, input)?
+        }
+    };
+
+    local_ingress::submit_event(&ingress_endpoint()?, &event).await
 }
 
 fn init_tracing(level: &str) -> anyhow::Result<()> {

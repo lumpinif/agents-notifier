@@ -1,12 +1,15 @@
 use std::sync::{Arc, Mutex};
 
 use crate::config::{
-    CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-    SourceConfig, SourceType,
+    AnswerDetail, CliConfig, Config, LogConfig, NotificationConfig, PromptDetail, ProviderConfig,
+    ProviderType, RouteConfig, SourceConfig, SourceType,
 };
 use crate::delivery::ProviderSendResult;
 use crate::router::{Provider, ProviderFuture};
-use crate::signal::Signal;
+use crate::signal::{
+    Signal, SignalAnswerKind, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus,
+    SignalWorkspace,
+};
 
 use super::*;
 
@@ -48,11 +51,7 @@ async fn route_event_creates_codex_cli_signal_and_uses_service_router() {
     route_event(
         &test_config("codex_cli", SourceType::CodexCli),
         &[&provider],
-        LocalSignalEvent {
-            source_id: "codex_cli".to_string(),
-            title: "Codex".to_string(),
-            body: "Ready for review.".to_string(),
-        },
+        LocalSignalEvent::new("codex_cli", "Codex", "Ready for review."),
     )
     .await
     .expect("event should route through service router");
@@ -73,11 +72,11 @@ async fn route_event_creates_agents_notifier_signal_for_service_tests() {
     route_event(
         &test_config("agents_notifier", SourceType::AgentsNotifier),
         &[&provider],
-        LocalSignalEvent {
-            source_id: "agents_notifier".to_string(),
-            title: "Agents Notifier".to_string(),
-            body: "Test notification from your computer.".to_string(),
-        },
+        LocalSignalEvent::new(
+            "agents_notifier",
+            "Agents Notifier",
+            "Test notification from your computer.",
+        ),
     )
     .await
     .expect("service test event should route through service router");
@@ -98,11 +97,7 @@ async fn route_event_creates_claude_code_signal_and_uses_service_router() {
     route_event(
         &test_config("claude_code", SourceType::ClaudeCode),
         &[&provider],
-        LocalSignalEvent {
-            source_id: "claude_code".to_string(),
-            title: "Claude Code".to_string(),
-            body: "Claude Code finished a task.".to_string(),
-        },
+        LocalSignalEvent::new("claude_code", "Claude Code", "Claude Code finished a task."),
     )
     .await
     .expect("Claude Code event should route through service router");
@@ -123,11 +118,11 @@ async fn route_event_creates_generic_agent_hook_signal_and_uses_service_router()
     route_event(
         &test_config("opencode_cli", SourceType::AgentHook),
         &[&provider],
-        LocalSignalEvent {
-            source_id: "opencode_cli".to_string(),
-            title: "OpenCode CLI".to_string(),
-            body: "OpenCode CLI finished a task.".to_string(),
-        },
+        LocalSignalEvent::new(
+            "opencode_cli",
+            "OpenCode CLI",
+            "OpenCode CLI finished a task.",
+        ),
     )
     .await
     .expect("generic agent hook event should route through service router");
@@ -148,11 +143,7 @@ async fn route_event_rejects_codex_desktop_local_ingress() {
     let err = route_event(
         &test_config("codex_desktop", SourceType::CodexDesktop),
         &[&provider],
-        LocalSignalEvent {
-            source_id: "codex_desktop".to_string(),
-            title: "Codex Desktop".to_string(),
-            body: "Body".to_string(),
-        },
+        LocalSignalEvent::new("codex_desktop", "Codex Desktop", "Body"),
     )
     .await
     .expect_err("Codex Desktop should not accept local ingress events");
@@ -164,6 +155,68 @@ async fn route_event_rejects_codex_desktop_local_ingress() {
             .expect("calls lock should not be poisoned")
             .is_empty()
     );
+}
+
+#[test]
+fn create_signal_applies_structured_fields_with_notification_policy() {
+    let mut config = test_config("codex_cli", SourceType::CodexCli);
+    config.notification = NotificationConfig {
+        answer_detail: AnswerDetail::Preview,
+        prompt_detail: PromptDetail::Off,
+    };
+
+    let mut event = LocalSignalEvent::new("codex_cli", "Codex CLI", "Codex CLI finished a task.");
+    event.event = Some(SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("Stop".to_string()),
+    });
+    event.workspace = Some(SignalWorkspace {
+        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+        project_name: Some("agents-notifier".to_string()),
+        project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+        branch: None,
+        worktree: None,
+    });
+    event.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: Some("turn-1".to_string()),
+        prompt: Some("Do not include this prompt.".to_string()),
+        answer: Some(format!("{} done", "word ".repeat(120))),
+        model: Some("gpt-5.2-codex".to_string()),
+    });
+    event.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: None,
+        duration_ms: None,
+    });
+
+    let signal =
+        create_signal(&config, event).expect("structured local event should create signal");
+    let conversation = signal
+        .conversation
+        .as_ref()
+        .expect("conversation should be present");
+    let answer = conversation
+        .answer
+        .as_ref()
+        .expect("answer preview should be present");
+
+    assert_eq!(&signal.event.kind, &SignalEventKind::TurnCompleted);
+    assert_eq!(signal.event.raw_name.as_deref(), Some("Stop"));
+    assert_eq!(
+        signal
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.project_name.as_deref()),
+        Some("agents-notifier")
+    );
+    assert_eq!(conversation.prompt, None);
+    assert_eq!(conversation.model.as_deref(), Some("gpt-5.2-codex"));
+    assert_eq!(answer.kind, SignalAnswerKind::Preview);
+    assert!(answer.content.len() <= 363);
+    assert!(answer.content.ends_with("..."));
 }
 
 fn test_config(source_id: &str, source_type: SourceType) -> Config {

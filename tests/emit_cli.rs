@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use serde_json::Value;
 use tempfile::{TempDir, tempdir_in};
@@ -55,6 +56,86 @@ async fn emit_submits_event_to_local_service_socket() {
     assert_eq!(request["source_id"], "codex_cli");
     assert_eq!(request["title"], "Codex");
     assert_eq!(request["body"], "Ready for review.");
+}
+
+#[tokio::test]
+async fn ingest_submits_structured_codex_cli_stop_event_to_local_service_socket() {
+    let home = short_home();
+    let socket_path = socket_path_for_home(home.path());
+    create_parent(&socket_path);
+    let listener = UnixListener::bind(&socket_path).expect("test socket should bind");
+
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("client should connect");
+        let mut raw_request = Vec::new();
+        stream
+            .read_to_end(&mut raw_request)
+            .await
+            .expect("request should be readable");
+        stream
+            .write_all(br#"{"ok":true,"error":null}"#)
+            .await
+            .expect("response should be writable");
+        serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+        .env("HOME", home.path())
+        .args([
+            "ingest",
+            "--source",
+            "codex_cli",
+            "--format",
+            "codex_cli_stop",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("command should spawn");
+
+    let input = br#"{
+        "cwd": "/Users/tester/projects/agents-notifier",
+        "hook_event_name": "Stop",
+        "last_assistant_message": "Ready for review.",
+        "model": "gpt-5.2-codex",
+        "session_id": "session-1",
+        "turn_id": "turn-1"
+    }"#;
+    let mut stdin = child.stdin.take().expect("stdin should be piped");
+    stdin
+        .write_all(input)
+        .await
+        .expect("hook input should be writable");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("command should finish");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let request = server.await.expect("server task should finish");
+    assert_eq!(request["source_id"], "codex_cli");
+    assert_eq!(request["title"], "Codex CLI");
+    assert_eq!(request["body"], "Codex CLI finished a task.");
+    assert_eq!(request["event"]["kind"], "turn_completed");
+    assert_eq!(request["event"]["raw_name"], "Stop");
+    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(
+        request["workspace"]["project_path"],
+        "/Users/tester/projects/agents-notifier"
+    );
+    assert_eq!(request["conversation"]["session_id"], "session-1");
+    assert_eq!(request["conversation"]["turn_id"], "turn-1");
+    assert_eq!(request["conversation"]["answer"], "Ready for review.");
+    assert_eq!(request["conversation"]["model"], "gpt-5.2-codex");
+    assert_eq!(request["lifecycle"]["status"], "completed");
 }
 
 #[tokio::test]

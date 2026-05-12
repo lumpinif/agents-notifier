@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 #[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
@@ -12,10 +13,13 @@ use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 use tokio::net::{UnixListener, UnixStream};
 use tracing::{info, warn};
 
-use crate::config::{Config, SourceType};
+use crate::config::{AnswerDetail, Config, PromptDetail, SourceType};
 use crate::paths::IngressEndpoint;
 use crate::router::{Provider, Router};
-use crate::signal::Signal;
+use crate::signal::{
+    Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalLifecycle,
+    SignalLink, SignalWorkspace,
+};
 use crate::sources::{agent_hook, agents_notifier, claude_code, codex_cli};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -23,6 +27,54 @@ pub struct LocalSignalEvent {
     pub source_id: String,
     pub title: String,
     pub body: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event: Option<SignalEvent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<SignalWorkspace>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation: Option<LocalSignalConversation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<SignalLifecycle>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<SignalLink>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl LocalSignalEvent {
+    pub fn new(
+        source_id: impl Into<String>,
+        title: impl Into<String>,
+        body: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_id: source_id.into(),
+            title: title.into(),
+            body: body.into(),
+            event: None,
+            workspace: None,
+            conversation: None,
+            lifecycle: None,
+            links: Vec::new(),
+            metadata: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LocalSignalConversation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -230,7 +282,7 @@ pub async fn route_event(
         event = "ingress.received",
     );
 
-    let signal = create_signal(config, &event.source_id, event.title, event.body)?;
+    let signal = create_signal(config, event)?;
     info!(
         signal.id = %signal.id,
         source.id = %signal.source_id(),
@@ -242,29 +294,94 @@ pub async fn route_event(
     Ok(())
 }
 
-fn create_signal(
-    config: &Config,
-    source_id: &str,
-    title: String,
-    body: String,
-) -> anyhow::Result<Signal> {
+fn create_signal(config: &Config, event: LocalSignalEvent) -> anyhow::Result<Signal> {
+    let source_id = event.source_id.clone();
+    let title = event.title.clone();
+    let body = event.body.clone();
     let source = config
-        .source(source_id)
+        .source(&source_id)
         .with_context(|| format!("source `{source_id}` is not configured"))?;
 
-    match source.source_type {
+    let mut signal = match source.source_type {
         SourceType::AgentsNotifier => {
-            agents_notifier::create_signal(config, source_id, title, body)
+            agents_notifier::create_signal(config, &source_id, title, body)
         }
-        SourceType::AgentHook => agent_hook::create_signal(config, source_id, title, body),
-        SourceType::ClaudeCode => claude_code::create_signal(config, source_id, title, body),
-        SourceType::CodexCli => codex_cli::create_signal(config, source_id, title, body),
+        SourceType::AgentHook => agent_hook::create_signal(config, &source_id, title, body),
+        SourceType::ClaudeCode => claude_code::create_signal(config, &source_id, title, body),
+        SourceType::CodexCli => codex_cli::create_signal(config, &source_id, title, body),
         SourceType::CodexDesktop => {
             anyhow::bail!(
                 "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier`, `agent_hook`, `codex_cli`, and `claude_code` events",
                 source.id
             )
         }
+    }?;
+
+    apply_local_structured_fields(config, &mut signal, event);
+    Ok(signal)
+}
+
+fn apply_local_structured_fields(config: &Config, signal: &mut Signal, event: LocalSignalEvent) {
+    if let Some(event) = event.event {
+        signal.event = event;
+    }
+    signal.workspace = event.workspace;
+    signal.lifecycle = event.lifecycle;
+    signal.links = event.links;
+    signal.metadata.extend(event.metadata);
+    if let Some(conversation) = event.conversation {
+        signal.conversation = Some(SignalConversation {
+            session_id: conversation.session_id,
+            session_title: conversation.session_title,
+            turn_id: conversation.turn_id,
+            prompt: prompt_for_config(conversation.prompt, config.notification.prompt_detail),
+            answer: answer_for_config(conversation.answer, config.notification.answer_detail),
+            model: conversation.model,
+        });
+    }
+}
+
+fn prompt_for_config(prompt: Option<String>, prompt_detail: PromptDetail) -> Option<String> {
+    if prompt_detail != PromptDetail::On {
+        return None;
+    }
+
+    prompt.and_then(present_owned)
+}
+
+fn answer_for_config(answer: Option<String>, answer_detail: AnswerDetail) -> Option<SignalAnswer> {
+    let answer = answer.and_then(present_owned)?;
+    let (kind, content) = match answer_detail {
+        AnswerDetail::Preview => (SignalAnswerKind::Preview, preview_text(&answer)),
+        AnswerDetail::Full => (SignalAnswerKind::Full, answer),
+    };
+
+    if content.is_empty() {
+        None
+    } else {
+        Some(SignalAnswer { kind, content })
+    }
+}
+
+fn preview_text(value: &str) -> String {
+    const LIMIT: usize = 360;
+
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = compact.chars();
+    let truncated: String = chars.by_ref().take(LIMIT).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
+fn present_owned(value: String) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
     }
 }
 

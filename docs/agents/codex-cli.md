@@ -12,7 +12,15 @@ Official Codex CLI references:
 
 ## What Agents Notifier Needs
 
-Agents Notifier only needs Codex CLI to run one command from its notification or hook mechanism:
+For structured notifications, configure Codex CLI to pipe its Stop hook JSON into:
+
+```bash
+agents-notifier ingest --source codex_cli --format codex_cli_stop
+```
+
+`ingest` reads the hook payload from stdin and preserves fields Codex CLI exposes, including project path, session id, turn id, model, and the last assistant message.
+
+If you only need a simple custom message, Codex CLI can run this command instead:
 
 ```bash
 agents-notifier emit \
@@ -21,7 +29,7 @@ agents-notifier emit \
   --body "Codex CLI finished a task."
 ```
 
-`emit` does not send notifications directly. It submits the event to the local service ingress, and the service routes it to your configured providers.
+`ingest` and `emit` do not send notifications directly. They submit the event to the local service ingress, and the service routes it to your configured providers.
 
 ## 1. Set Up the Service
 
@@ -41,9 +49,10 @@ Then choose a provider.
 
 ## 2. Connect Codex CLI
 
-Configure your Codex CLI notification or hook command to run the `agents-notifier emit` command above.
+Configure your Codex CLI Stop hook command to run the `agents-notifier ingest` command above with the hook JSON on stdin.
 
-For Codex CLI's `notify` setting, add this to `~/.codex/config.toml`:
+When structured hook stdin is not available, Codex CLI's `notify` setting can use the simple `emit` path. Add this to `~/.codex/config.toml`:
+
 
 ```toml
 notify = [

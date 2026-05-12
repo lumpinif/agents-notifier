@@ -6,7 +6,15 @@ English documentation: [codex-cli.md](codex-cli.md)
 
 ## Agents Notifier 需要什么
 
-Agents Notifier 只需要 Codex CLI 的 notify 或 hook 机制运行这一条命令：
+结构化通知建议让 Codex CLI 把 Stop hook 的 JSON 通过 stdin 传给：
+
+```bash
+agents-notifier ingest --source codex_cli --format codex_cli_stop
+```
+
+`ingest` 会读取 hook payload，并保留 Codex CLI 明确暴露的字段，包括 project path、session id、turn id、model 和最后一条 assistant message。
+
+如果只需要一条简单自定义消息，也可以让 Codex CLI 运行：
 
 ```bash
 agents-notifier emit \
@@ -15,7 +23,7 @@ agents-notifier emit \
   --body "Codex CLI finished a task."
 ```
 
-`emit` 不会直接发通知。它只把事件提交给本机正在运行的 Agents Notifier service，然后由 service 按你的配置转发到 provider。
+`ingest` 和 `emit` 都不会直接发通知。它们只把事件提交给本机正在运行的 Agents Notifier service，然后由 service 按你的配置转发到 provider。
 
 ## 1. 设置 service
 
@@ -35,7 +43,9 @@ Codex CLI
 
 ## 2. 连接 Codex CLI
 
-把上面的 `agents-notifier emit` 命令配置到 Codex CLI 的 notify 或 hook 里。
+把上面的 `agents-notifier ingest` 命令配置到 Codex CLI 的 Stop hook 里，并把 hook JSON 传入 stdin。
+
+如果当前 Codex CLI 配置入口拿不到结构化 hook stdin，可以先用 notify 的简单 `emit` 路径。
 
 这条命令应该由 Codex CLI runtime 自动触发，不要让模型在对话里手动运行它。
 
