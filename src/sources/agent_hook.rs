@@ -58,10 +58,10 @@ mod tests {
         let signal = create_signal(&config, "opencode_cli", "OpenCode CLI", "Ready for review.")
             .expect("expected hook source should create signal");
 
-        assert_eq!(signal.source_id, "opencode_cli");
-        assert_eq!(signal.source_type, "agent_hook");
-        assert_eq!(signal.title, "OpenCode CLI");
-        assert_eq!(signal.body, "Ready for review.");
+        assert_eq!(signal.source_id(), "opencode_cli");
+        assert_eq!(signal.source_type(), "agent_hook");
+        assert_eq!(signal.title(), "OpenCode CLI");
+        assert_eq!(signal.summary(), "Ready for review.");
     }
 
     #[test]

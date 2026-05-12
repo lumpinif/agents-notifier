@@ -12,7 +12,7 @@ use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
 use crate::config::{EmailSmtpSecurity, ProviderConfig, ProviderType};
 use crate::delivery::{DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult};
-use crate::providers::formatting::body_with_local_time;
+use crate::providers::formatting::format_signal_body;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
@@ -226,7 +226,7 @@ fn build_email_message(
     let body = format_email_body(signal);
     let mut builder = Message::builder()
         .from(from.clone())
-        .subject(signal.title.clone())
+        .subject(signal.title().to_string())
         .header(ContentType::TEXT_PLAIN);
     for recipient in to {
         builder = builder.to(recipient.clone());
@@ -390,7 +390,7 @@ fn parse_recipients(
 }
 
 fn format_email_body(signal: &Signal) -> String {
-    body_with_local_time(&signal.body, &format_local_timestamp(signal.timestamp))
+    format_signal_body(signal, &format_local_timestamp(signal.timestamp))
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {

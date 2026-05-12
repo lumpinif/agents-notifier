@@ -28,7 +28,7 @@ impl Provider for TestProvider {
             self.calls
                 .lock()
                 .expect("calls lock should not be poisoned")
-                .push(format!("{}:{}", signal.source_id, signal.body));
+                .push(format!("{}:{}", signal.source_id(), signal.summary()));
             Ok(ProviderSendResult::sent(
                 self.id(),
                 self.provider_type(),

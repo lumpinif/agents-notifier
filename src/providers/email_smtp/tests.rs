@@ -169,16 +169,15 @@ impl EmailSmtpClient for RecordingEmailSmtpClient {
 }
 
 fn test_signal(body: &str) -> Signal {
-    Signal {
-        schema_version: crate::signal::SIGNAL_SCHEMA_VERSION,
-        id: "signal-1".to_string(),
-        source_id: "codex_cli".to_string(),
-        source_type: "codex_cli".to_string(),
-        title: "Codex".to_string(),
-        body: body.to_string(),
-        timestamp: test_timestamp(),
-        metadata: BTreeMap::new(),
-    }
+    Signal::new_with_timestamp(
+        "signal-1",
+        "codex_cli",
+        "codex_cli",
+        "Codex",
+        body,
+        test_timestamp(),
+        BTreeMap::new(),
+    )
 }
 
 fn test_timestamp() -> DateTime<Utc> {

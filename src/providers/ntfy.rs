@@ -6,7 +6,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
-use crate::providers::formatting::body_with_local_time;
+use crate::providers::formatting::format_signal_body;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -56,7 +56,7 @@ impl Provider for NtfyProvider {
             let response = self
                 .client
                 .post(&self.endpoint)
-                .header("Title", &signal.title)
+                .header("Title", signal.title())
                 .header("Priority", DEFAULT_PRIORITY)
                 .body(format_ntfy_body(signal))
                 .send()
@@ -105,7 +105,7 @@ fn required_field<'a>(
 }
 
 fn format_ntfy_body(signal: &Signal) -> String {
-    body_with_local_time(&signal.body, &format_local_timestamp(signal.timestamp))
+    format_signal_body(signal, &format_local_timestamp(signal.timestamp))
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {

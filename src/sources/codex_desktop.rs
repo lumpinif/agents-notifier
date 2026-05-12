@@ -52,16 +52,16 @@ pub async fn watch(
                 for signal in signals {
                     info!(
                         signal.id = %signal.id,
-                        source.id = %signal.source_id,
-                        source.type = %signal.source_type,
+                        source.id = %signal.source_id(),
+                        source.type = %signal.source_type(),
                         event = "signal.created",
                     );
 
                     if let Err(error) = Router::new(config).route(&signal, providers).await {
                         warn!(
                             signal.id = %signal.id,
-                            source.id = %signal.source_id,
-                            source.type = %signal.source_type,
+                            source.id = %signal.source_id(),
+                            source.type = %signal.source_type(),
                             error = %error,
                             event = "provider.send.failed",
                         );

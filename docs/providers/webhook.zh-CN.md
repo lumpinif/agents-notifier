@@ -12,12 +12,20 @@ Agents Notifier 会把完整 `Signal` 作为 JSON 发出去：
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "id": "signal-1",
-  "source_id": "codex_cli",
-  "source_type": "codex_cli",
-  "title": "Codex",
-  "body": "Ready for review.",
+  "source": {
+    "id": "codex_cli",
+    "source_type": "codex_cli"
+  },
+  "event": {
+    "kind": "custom"
+  },
+  "display": {
+    "title": "Codex",
+    "summary": "Ready for review."
+  },
+  "links": [],
   "timestamp": "2026-05-08T12:00:00Z",
   "metadata": {}
 }

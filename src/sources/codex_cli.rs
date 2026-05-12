@@ -26,10 +26,10 @@ mod tests {
         let signal = create_signal(&config, "codex_cli", "Codex", "Ready for review.")
             .expect("codex_cli source should create signal");
 
-        assert_eq!(signal.source_id, "codex_cli");
-        assert_eq!(signal.source_type, "codex_cli");
-        assert_eq!(signal.title, "Codex");
-        assert_eq!(signal.body, "Ready for review.");
+        assert_eq!(signal.source_id(), "codex_cli");
+        assert_eq!(signal.source_type(), "codex_cli");
+        assert_eq!(signal.title(), "Codex");
+        assert_eq!(signal.summary(), "Ready for review.");
     }
 
     #[test]

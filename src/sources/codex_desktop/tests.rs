@@ -50,10 +50,20 @@ fn first_run_skips_existing_rollout_events_then_emits_new_events() {
 
     assert_eq!(second.len(), 1);
     assert_eq!(
-        second[0].metadata.get("turn_id"),
-        Some(&"turn-new".to_string())
+        second[0]
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.turn_id.as_deref()),
+        Some("turn-new")
     );
-    assert!(second[0].body.contains("Preview: new result"));
+    assert_eq!(
+        second[0]
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.answer.as_ref())
+            .map(|answer| answer.content.as_str()),
+        Some("new result")
+    );
 }
 
 #[test]
@@ -92,8 +102,21 @@ fn prompt_detail_on_attaches_prompt_without_persisting_it() {
         .expect("second poll should pass");
 
     assert_eq!(signals.len(), 1);
-    assert!(signals[0].body.contains("Prompt: Please fix the route."));
-    assert!(signals[0].body.contains("Answer: fixed"));
+    let conversation = signals[0]
+        .conversation
+        .as_ref()
+        .expect("conversation should be set");
+    assert_eq!(
+        conversation.prompt.as_deref(),
+        Some("Please fix the route.")
+    );
+    assert_eq!(
+        conversation
+            .answer
+            .as_ref()
+            .map(|answer| answer.content.as_str()),
+        Some("fixed")
+    );
 
     let state = fs::read_to_string(&state_path).expect("state file should exist");
     assert!(!state.contains("Please fix the route."));

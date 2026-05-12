@@ -55,7 +55,7 @@ impl DeliveryErrorContext {
     pub fn route(signal: &Signal) -> Self {
         Self {
             signal_id: signal.id.clone(),
-            source_id: signal.source_id.clone(),
+            source_id: signal.source_id().to_string(),
             provider_id: None,
             provider_type: None,
             phase: DeliveryPhase::Route,
@@ -65,7 +65,7 @@ impl DeliveryErrorContext {
     pub fn provider_send(signal: &Signal, provider_id: &str, provider_type: &str) -> Self {
         Self {
             signal_id: signal.id.clone(),
-            source_id: signal.source_id.clone(),
+            source_id: signal.source_id().to_string(),
             provider_id: Some(provider_id.to_string()),
             provider_type: Some(provider_type.to_string()),
             phase: DeliveryPhase::ProviderSend,

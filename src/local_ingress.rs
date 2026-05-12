@@ -233,8 +233,8 @@ pub async fn route_event(
     let signal = create_signal(config, &event.source_id, event.title, event.body)?;
     info!(
         signal.id = %signal.id,
-        source.id = %signal.source_id,
-        source.type = %signal.source_type,
+        source.id = %signal.source_id(),
+        source.type = %signal.source_type(),
         event = "signal.created",
     );
 

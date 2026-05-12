@@ -10,10 +10,15 @@ use tracing::warn;
 use uuid::Uuid;
 
 use crate::config::{AnswerDetail, SourceConfig};
-use crate::signal::Signal;
+use crate::signal::{
+    Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalDisplay, SignalEvent,
+    SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalLink, SignalSource,
+    SignalWorkspace,
+};
 
 const PREVIEW_LIMIT_CHARS: usize = 360;
 const DEFAULT_TITLE: &str = "Codex Desktop";
+const DEFAULT_SUMMARY: &str = "Codex Desktop finished a task.";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) struct SessionInfo {
@@ -22,6 +27,8 @@ pub(super) struct SessionInfo {
     source: Option<String>,
     cwd: Option<String>,
     cli_version: Option<String>,
+    model: Option<String>,
+    model_provider: Option<String>,
     branch: Option<String>,
 }
 
@@ -41,6 +48,12 @@ impl SessionInfo {
         }
         if next.cli_version.is_some() {
             self.cli_version = next.cli_version;
+        }
+        if next.model.is_some() {
+            self.model = next.model;
+        }
+        if next.model_provider.is_some() {
+            self.model_provider = next.model_provider;
         }
         if next.branch.is_some() {
             self.branch = next.branch;
@@ -171,71 +184,15 @@ pub(super) fn signal_from_task_complete(
         .last_agent_message
         .as_deref()
         .and_then(|message| answer_block(message, answer_detail));
-    let prompt = prompt.and_then(prompt_block);
-    let duration = task.duration_ms.map(format_duration);
+    let prompt = prompt.and_then(prompt_block).map(ToOwned::to_owned);
     let branch = present_owned(session.branch.as_deref());
     let session_title = present_owned(session_title);
     let thread_link = session.id.as_deref().and_then(codex_thread_deep_link);
+    let cwd = present_owned(session.cwd.as_deref());
     let project_path = session.project_path();
 
-    let mut lines = Vec::new();
-    if let Some(project) = &project {
-        lines.push(format!("Project: {project}"));
-    }
-    if let Some(project_path) = &project_path {
-        lines.push(format!("Project Path: {project_path}"));
-    }
-    if let Some(session_title) = &session_title {
-        lines.push(format!("Session: {session_title}"));
-    }
-    if let Some(thread_link) = &thread_link {
-        lines.push(format!("Open in Codex: {thread_link}"));
-    }
-    if let Some(duration) = &duration {
-        lines.push(format!("Duration: {duration}"));
-    }
-    if let Some(branch) = &branch {
-        lines.push(format!("Branch: {branch}"));
-    }
-
-    let mut body = lines.join("\n");
-    if let Some(prompt) = &prompt {
-        if !body.is_empty() {
-            body.push_str("\n\n");
-        }
-        body.push_str("Prompt: ");
-        body.push_str(prompt);
-    }
-    if let Some(answer) = &answer {
-        if !body.is_empty() {
-            body.push_str("\n\n");
-        }
-        body.push_str(answer.label);
-        body.push_str(": ");
-        body.push_str(&answer.content);
-    }
-
     let mut metadata = BTreeMap::new();
-    if let Some(session_id) = &session.id {
-        metadata.insert("session_id".to_string(), session_id.clone());
-    }
     let turn_id = task.turn_id;
-    metadata.insert("turn_id".to_string(), turn_id.clone());
-    if let Some(project) = project {
-        metadata.insert("project".to_string(), project);
-    }
-    if let Some(project_path) = project_path {
-        metadata.insert("project_path".to_string(), project_path);
-    }
-    if let Some(duration_ms) = task.duration_ms {
-        metadata.insert("duration_ms".to_string(), duration_ms.to_string());
-    }
-    if let Some(completed_at) = task.completed_at {
-        metadata.insert("completed_at".to_string(), completed_at.to_string());
-    }
-    if let Some(branch) = branch {
-        metadata.insert("branch".to_string(), branch);
-    }
     if let Some(originator) = &session.originator {
         metadata.insert("codex_originator".to_string(), originator.clone());
     }
@@ -245,34 +202,91 @@ pub(super) fn signal_from_task_complete(
     if let Some(cli_version) = &session.cli_version {
         metadata.insert("codex_cli_version".to_string(), cli_version.clone());
     }
+    if let Some(model_provider) = &session.model_provider {
+        metadata.insert("codex_model_provider".to_string(), model_provider.clone());
+    }
 
-    Some(Signal::new_with_timestamp(
+    let mut signal = Signal::new_structured_with_timestamp(
         Uuid::new_v4().to_string(),
-        source.id.clone(),
-        source.source_type.as_str(),
-        DEFAULT_TITLE,
-        body,
+        SignalSource {
+            id: source.id.clone(),
+            source_type: source.source_type.as_str().to_string(),
+        },
+        SignalEvent {
+            kind: SignalEventKind::TurnCompleted,
+            raw_name: Some("task_complete".to_string()),
+        },
+        SignalDisplay {
+            title: DEFAULT_TITLE.to_string(),
+            summary: DEFAULT_SUMMARY.to_string(),
+        },
         task.timestamp,
         metadata,
-    ))
+    );
+
+    signal.workspace = workspace_if_present(SignalWorkspace {
+        cwd,
+        project_name: project,
+        project_path,
+        branch,
+        worktree: None,
+    });
+    signal.conversation = Some(SignalConversation {
+        session_id: session.id.clone(),
+        session_title,
+        turn_id: Some(turn_id),
+        prompt,
+        answer: answer.map(|answer| SignalAnswer {
+            kind: answer.kind,
+            content: answer.content,
+        }),
+        model: present_owned(session.model.as_deref()),
+    });
+    signal.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: task.completed_at.and_then(timestamp_from_epoch_seconds),
+        duration_ms: task.duration_ms.map(|duration_ms| duration_ms as u64),
+    });
+    if let Some(thread_link) = thread_link {
+        signal.links.push(SignalLink {
+            label: "Open in Codex".to_string(),
+            url: thread_link,
+        });
+    }
+
+    Some(signal)
+}
+
+fn workspace_if_present(workspace: SignalWorkspace) -> Option<SignalWorkspace> {
+    if workspace.cwd.is_some()
+        || workspace.project_name.is_some()
+        || workspace.project_path.is_some()
+        || workspace.branch.is_some()
+        || workspace.worktree.is_some()
+    {
+        Some(workspace)
+    } else {
+        None
+    }
 }
 
 struct AnswerBlock {
-    label: &'static str,
+    kind: SignalAnswerKind,
     content: String,
 }
 
 fn answer_block(value: &str, answer_detail: AnswerDetail) -> Option<AnswerBlock> {
     let value = strip_codex_app_directive_lines(value);
-    let (label, content) = match answer_detail {
-        AnswerDetail::Preview => ("Preview", preview_text(&value)),
-        AnswerDetail::Full => ("Answer", value.trim().to_string()),
+    let (kind, content) = match answer_detail {
+        AnswerDetail::Preview => (SignalAnswerKind::Preview, preview_text(&value)),
+        AnswerDetail::Full => (SignalAnswerKind::Full, value.trim().to_string()),
     };
 
     if content.is_empty() {
         None
     } else {
-        Some(AnswerBlock { label, content })
+        Some(AnswerBlock { kind, content })
     }
 }
 
@@ -439,15 +453,20 @@ fn parse_task_complete(
         })
         .ok_or_else(|| anyhow!("task_complete missing timestamp"))?;
 
+    let duration_ms = payload
+        .get("duration_ms")
+        .and_then(serde_json::Value::as_i64);
+    if duration_ms.is_some_and(|duration_ms| duration_ms < 0) {
+        return Err(anyhow!("task_complete duration_ms is negative"));
+    }
+
     Ok(TaskComplete {
         turn_id,
         timestamp,
         completed_at: payload
             .get("completed_at")
             .and_then(serde_json::Value::as_i64),
-        duration_ms: payload
-            .get("duration_ms")
-            .and_then(serde_json::Value::as_i64),
+        duration_ms,
         last_agent_message: payload
             .get("last_agent_message")
             .and_then(serde_json::Value::as_str)
@@ -462,6 +481,8 @@ fn session_info_from_payload(payload: &serde_json::Value) -> SessionInfo {
         source: string_field(payload, "source"),
         cwd: string_field(payload, "cwd"),
         cli_version: string_field(payload, "cli_version"),
+        model: string_field(payload, "model"),
+        model_provider: string_field(payload, "model_provider"),
         branch: payload
             .get("git")
             .and_then(|git| git.get("branch"))
@@ -529,21 +550,6 @@ fn truncate_chars(value: &str, limit: usize) -> String {
         format!("{truncated}...")
     } else {
         truncated
-    }
-}
-
-fn format_duration(duration_ms: i64) -> String {
-    let total_seconds = (duration_ms.max(0) / 1_000) as u64;
-    let hours = total_seconds / 3_600;
-    let minutes = (total_seconds % 3_600) / 60;
-    let seconds = total_seconds % 60;
-
-    if hours > 0 {
-        format!("{hours}h {minutes}m {seconds}s")
-    } else if minutes > 0 {
-        format!("{minutes}m {seconds}s")
-    } else {
-        format!("{seconds}s")
     }
 }
 

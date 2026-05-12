@@ -7,7 +7,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
-use crate::providers::formatting::body_with_local_time;
+use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -300,8 +300,7 @@ fn validate_text_size(
 }
 
 fn format_whatsapp_text(signal: &Signal) -> String {
-    let body = body_with_local_time(&signal.body, &format_local_timestamp(signal.timestamp));
-    format!("{}\n\n{}", signal.title, body)
+    format_signal_message(signal, &format_local_timestamp(signal.timestamp))
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {

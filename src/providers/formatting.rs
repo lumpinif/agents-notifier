@@ -1,198 +1,208 @@
-pub(super) fn body_with_local_time(body: &str, formatted_time: &str) -> String {
-    let body = body.trim_end();
-    if body.is_empty() {
-        return format!("Time: {formatted_time}");
+use crate::signal::{Signal, SignalAnswer, SignalLink};
+
+pub(super) fn format_signal_message(signal: &Signal, formatted_time: &str) -> String {
+    format!(
+        "{}\n\n{}",
+        signal.title(),
+        format_signal_body(signal, formatted_time)
+    )
+}
+
+pub(super) fn format_signal_body(signal: &Signal, formatted_time: &str) -> String {
+    let mut details = Vec::new();
+    let has_structured_details = has_structured_details(signal);
+
+    if !has_structured_details {
+        push_present(&mut details, signal.summary().to_string());
     }
 
-    if let Some((details, blocks)) = split_trailing_notification_blocks_text(body) {
-        let details = details.trim_end();
-        if details.is_empty() {
-            return format!("Time: {formatted_time}\n\n{blocks}");
-        }
-
-        return format!("{details}\nTime: {formatted_time}\n\n{blocks}");
+    if let Some(workspace) = &signal.workspace {
+        push_labeled(&mut details, "Project", workspace.project_name.as_deref());
+        push_labeled(
+            &mut details,
+            "Project Path",
+            workspace.project_path.as_deref(),
+        );
     }
 
-    format!("{body}\nTime: {formatted_time}")
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct NotificationBlocks<'a> {
-    pub(super) prompt: Option<&'a str>,
-    pub(super) answer: Option<AnswerBlock<'a>>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct AnswerBlock<'a> {
-    pub(super) label: &'static str,
-    pub(super) content: &'a str,
-}
-
-pub(super) fn split_trailing_notification_blocks(
-    body: &str,
-) -> Option<(&str, NotificationBlocks<'_>)> {
-    let (details, blocks) = split_trailing_notification_blocks_text(body)?;
-    Some((details, parse_notification_blocks(blocks)))
-}
-
-fn split_trailing_notification_blocks_text(body: &str) -> Option<(&str, &str)> {
-    let (index, content_index, _) = find_block_start(body, &["Prompt", "Preview", "Answer"])?;
-    Some((&body[..index], body[content_index..].trim_start()))
-}
-
-fn parse_notification_blocks(blocks: &str) -> NotificationBlocks<'_> {
-    if let Some(prompt) = blocks.strip_prefix("Prompt:") {
-        let prompt = prompt.trim_start();
-        if let Some((answer_index, answer_content_index, answer_label)) =
-            find_block_start(prompt, &["Preview", "Answer"])
-        {
-            let answer_prefix = format!("{answer_label}:");
-            let answer_content_start = answer_content_index + answer_prefix.len();
-            return NotificationBlocks {
-                prompt: present(&prompt[..answer_index]),
-                answer: Some(AnswerBlock {
-                    label: answer_label,
-                    content: prompt[answer_content_start..].trim_start(),
-                }),
-            };
-        }
-
-        return NotificationBlocks {
-            prompt: present(prompt),
-            answer: None,
-        };
+    if let Some(conversation) = &signal.conversation {
+        push_labeled(
+            &mut details,
+            "Session",
+            conversation.session_title.as_deref(),
+        );
+        push_labeled(&mut details, "Model", conversation.model.as_deref());
     }
 
-    for label in ["Preview", "Answer"] {
-        let prefix = format!("{label}:");
-        if let Some(content) = blocks.strip_prefix(&prefix) {
-            return NotificationBlocks {
-                prompt: None,
-                answer: Some(AnswerBlock {
-                    label,
-                    content: content.trim_start(),
-                }),
-            };
+    for link in &signal.links {
+        push_link(&mut details, link);
+    }
+
+    if let Some(lifecycle) = &signal.lifecycle {
+        if let Some(duration_ms) = lifecycle.duration_ms {
+            details.push(format!("Duration: {}", format_duration_ms(duration_ms)));
         }
     }
 
-    NotificationBlocks {
-        prompt: None,
-        answer: None,
+    if let Some(workspace) = &signal.workspace {
+        push_labeled(&mut details, "Branch", workspace.branch.as_deref());
     }
-}
 
-fn find_block_start(body: &str, labels: &[&'static str]) -> Option<(usize, usize, &'static str)> {
-    let mut candidate = None;
+    details.push(format!("Time: {formatted_time}"));
 
-    for label in labels {
-        let start_prefix = format!("{label}:");
-        if body.starts_with(&start_prefix) {
-            candidate = Some((0, 0, *label));
+    let mut sections = Vec::new();
+    sections.push(details.join("\n"));
+
+    if let Some(conversation) = &signal.conversation {
+        if let Some(prompt) = present(conversation.prompt.as_deref()) {
+            sections.push(format!("Prompt: {prompt}"));
         }
-
-        let block_prefix = format!("\n\n{label}:");
-        if let Some(index) = body.find(&block_prefix) {
-            let content_index = index + 2;
-            if candidate
-                .as_ref()
-                .is_none_or(|(current_index, _, _)| index < *current_index)
-            {
-                candidate = Some((index, content_index, *label));
-            }
+        if let Some(answer) = present_answer(conversation.answer.as_ref()) {
+            sections.push(format!(
+                "{}: {}",
+                answer.kind.display_label(),
+                answer.content.trim()
+            ));
         }
     }
 
-    candidate
+    sections.join("\n\n")
 }
 
-fn present(value: &str) -> Option<&str> {
-    let value = value.trim();
-    if value.is_empty() { None } else { Some(value) }
+pub(super) fn format_duration_ms(duration_ms: u64) -> String {
+    let total_seconds = duration_ms / 1_000;
+    let hours = total_seconds / 3_600;
+    let minutes = (total_seconds % 3_600) / 60;
+    let seconds = total_seconds % 60;
+
+    if hours > 0 {
+        format!("{hours}h {minutes}m {seconds}s")
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s")
+    } else {
+        format!("{seconds}s")
+    }
+}
+
+fn has_structured_details(signal: &Signal) -> bool {
+    signal.workspace.is_some()
+        || signal.conversation.as_ref().is_some_and(|conversation| {
+            conversation.session_title.is_some()
+                || conversation.prompt.is_some()
+                || conversation.answer.is_some()
+                || conversation.model.is_some()
+        })
+        || signal.lifecycle.is_some()
+        || !signal.links.is_empty()
+}
+
+fn push_link(lines: &mut Vec<String>, link: &SignalLink) {
+    let label = link.label.trim();
+    let url = link.url.trim();
+    if !label.is_empty() && !url.is_empty() {
+        lines.push(format!("{label}: {url}"));
+    }
+}
+
+fn push_labeled(lines: &mut Vec<String>, label: &str, value: Option<&str>) {
+    if let Some(value) = present(value) {
+        lines.push(format!("{label}: {value}"));
+    }
+}
+
+fn push_present(lines: &mut Vec<String>, value: String) {
+    if !value.trim().is_empty() {
+        lines.push(value);
+    }
+}
+
+fn present(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn present_answer(answer: Option<&SignalAnswer>) -> Option<&SignalAnswer> {
+    answer.filter(|answer| !answer.content.trim().is_empty())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use chrono::{DateTime, Utc};
+
     use super::*;
+    use crate::signal::{
+        SignalAnswer, SignalAnswerKind, SignalConversation, SignalLifecycle, SignalLifecycleStatus,
+        SignalLink, SignalWorkspace,
+    };
 
     #[test]
-    fn appends_time_to_regular_body() {
+    fn formats_minimal_signal_body() {
+        let signal = Signal::new_with_timestamp(
+            "signal-1",
+            "codex_cli",
+            "codex_cli",
+            "Codex CLI",
+            "Ready for review.",
+            timestamp(),
+            BTreeMap::new(),
+        );
+
         assert_eq!(
-            body_with_local_time("Ready for review.", "2026-05-10 10:31:43 +08:00"),
+            format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
             "Ready for review.\nTime: 2026-05-10 10:31:43 +08:00"
         );
     }
 
     #[test]
-    fn places_time_before_trailing_preview_block() {
+    fn formats_structured_codex_signal_body_in_stable_order() {
+        let mut signal = Signal::new_with_timestamp(
+            "signal-1",
+            "codex_desktop",
+            "codex_desktop",
+            "Codex Desktop",
+            "Codex Desktop finished a task.",
+            timestamp(),
+            BTreeMap::new(),
+        );
+        signal.workspace = Some(SignalWorkspace {
+            cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+            project_name: Some("agents-notifier".to_string()),
+            project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+            branch: Some("main".to_string()),
+            worktree: None,
+        });
+        signal.conversation = Some(SignalConversation {
+            session_id: Some("session-1".to_string()),
+            session_title: Some("agents-notifier sync report".to_string()),
+            turn_id: Some("turn-1".to_string()),
+            prompt: Some("Please fix the route.".to_string()),
+            answer: Some(SignalAnswer {
+                kind: SignalAnswerKind::Preview,
+                content: "Fixed the route.".to_string(),
+            }),
+            model: Some("gpt-5.2-codex".to_string()),
+        });
+        signal.lifecycle = Some(SignalLifecycle {
+            status: Some(SignalLifecycleStatus::Completed),
+            started_at: None,
+            completed_at: Some(timestamp()),
+            duration_ms: Some(92_185),
+        });
+        signal.links = vec![SignalLink {
+            label: "Open in Codex".to_string(),
+            url: "codex://threads/session-1".to_string(),
+        }];
+
         assert_eq!(
-            body_with_local_time(
-                "Project: agents-notifier\nSession: agents-notifier sync report\nDuration: 2m 29s\nBranch: main\n\nPreview: The final answer preview...",
-                "2026-05-10 10:31:43 +08:00",
-            ),
-            "Project: agents-notifier\nSession: agents-notifier sync report\nDuration: 2m 29s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPreview: The final answer preview..."
+            format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
+            "Project: agents-notifier\nProject Path: /Users/tester/projects/agents-notifier\nSession: agents-notifier sync report\nModel: gpt-5.2-codex\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPrompt: Please fix the route.\n\nPreview: Fixed the route."
         );
     }
 
-    #[test]
-    fn handles_preview_only_body() {
-        assert_eq!(
-            body_with_local_time(
-                "Preview: The final answer preview...",
-                "2026-05-10 10:31:43 +08:00"
-            ),
-            "Time: 2026-05-10 10:31:43 +08:00\n\nPreview: The final answer preview..."
-        );
-    }
-
-    #[test]
-    fn places_time_before_trailing_answer_block() {
-        assert_eq!(
-            body_with_local_time(
-                "Project: agents-notifier\nBranch: main\n\nAnswer: Fixed the route.\n\nRun tests next.",
-                "2026-05-10 10:31:43 +08:00",
-            ),
-            "Project: agents-notifier\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nAnswer: Fixed the route.\n\nRun tests next."
-        );
-    }
-
-    #[test]
-    fn places_time_before_trailing_prompt_and_answer_blocks() {
-        assert_eq!(
-            body_with_local_time(
-                "Project: agents-notifier\nBranch: main\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route.",
-                "2026-05-10 10:31:43 +08:00",
-            ),
-            "Project: agents-notifier\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route."
-        );
-    }
-
-    #[test]
-    fn splits_trailing_prompt_and_answer_blocks() {
-        let (details, blocks) = split_trailing_notification_blocks(
-            "Project: agents-notifier\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route.",
-        )
-        .expect("blocks should be present");
-
-        assert_eq!(details, "Project: agents-notifier");
-        assert_eq!(blocks.prompt, Some("Fix the route."));
-        assert_eq!(
-            blocks.answer,
-            Some(AnswerBlock {
-                label: "Answer",
-                content: "Fixed the route.",
-            })
-        );
-    }
-
-    #[test]
-    fn keeps_preview_text_inside_answer_block() {
-        assert_eq!(
-            body_with_local_time(
-                "Project: agents-notifier\n\nAnswer: Full answer.\n\nPreview: this is quoted text.",
-                "2026-05-10 10:31:43 +08:00",
-            ),
-            "Project: agents-notifier\nTime: 2026-05-10 10:31:43 +08:00\n\nAnswer: Full answer.\n\nPreview: this is quoted text."
-        );
+    fn timestamp() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
     }
 }

@@ -9,7 +9,7 @@ use crate::delivery::{
     is_retriable_http_status, provider_request_error,
 };
 use crate::provider_urls::validate_microsoft_teams_webhook_url;
-use crate::providers::formatting::body_with_local_time;
+use crate::providers::formatting::format_signal_body;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -55,7 +55,7 @@ impl Provider for MicrosoftTeamsProvider {
     fn send<'a>(&'a self, signal: &'a Signal) -> ProviderFuture<'a> {
         Box::pin(async move {
             let provider_type = ProviderType::MicrosoftTeams.as_str();
-            let title = signal.title.as_str();
+            let title = signal.title();
             let body = format_microsoft_teams_body(signal);
             let request = MicrosoftTeamsWebhookRequest::new(title, &body);
             let request_body = serde_json::to_vec(&request).map_err(|error| {
@@ -237,7 +237,7 @@ fn validate_request_size(
 }
 
 fn format_microsoft_teams_body(signal: &Signal) -> String {
-    body_with_local_time(&signal.body, &format_local_timestamp(signal.timestamp))
+    format_signal_body(signal, &format_local_timestamp(signal.timestamp))
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {

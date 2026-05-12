@@ -31,10 +31,10 @@ mod tests {
         )
         .expect("claude_code source should create signal");
 
-        assert_eq!(signal.source_id, "claude_code");
-        assert_eq!(signal.source_type, "claude_code");
-        assert_eq!(signal.title, "Claude Code");
-        assert_eq!(signal.body, "Claude Code finished a task.");
+        assert_eq!(signal.source_id(), "claude_code");
+        assert_eq!(signal.source_type(), "claude_code");
+        assert_eq!(signal.title(), "Claude Code");
+        assert_eq!(signal.summary(), "Claude Code finished a task.");
     }
 
     #[test]

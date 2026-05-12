@@ -13,10 +13,10 @@ use crate::delivery::{
 };
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
-use crate::providers::formatting::{body_with_local_time, split_trailing_notification_blocks};
+use crate::providers::formatting::format_duration_ms;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
-use crate::signal::Signal;
+use crate::signal::{Signal, SignalAnswerKind, SignalLink};
 
 type HmacSha256 = Hmac<Sha256>;
 const CODEX_CARD_TEMPLATE: &str = "purple";
@@ -188,8 +188,7 @@ struct FeishuLarkCard {
 impl FeishuLarkCard {
     fn from_signal(signal: &Signal, computer_name: &str) -> Self {
         let detail_time = format_local_timestamp(signal.timestamp);
-        let body = body_with_local_time(&signal.body, &detail_time);
-        let card_body = FeishuLarkCardBody::from_body(&body);
+        let card_body = FeishuLarkCardBody::from_signal(signal, &detail_time);
 
         Self {
             config: FeishuLarkCardConfig {
@@ -199,7 +198,7 @@ impl FeishuLarkCard {
                 template: CODEX_CARD_TEMPLATE,
                 title: FeishuLarkPlainText {
                     tag: "plain_text",
-                    content: format_header_title(computer_name, &signal.title, &card_body),
+                    content: format_header_title(computer_name, signal.title(), &card_body),
                 },
             },
             elements: format_signal_card_elements(card_body),
@@ -367,15 +366,15 @@ fn format_signal_card_elements(card_body: FeishuLarkCardBody) -> Vec<FeishuLarkC
         });
     }
 
-    if let Some(open_url) = card_body.open_url {
+    if let Some(open_link) = card_body.open_link {
         elements.push(FeishuLarkCardElement::Action {
             actions: vec![FeishuLarkCardAction {
                 tag: "button",
                 text: FeishuLarkPlainText {
                     tag: "plain_text",
-                    content: "Open in Codex".to_string(),
+                    content: open_link.label,
                 },
-                url: open_url,
+                url: open_link.url,
                 button_type: "primary",
             }],
         });
@@ -410,8 +409,7 @@ fn format_signal_card_elements_with_time(
     signal: &Signal,
     formatted_time: &str,
 ) -> Vec<FeishuLarkCardElement> {
-    let body = body_with_local_time(&signal.body, formatted_time);
-    format_signal_card_elements(FeishuLarkCardBody::from_body(&body))
+    format_signal_card_elements(FeishuLarkCardBody::from_signal(signal, formatted_time))
 }
 
 fn format_header_title(computer_name: &str, title: &str, card_body: &FeishuLarkCardBody) -> String {
@@ -434,13 +432,20 @@ struct FeishuLarkCardBody {
     project: Option<String>,
     project_path: Option<String>,
     session: Option<String>,
+    model: Option<String>,
     duration: Option<String>,
     branch: Option<String>,
     time: Option<String>,
     other_details: Vec<String>,
-    open_url: Option<String>,
+    open_link: Option<FeishuLarkActionLink>,
     prompt: Option<String>,
     answer: Option<FeishuLarkAnswerBlock>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FeishuLarkActionLink {
+    label: String,
+    url: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -450,74 +455,36 @@ struct FeishuLarkAnswerBlock {
 }
 
 impl FeishuLarkCardBody {
-    fn from_body(body: &str) -> Self {
-        let (body, blocks) = split_trailing_notification_blocks(body)
-            .map(|(details, block)| {
-                (
-                    details,
-                    Some((
-                        block.prompt.map(ToOwned::to_owned),
-                        block.answer.map(|answer| FeishuLarkAnswerBlock {
-                            label: answer.label,
-                            content: answer.content.trim().to_string(),
-                        }),
-                    )),
-                )
-            })
-            .unwrap_or((body, None));
-        let (prompt, answer) = blocks.unwrap_or((None, None));
-        let mut project = None;
-        let mut project_path = None;
-        let mut session = None;
-        let mut duration = None;
-        let mut branch = None;
-        let mut time = None;
+    fn from_signal(signal: &Signal, formatted_time: &str) -> Self {
         let mut other_details = Vec::new();
-        let mut open_url = None;
-        let mut prompt = prompt;
-        let mut answer = answer;
 
-        for line in body.lines().map(str::trim).filter(|line| !line.is_empty()) {
-            if let Some(session_id) = codex_thread_line(line) {
-                open_url = codex_thread_bridge_url(session_id);
-            } else if let Some(prompt_text) = line.strip_prefix("Prompt:") {
-                prompt = Some(prompt_text.trim().to_string());
-            } else if let Some(preview_text) = line.strip_prefix("Preview:") {
-                answer = Some(FeishuLarkAnswerBlock {
-                    label: "Preview",
-                    content: preview_text.trim().to_string(),
-                });
-            } else if let Some(answer_text) = line.strip_prefix("Answer:") {
-                answer = Some(FeishuLarkAnswerBlock {
-                    label: "Answer",
-                    content: answer_text.trim().to_string(),
-                });
-            } else if let Some((label, value)) = split_detail_line(line) {
-                match label {
-                    "Project" => project = Some(value.to_string()),
-                    "Project Path" => project_path = Some(value.to_string()),
-                    "Session" => session = Some(value.to_string()),
-                    "Duration" => duration = Some(value.to_string()),
-                    "Branch" => branch = Some(value.to_string()),
-                    "Time" => time = Some(value.to_string()),
-                    _ => other_details.push(format_detail_line(label, value)),
-                }
-            } else {
-                other_details.push(format!("**{line}**"));
-            }
+        if !has_structured_card_content(signal) {
+            push_markdown_detail(&mut other_details, signal.summary());
         }
 
+        let workspace = signal.workspace.as_ref();
+        let conversation = signal.conversation.as_ref();
+        let lifecycle = signal.lifecycle.as_ref();
+
         Self {
-            project,
-            project_path,
-            session,
-            duration,
-            branch,
-            time,
+            project: workspace.and_then(|workspace| workspace.project_name.clone()),
+            project_path: workspace.and_then(|workspace| workspace.project_path.clone()),
+            session: conversation.and_then(|conversation| conversation.session_title.clone()),
+            model: conversation.and_then(|conversation| conversation.model.clone()),
+            duration: lifecycle
+                .and_then(|lifecycle| lifecycle.duration_ms)
+                .map(format_duration_ms),
+            branch: workspace.and_then(|workspace| workspace.branch.clone()),
+            time: Some(formatted_time.to_string()),
             other_details,
-            open_url,
-            prompt,
-            answer,
+            open_link: signal.links.iter().find_map(feishu_action_link),
+            prompt: conversation.and_then(|conversation| conversation.prompt.clone()),
+            answer: conversation
+                .and_then(|conversation| conversation.answer.as_ref())
+                .map(|answer| FeishuLarkAnswerBlock {
+                    label: answer_label(answer.kind),
+                    content: answer.content.trim().to_string(),
+                }),
         }
     }
 
@@ -526,13 +493,27 @@ impl FeishuLarkCardBody {
     }
 
     fn project_row(&self) -> Option<FeishuLarkCardElement> {
-        let project = self.project.as_deref()?;
-        let branch = self.branch.as_deref()?;
+        let mut columns = Vec::new();
 
-        Some(column_set(vec![
-            metric_column("Project Name", project, None),
-            metric_column("Branch", branch, None),
-        ]))
+        if let Some(project) = self.project.as_deref() {
+            columns.push(metric_column(
+                "Project Name",
+                project,
+                self.project_path.as_deref(),
+            ));
+        }
+        if let Some(branch) = self.branch.as_deref() {
+            columns.push(metric_column("Branch", branch, None));
+        }
+        if let Some(model) = self.model.as_deref() {
+            columns.push(metric_column("Model", model, None));
+        }
+
+        if columns.is_empty() {
+            None
+        } else {
+            Some(column_set(columns))
+        }
     }
 
     fn timing_row(&self) -> Option<FeishuLarkCardElement> {
@@ -544,6 +525,55 @@ impl FeishuLarkCardBody {
             metric_column("Time", strip_numeric_timezone(time), None),
         ]))
     }
+}
+
+fn has_structured_card_content(signal: &Signal) -> bool {
+    signal.workspace.is_some()
+        || signal.conversation.as_ref().is_some_and(|conversation| {
+            conversation.session_title.is_some()
+                || conversation.prompt.is_some()
+                || conversation.answer.is_some()
+                || conversation.model.is_some()
+        })
+        || signal.lifecycle.is_some()
+        || !signal.links.is_empty()
+}
+
+fn push_markdown_detail(details: &mut Vec<String>, value: &str) {
+    let value = value.trim();
+    if !value.is_empty() {
+        details.push(format!("**{value}**"));
+    }
+}
+
+fn answer_label(kind: SignalAnswerKind) -> &'static str {
+    kind.display_label()
+}
+
+fn feishu_action_link(link: &SignalLink) -> Option<FeishuLarkActionLink> {
+    let label = link.label.trim();
+    if label.is_empty() {
+        return None;
+    }
+
+    let url = feishu_action_url(link)?;
+    Some(FeishuLarkActionLink {
+        label: label.to_string(),
+        url,
+    })
+}
+
+fn feishu_action_url(link: &SignalLink) -> Option<String> {
+    let url = link.url.trim();
+    if url.is_empty() {
+        return None;
+    }
+
+    if let Some(session_id) = url.strip_prefix("codex://threads/") {
+        return codex_thread_bridge_url(session_id);
+    }
+
+    Some(url.to_string())
 }
 
 fn column_set(columns: Vec<FeishuLarkCardColumn>) -> FeishuLarkCardElement {
@@ -594,26 +624,6 @@ fn strip_numeric_timezone(value: &str) -> &str {
     } else {
         value
     }
-}
-
-fn split_detail_line(line: &str) -> Option<(&str, &str)> {
-    let (label, value) = line.split_once(':')?;
-    let label = label.trim();
-    let value = value.trim();
-    if label.is_empty() || value.is_empty() {
-        return None;
-    }
-
-    Some((label, value))
-}
-
-fn format_detail_line(label: &str, value: &str) -> String {
-    format!("**{}**\n{}", label.trim(), value.trim())
-}
-
-fn codex_thread_line(line: &str) -> Option<&str> {
-    let (_, session_id) = line.split_once("codex://threads/")?;
-    Some(session_id.trim())
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {

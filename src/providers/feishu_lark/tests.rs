@@ -7,6 +7,10 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
+use crate::signal::{
+    SignalAnswer, SignalAnswerKind, SignalConversation, SignalLifecycle, SignalLifecycleStatus,
+    SignalLink, SignalWorkspace,
+};
 
 #[tokio::test]
 async fn sends_interactive_card_to_custom_bot_webhook() {
@@ -124,17 +128,13 @@ fn formats_card_elements_with_supplied_time() {
 
 #[test]
 fn formats_codex_desktop_message_with_clickable_open_link() {
-    let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let signal = Signal::new_with_timestamp(
-        "signal-1",
-        "codex_desktop",
-        "codex_desktop",
-        "Codex Desktop",
-        "Project: agents-notifier\nProject Path: /Users/tester/projects/agents-notifier\nSession: agents-notifier sync report\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\n\nPreview: Ready for review.",
-        timestamp,
-        BTreeMap::new(),
+    let signal = structured_codex_signal(
+        Some("agents-notifier sync report"),
+        None,
+        Some(SignalAnswer {
+            kind: SignalAnswerKind::Preview,
+            content: "Ready for review.".to_string(),
+        }),
     );
 
     assert_eq!(
@@ -150,8 +150,13 @@ fn formats_codex_desktop_message_with_clickable_open_link() {
                 flex_mode: "bisect",
                 background_style: "default",
                 columns: vec![
-                    metric_column("Project Name", "agents-notifier", None),
-                    metric_column("Branch", "main", None)
+                    metric_column(
+                        "Project Name",
+                        "agents-notifier",
+                        Some("/Users/tester/projects/agents-notifier")
+                    ),
+                    metric_column("Branch", "main", None),
+                    metric_column("Model", "gpt-5.2-codex", None)
                 ]
             },
             FeishuLarkCardElement::ColumnSet {
@@ -182,20 +187,31 @@ fn formats_codex_desktop_message_with_clickable_open_link() {
 }
 
 #[test]
-fn builds_card_body_from_signal_body() {
+fn builds_card_body_from_structured_signal() {
+    let signal = structured_codex_signal(
+        None,
+        None,
+        Some(SignalAnswer {
+            kind: SignalAnswerKind::Preview,
+            content: "done".to_string(),
+        }),
+    );
+
     assert_eq!(
-        FeishuLarkCardBody::from_body(
-            "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\nPreview: done"
-        ),
+        FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00"),
         FeishuLarkCardBody {
             project: Some("agents-notifier".to_string()),
-            project_path: None,
+            project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
             session: None,
-            duration: None,
-            branch: None,
-            time: None,
+            model: Some("gpt-5.2-codex".to_string()),
+            duration: Some("1m 32s".to_string()),
+            branch: Some("main".to_string()),
+            time: Some("2026-05-10 01:35:42 +08:00".to_string()),
             other_details: Vec::new(),
-            open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
+            open_link: Some(FeishuLarkActionLink {
+                label: "Open in Codex".to_string(),
+                url: "http://127.0.0.1:17674/open/codex/thread/session-1".to_string(),
+            }),
             prompt: None,
             answer: Some(FeishuLarkAnswerBlock {
                 label: "Preview",
@@ -207,43 +223,52 @@ fn builds_card_body_from_signal_body() {
 
 #[test]
 fn builds_card_body_with_multiline_answer_block() {
+    let signal = structured_codex_signal(
+        None,
+        None,
+        Some(SignalAnswer {
+            kind: SignalAnswerKind::Full,
+            content: "Fixed the route.\n\nRun tests next.".to_string(),
+        }),
+    );
+
     assert_eq!(
-        FeishuLarkCardBody::from_body(
-            "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\n\nAnswer: Fixed the route.\n\nRun tests next."
-        ),
-        FeishuLarkCardBody {
-            project: Some("agents-notifier".to_string()),
-            project_path: None,
-            session: None,
-            duration: None,
-            branch: None,
-            time: None,
-            other_details: Vec::new(),
-            open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
-            prompt: None,
-            answer: Some(FeishuLarkAnswerBlock {
-                label: "Answer",
-                content: "Fixed the route.\n\nRun tests next.".to_string(),
-            }),
+        FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00")
+            .answer
+            .expect("answer should render"),
+        FeishuLarkAnswerBlock {
+            label: "Answer",
+            content: "Fixed the route.\n\nRun tests next.".to_string(),
         }
     );
 }
 
 #[test]
 fn builds_card_body_with_prompt_before_answer() {
+    let signal = structured_codex_signal(
+        None,
+        Some("Fix the route."),
+        Some(SignalAnswer {
+            kind: SignalAnswerKind::Full,
+            content: "Fixed the route.".to_string(),
+        }),
+    );
+
     assert_eq!(
-        FeishuLarkCardBody::from_body(
-            "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route."
-        ),
+        FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00"),
         FeishuLarkCardBody {
             project: Some("agents-notifier".to_string()),
-            project_path: None,
+            project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
             session: None,
-            duration: None,
-            branch: None,
-            time: None,
+            model: Some("gpt-5.2-codex".to_string()),
+            duration: Some("1m 32s".to_string()),
+            branch: Some("main".to_string()),
+            time: Some("2026-05-10 01:35:42 +08:00".to_string()),
             other_details: Vec::new(),
-            open_url: Some("http://127.0.0.1:17674/open/codex/thread/session-1".to_string()),
+            open_link: Some(FeishuLarkActionLink {
+                label: "Open in Codex".to_string(),
+                url: "http://127.0.0.1:17674/open/codex/thread/session-1".to_string(),
+            }),
             prompt: Some("Fix the route.".to_string()),
             answer: Some(FeishuLarkAnswerBlock {
                 label: "Answer",
@@ -255,17 +280,13 @@ fn builds_card_body_with_prompt_before_answer() {
 
 #[test]
 fn formats_prompt_before_answer() {
-    let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let signal = Signal::new_with_timestamp(
-        "signal-1",
-        "codex_desktop",
-        "codex_desktop",
-        "Codex Desktop",
-        "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\n\nPrompt: Fix the route.\n\nAnswer: Fixed the route.",
-        timestamp,
-        BTreeMap::new(),
+    let signal = structured_codex_signal(
+        None,
+        Some("Fix the route."),
+        Some(SignalAnswer {
+            kind: SignalAnswerKind::Full,
+            content: "Fixed the route.".to_string(),
+        }),
     );
 
     let elements = format_signal_card_elements_with_time(&signal, "2026-05-10 01:35:42 +08:00");
@@ -296,17 +317,13 @@ fn formats_prompt_before_answer() {
 
 #[test]
 fn serializes_card_with_header_action_and_preview() {
-    let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let signal = Signal::new_with_timestamp(
-        "signal-1",
-        "codex_desktop",
-        "codex_desktop",
-        "Codex Desktop",
-        "Project: agents-notifier\nOpen in Codex: codex://threads/session-1\nPreview: done",
-        timestamp,
-        BTreeMap::new(),
+    let signal = structured_codex_signal(
+        None,
+        None,
+        Some(SignalAnswer {
+            kind: SignalAnswerKind::Preview,
+            content: "done".to_string(),
+        }),
     );
 
     let request = FeishuLarkInteractiveRequest::from_signal(&signal, None, "Test Mac");
@@ -319,17 +336,17 @@ fn serializes_card_with_header_action_and_preview() {
     );
     assert_eq!(body["card"]["header"]["template"], "purple");
     assert_eq!(
-        body["card"]["elements"][1]["actions"][0]["url"],
+        body["card"]["elements"][3]["actions"][0]["url"],
         "http://127.0.0.1:17674/open/codex/thread/session-1"
     );
     assert_eq!(
-        body["card"]["elements"][2],
+        body["card"]["elements"][4],
         json!({
             "tag": "hr"
         })
     );
     assert_eq!(
-        body["card"]["elements"][3],
+        body["card"]["elements"][5],
         json!({
             "tag": "markdown",
             "content": "**Preview**\ndone"
@@ -339,18 +356,7 @@ fn serializes_card_with_header_action_and_preview() {
 
 #[test]
 fn formats_codex_desktop_header_with_machine_source_and_session() {
-    let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let signal = Signal::new_with_timestamp(
-        "signal-1",
-        "codex_desktop",
-        "codex_desktop",
-        "Codex Desktop",
-        "Project: agents-notifier\nSession: 为 Codex 桌面转发加 deeplink\nDuration: 7m 12s\nBranch: main",
-        timestamp,
-        BTreeMap::new(),
-    );
+    let signal = structured_codex_signal(Some("为 Codex 桌面转发加 deeplink"), None, None);
 
     let request = FeishuLarkInteractiveRequest::from_signal(&signal, None, "Felix’s MacBook Pro");
     let body = serde_json::to_value(request).expect("request should serialize");
@@ -421,6 +427,53 @@ fn test_signal() -> Signal {
         timestamp,
         BTreeMap::new(),
     )
+}
+
+fn structured_codex_signal(
+    session_title: Option<&str>,
+    prompt: Option<&str>,
+    answer: Option<SignalAnswer>,
+) -> Signal {
+    let timestamp = DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc);
+    let mut signal = Signal::new_with_timestamp(
+        "signal-1",
+        "codex_desktop",
+        "codex_desktop",
+        "Codex Desktop",
+        "Codex Desktop finished a task.",
+        timestamp,
+        BTreeMap::new(),
+    );
+
+    signal.workspace = Some(SignalWorkspace {
+        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+        project_name: Some("agents-notifier".to_string()),
+        project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+        branch: Some("main".to_string()),
+        worktree: None,
+    });
+    signal.conversation = Some(SignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: session_title.map(ToOwned::to_owned),
+        turn_id: Some("turn-1".to_string()),
+        prompt: prompt.map(ToOwned::to_owned),
+        answer,
+        model: Some("gpt-5.2-codex".to_string()),
+    });
+    signal.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: Some(timestamp),
+        duration_ms: Some(92_185),
+    });
+    signal.links = vec![SignalLink {
+        label: "Open in Codex".to_string(),
+        url: "codex://threads/session-1".to_string(),
+    }];
+
+    signal
 }
 
 fn test_provider(url: String, secret: Option<String>) -> FeishuLarkProvider {

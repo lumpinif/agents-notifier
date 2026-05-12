@@ -70,13 +70,13 @@ impl<'a> Router<'a> {
                 route
                     .sources
                     .iter()
-                    .any(|source| source == &signal.source_id)
+                    .any(|source| source == signal.source_id())
             })
             .collect();
 
         info!(
             signal.id = %signal.id,
-            source.id = %signal.source_id,
+            source.id = %signal.source_id(),
             matched_routes = matching_routes.len(),
             event = "route.matched",
         );
@@ -95,7 +95,7 @@ impl<'a> Router<'a> {
 
                 info!(
                     signal.id = %signal.id,
-                    source.id = %signal.source_id,
+                    source.id = %signal.source_id(),
                     provider.id = %provider.id(),
                     provider.type = %provider.provider_type(),
                     event = "provider.send.started",
@@ -106,7 +106,7 @@ impl<'a> Router<'a> {
                         succeeded += 1;
                         info!(
                             signal.id = %signal.id,
-                            source.id = %signal.source_id,
+                            source.id = %signal.source_id(),
                             provider.id = %provider.id(),
                             provider.type = %provider.provider_type(),
                             provider.status = %result.status.as_str(),
@@ -117,7 +117,7 @@ impl<'a> Router<'a> {
                     Err(error) => {
                         warn!(
                             signal.id = %signal.id,
-                            source.id = %signal.source_id,
+                            source.id = %signal.source_id(),
                             provider.id = %provider.id(),
                             provider.type = %provider.provider_type(),
                             error.kind = %error.kind.as_str(),
@@ -164,7 +164,7 @@ impl<'a> Router<'a> {
 
         ProviderFailure {
             signal_id: signal.id.clone(),
-            source_id: signal.source_id.clone(),
+            source_id: signal.source_id().to_string(),
             provider_id: provider_id.to_string(),
             provider_type: provider_type.to_string(),
             kind: DeliveryErrorKind::Config,

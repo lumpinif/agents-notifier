@@ -52,10 +52,10 @@ mod tests {
         )
         .expect("agents_notifier source should create signal");
 
-        assert_eq!(signal.source_id, "agents_notifier");
-        assert_eq!(signal.source_type, "agents_notifier");
-        assert_eq!(signal.title, "Agents Notifier");
-        assert_eq!(signal.body, "Test notification from your computer.");
+        assert_eq!(signal.source_id(), "agents_notifier");
+        assert_eq!(signal.source_type(), "agents_notifier");
+        assert_eq!(signal.title(), "Agents Notifier");
+        assert_eq!(signal.summary(), "Test notification from your computer.");
     }
 
     #[test]

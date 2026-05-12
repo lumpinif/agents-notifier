@@ -7,7 +7,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     provider_request_error,
 };
-use crate::providers::formatting::body_with_local_time;
+use crate::providers::formatting::format_signal_body;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -89,7 +89,7 @@ impl Provider for PushoverProvider {
             let request = PushoverMessageRequest {
                 token: &self.app_token,
                 user: &self.user_key,
-                title: &signal.title,
+                title: signal.title(),
                 message: &message,
                 device: self.device.as_deref(),
                 sound: self.sound.as_deref(),
@@ -255,7 +255,7 @@ fn validate_signal_size(
     provider_type: &str,
     message: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    if signal.title.chars().count() > PUSHOVER_TITLE_LIMIT {
+    if signal.title().chars().count() > PUSHOVER_TITLE_LIMIT {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
             DeliveryErrorContext::provider_send(signal, provider_id, provider_type),
@@ -275,7 +275,7 @@ fn validate_signal_size(
 }
 
 fn format_pushover_body(signal: &Signal) -> String {
-    body_with_local_time(&signal.body, &format_local_timestamp(signal.timestamp))
+    format_signal_body(signal, &format_local_timestamp(signal.timestamp))
 }
 
 fn format_local_timestamp(timestamp: DateTime<Utc>) -> String {
