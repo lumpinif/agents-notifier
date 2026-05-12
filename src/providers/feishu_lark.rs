@@ -469,7 +469,11 @@ impl FeishuLarkCardBody {
         Self {
             project: workspace.and_then(|workspace| workspace.project_name.clone()),
             project_path: workspace.and_then(|workspace| workspace.project_path.clone()),
-            session: conversation.and_then(|conversation| conversation.session_title.clone()),
+            session: conversation.and_then(|conversation| {
+                present(conversation.session_title.as_deref())
+                    .or_else(|| present(conversation.session_id.as_deref()))
+                    .map(ToOwned::to_owned)
+            }),
             model: conversation.and_then(|conversation| conversation.model.clone()),
             duration: lifecycle
                 .and_then(|lifecycle| lifecycle.duration_ms)
@@ -517,13 +521,20 @@ impl FeishuLarkCardBody {
     }
 
     fn timing_row(&self) -> Option<FeishuLarkCardElement> {
-        let duration = self.duration.as_deref()?;
-        let time = self.time.as_deref()?;
+        let mut columns = Vec::new();
 
-        Some(column_set(vec![
-            metric_column("Duration", duration, None),
-            metric_column("Time", strip_numeric_timezone(time), None),
-        ]))
+        if let Some(duration) = self.duration.as_deref() {
+            columns.push(metric_column("Duration", duration, None));
+        }
+        if let Some(time) = self.time.as_deref() {
+            columns.push(metric_column("Time", strip_numeric_timezone(time), None));
+        }
+
+        if columns.is_empty() {
+            None
+        } else {
+            Some(column_set(columns))
+        }
     }
 }
 
@@ -531,6 +542,7 @@ fn has_structured_card_content(signal: &Signal) -> bool {
     signal.workspace.is_some()
         || signal.conversation.as_ref().is_some_and(|conversation| {
             conversation.session_title.is_some()
+                || conversation.session_id.is_some()
                 || conversation.prompt.is_some()
                 || conversation.answer.is_some()
                 || conversation.model.is_some()

@@ -89,7 +89,7 @@ fn local_event_from_stop_hook(
         completed_at: None,
         duration_ms: None,
     });
-    event.metadata = metadata_from_hook_input(&input, common.transcript_path);
+    event.metadata = metadata_from_hook_input(&input);
 
     Ok(event)
 }
@@ -125,22 +125,21 @@ fn local_event_from_notification_hook(
         answer: None,
         model: input.model.as_deref().and_then(present),
     });
-    event.metadata = metadata_from_hook_input(&input, common.transcript_path);
+    event.metadata = metadata_from_hook_input(&input);
 
     Ok(event)
 }
 
 struct CommonHookFields {
     session_id: String,
-    transcript_path: String,
     cwd: String,
 }
 
 fn common_hook_fields(input: &ClaudeCodeHookInput) -> anyhow::Result<CommonHookFields> {
+    let _transcript_path =
+        present(&input.transcript_path).context("claude_code hook missing `transcript_path`")?;
     Ok(CommonHookFields {
         session_id: present(&input.session_id).context("claude_code hook missing `session_id`")?,
-        transcript_path: present(&input.transcript_path)
-            .context("claude_code hook missing `transcript_path`")?,
         cwd: present(&input.cwd).context("claude_code hook missing `cwd`")?,
     })
 }
@@ -155,12 +154,8 @@ fn workspace_from_cwd(cwd: &str) -> SignalWorkspace {
     }
 }
 
-fn metadata_from_hook_input(
-    input: &ClaudeCodeHookInput,
-    transcript_path: String,
-) -> BTreeMap<String, String> {
+fn metadata_from_hook_input(input: &ClaudeCodeHookInput) -> BTreeMap<String, String> {
     let mut metadata = BTreeMap::new();
-    metadata.insert("transcript_path".to_string(), transcript_path);
     if let Some(permission_mode) = input.permission_mode.as_deref().and_then(present) {
         metadata.insert("permission_mode".to_string(), permission_mode);
     }
@@ -266,6 +261,10 @@ mod tests {
         assert_eq!(
             event.metadata.get("permission_mode").map(String::as_str),
             Some("default")
+        );
+        assert!(
+            !event.metadata.contains_key("transcript_path"),
+            "transcript path should not leave the source adapter"
         );
     }
 

@@ -29,7 +29,10 @@ pub(super) fn format_signal_body(signal: &Signal, formatted_time: &str) -> Strin
         push_labeled(
             &mut details,
             "Session",
-            conversation.session_title.as_deref(),
+            session_label(
+                conversation.session_title.as_deref(),
+                conversation.session_id.as_deref(),
+            ),
         );
         push_labeled(&mut details, "Model", conversation.model.as_deref());
     }
@@ -88,6 +91,7 @@ fn has_structured_details(signal: &Signal) -> bool {
     signal.workspace.is_some()
         || signal.conversation.as_ref().is_some_and(|conversation| {
             conversation.session_title.is_some()
+                || conversation.session_id.is_some()
                 || conversation.prompt.is_some()
                 || conversation.answer.is_some()
                 || conversation.model.is_some()
@@ -118,6 +122,13 @@ fn push_present(lines: &mut Vec<String>, value: String) {
 
 fn present(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn session_label<'a>(
+    session_title: Option<&'a str>,
+    session_id: Option<&'a str>,
+) -> Option<&'a str> {
+    present(session_title).or_else(|| present(session_id))
 }
 
 fn present_answer(answer: Option<&SignalAnswer>) -> Option<&SignalAnswer> {
@@ -197,6 +208,32 @@ mod tests {
         assert_eq!(
             format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
             "Project: agents-notifier\nProject Path: /Users/tester/projects/agents-notifier\nSession: agents-notifier sync report\nModel: gpt-5.2-codex\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPrompt: Please fix the route.\n\nPreview: Fixed the route."
+        );
+    }
+
+    #[test]
+    fn formats_session_id_when_session_title_is_absent() {
+        let mut signal = Signal::new_with_timestamp(
+            "signal-1",
+            "claude_code",
+            "claude_code",
+            "Claude Code",
+            "Claude Code finished a task.",
+            timestamp(),
+            BTreeMap::new(),
+        );
+        signal.conversation = Some(SignalConversation {
+            session_id: Some("session-1".to_string()),
+            session_title: None,
+            turn_id: None,
+            prompt: None,
+            answer: None,
+            model: Some("claude-sonnet-4-6".to_string()),
+        });
+
+        assert_eq!(
+            format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
+            "Session: session-1\nModel: claude-sonnet-4-6\nTime: 2026-05-10 10:31:43 +08:00"
         );
     }
 

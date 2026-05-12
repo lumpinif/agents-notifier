@@ -81,7 +81,7 @@ fn local_event_from_after_agent_hook(
         completed_at,
         duration_ms: None,
     });
-    event.metadata = metadata_from_hook_input(&input, common.transcript_path);
+    event.metadata = metadata_from_hook_input(&input);
 
     Ok(event)
 }
@@ -112,22 +112,21 @@ fn local_event_from_notification_hook(
         answer: None,
         model: input.model.as_deref().and_then(present),
     });
-    event.metadata = metadata_from_hook_input(&input, common.transcript_path);
+    event.metadata = metadata_from_hook_input(&input);
 
     Ok(event)
 }
 
 struct CommonHookFields {
     session_id: String,
-    transcript_path: String,
     cwd: String,
 }
 
 fn common_hook_fields(input: &GeminiCliHookInput) -> anyhow::Result<CommonHookFields> {
+    let _transcript_path =
+        present(&input.transcript_path).context("gemini_cli hook missing `transcript_path`")?;
     Ok(CommonHookFields {
         session_id: present(&input.session_id).context("gemini_cli hook missing `session_id`")?,
-        transcript_path: present(&input.transcript_path)
-            .context("gemini_cli hook missing `transcript_path`")?,
         cwd: present(&input.cwd).context("gemini_cli hook missing `cwd`")?,
     })
 }
@@ -153,12 +152,8 @@ fn workspace_from_cwd(cwd: &str) -> SignalWorkspace {
     }
 }
 
-fn metadata_from_hook_input(
-    input: &GeminiCliHookInput,
-    transcript_path: String,
-) -> BTreeMap<String, String> {
+fn metadata_from_hook_input(input: &GeminiCliHookInput) -> BTreeMap<String, String> {
     let mut metadata = BTreeMap::new();
-    metadata.insert("transcript_path".to_string(), transcript_path);
     if let Some(stop_hook_active) = input.stop_hook_active {
         metadata.insert("stop_hook_active".to_string(), stop_hook_active.to_string());
     }
@@ -240,6 +235,10 @@ mod tests {
                 .and_then(|lifecycle| lifecycle.completed_at)
                 .map(|timestamp| timestamp.to_rfc3339()),
             Some("2026-05-12T10:15:30+00:00".to_string())
+        );
+        assert!(
+            !event.metadata.contains_key("transcript_path"),
+            "transcript path should not leave the source adapter"
         );
     }
 

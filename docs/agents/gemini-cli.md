@@ -31,7 +31,7 @@ For structured notifications, configure Gemini CLI to run:
 agents-notifier ingest --source gemini_cli --format gemini_cli_hook
 ```
 
-`ingest` reads the hook payload from stdin and preserves fields Gemini CLI exposes, including project path, session id, transcript path, timestamp, prompt, response, notification type, and message. If Gemini CLI includes `model`, Agents Notifier includes it in the structured signal.
+`ingest` reads the hook payload from stdin and preserves fields Gemini CLI exposes, including project path, session id, timestamp, prompt, response, notification type, and message. If Gemini CLI includes `model`, Agents Notifier includes it in the structured signal. Agents Notifier validates `transcript_path` when Gemini CLI sends it, but does not forward that local path to providers.
 
 If you only need a simple custom message, Gemini CLI can run this command instead:
 

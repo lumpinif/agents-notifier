@@ -16,7 +16,7 @@ For structured notifications, configure Claude Code to run:
 agents-notifier ingest --source claude_code --format claude_code_hook
 ```
 
-`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, transcript path, attention message, and the last assistant message. If Claude Code includes `model`, Agents Notifier includes it in the structured signal.
+`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, and the last assistant message. If Claude Code includes `model`, Agents Notifier includes it in the structured signal. Agents Notifier validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
 
 If you only need a simple custom message, Claude Code can run this command instead:
 

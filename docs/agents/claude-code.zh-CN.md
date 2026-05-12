@@ -16,7 +16,7 @@ Claude Code 官方 hooks 文档：<https://code.claude.com/docs/en/hooks>
 agents-notifier ingest --source claude_code --format claude_code_hook
 ```
 
-`ingest` 会读取 hook payload，并保留 Claude Code 明确暴露的字段，包括 project path、session id、transcript path、注意力提醒消息和最后一条 assistant message。如果 Claude Code payload 里明确包含 `model`，Agents Notifier 会写入结构化 signal。
+`ingest` 会读取 hook payload，并保留 Claude Code 明确暴露的字段，包括 project path、session id、注意力提醒消息和最后一条 assistant message。如果 Claude Code payload 里明确包含 `model`，Agents Notifier 会写入结构化 signal。Claude Code 传入 `transcript_path` 时，Agents Notifier 会校验它存在，但不会把这个本机路径转发给 providers。
 
 如果只需要一条简单自定义消息，也可以让 Claude Code 运行：
 

@@ -25,8 +25,10 @@ pub fn create_signal(
 pub struct CodexCliStopHookInput {
     cwd: String,
     hook_event_name: String,
+    #[serde(default)]
     last_assistant_message: Option<String>,
-    model: String,
+    #[serde(default)]
+    model: Option<String>,
     session_id: String,
     turn_id: String,
 }
@@ -43,7 +45,6 @@ pub fn local_event_from_stop_hook(
     }
 
     let cwd = present(input.cwd).context("codex_cli stop hook missing `cwd`")?;
-    let model = present(input.model).context("codex_cli stop hook missing `model`")?;
     let session_id =
         present(input.session_id).context("codex_cli stop hook missing `session_id`")?;
     let turn_id = present(input.turn_id).context("codex_cli stop hook missing `turn_id`")?;
@@ -66,7 +67,7 @@ pub fn local_event_from_stop_hook(
         turn_id: Some(turn_id),
         prompt: None,
         answer: input.last_assistant_message.and_then(present),
-        model: Some(model),
+        model: input.model.and_then(present),
     });
     event.lifecycle = Some(SignalLifecycle {
         status: Some(SignalLifecycleStatus::Completed),
@@ -131,7 +132,7 @@ mod tests {
                 cwd: "/Users/tester/projects/agents-notifier".to_string(),
                 hook_event_name: "Stop".to_string(),
                 last_assistant_message: Some("Ready for review.".to_string()),
-                model: "gpt-5.2-codex".to_string(),
+                model: Some("gpt-5.2-codex".to_string()),
                 session_id: "session-1".to_string(),
                 turn_id: "turn-1".to_string(),
             },
@@ -166,6 +167,30 @@ mod tests {
                 .as_ref()
                 .and_then(|lifecycle| lifecycle.status),
             Some(SignalLifecycleStatus::Completed)
+        );
+    }
+
+    #[test]
+    fn creates_local_event_without_model_when_stop_hook_omits_model() {
+        let event = local_event_from_stop_hook(
+            "codex_cli",
+            CodexCliStopHookInput {
+                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                hook_event_name: "Stop".to_string(),
+                last_assistant_message: Some("Ready for review.".to_string()),
+                model: None,
+                session_id: "session-1".to_string(),
+                turn_id: "turn-1".to_string(),
+            },
+        )
+        .expect("stop hook without model should still create local event");
+
+        assert_eq!(
+            event
+                .conversation
+                .as_ref()
+                .and_then(|conversation| conversation.model.as_deref()),
+            None
         );
     }
 

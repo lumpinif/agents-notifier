@@ -31,7 +31,7 @@ type = "agent_hook"
 agents-notifier ingest --source gemini_cli --format gemini_cli_hook
 ```
 
-`ingest` 会读取 hook payload，并保留 Gemini CLI 明确暴露的字段，包括 project path、session id、transcript path、timestamp、prompt、response、notification type 和 message。如果 Gemini CLI payload 里明确包含 `model`，Agents Notifier 会写入结构化 signal。
+`ingest` 会读取 hook payload，并保留 Gemini CLI 明确暴露的字段，包括 project path、session id、timestamp、prompt、response、notification type 和 message。如果 Gemini CLI payload 里明确包含 `model`，Agents Notifier 会写入结构化 signal。Gemini CLI 传入 `transcript_path` 时，Agents Notifier 会校验它存在，但不会把这个本机路径转发给 providers。
 
 如果只需要一条简单自定义消息，也可以让 Gemini CLI 运行：
 

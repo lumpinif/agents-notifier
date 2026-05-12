@@ -57,7 +57,11 @@ async fn sends_interactive_card_to_custom_bot_webhook() {
     let elements = body["card"]["elements"]
         .as_array()
         .expect("card elements should be present");
-    assert_eq!(elements[0]["content"], "**Ready for review.**");
+    assert!(
+        elements
+            .iter()
+            .any(|element| element["content"] == "**Ready for review.**")
+    );
 }
 
 #[tokio::test]
@@ -120,9 +124,16 @@ fn signs_request_with_feishu_lark_algorithm() {
 fn formats_card_elements_with_supplied_time() {
     assert_eq!(
         format_signal_card_elements_with_time(&test_signal(), "2026-05-08 20:00:00 +08:00"),
-        vec![FeishuLarkCardElement::Markdown {
-            content: "**Ready for review.**".to_string()
-        }]
+        vec![
+            FeishuLarkCardElement::ColumnSet {
+                flex_mode: "bisect",
+                background_style: "default",
+                columns: vec![metric_column("Time", "2026-05-08 20:00:00", None)]
+            },
+            FeishuLarkCardElement::Markdown {
+                content: "**Ready for review.**".to_string()
+            }
+        ]
     );
 }
 
@@ -202,7 +213,7 @@ fn builds_card_body_from_structured_signal() {
         FeishuLarkCardBody {
             project: Some("agents-notifier".to_string()),
             project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
-            session: None,
+            session: Some("session-1".to_string()),
             model: Some("gpt-5.2-codex".to_string()),
             duration: Some("1m 32s".to_string()),
             branch: Some("main".to_string()),
@@ -259,7 +270,7 @@ fn builds_card_body_with_prompt_before_answer() {
         FeishuLarkCardBody {
             project: Some("agents-notifier".to_string()),
             project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
-            session: None,
+            session: Some("session-1".to_string()),
             model: Some("gpt-5.2-codex".to_string()),
             duration: Some("1m 32s".to_string()),
             branch: Some("main".to_string()),
@@ -332,7 +343,7 @@ fn serializes_card_with_header_action_and_preview() {
     assert_eq!(body["msg_type"], "interactive");
     assert_eq!(
         body["card"]["header"]["title"]["content"],
-        "Codex Desktop · Test Mac"
+        "Codex Desktop · session-1 · Test Mac"
     );
     assert_eq!(body["card"]["header"]["template"], "purple");
     assert_eq!(
