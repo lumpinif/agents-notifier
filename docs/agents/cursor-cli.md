@@ -33,6 +33,8 @@ agents-notifier emit \
 
 `emit` submits the event to the local service ingress. It does not send provider notifications directly.
 
+If your wrapper captures structured fields such as cwd, duration, prompt, answer, or model, use the [Structured Agent Hook](structured-agent-hook.md) format with `--source cursor_cli`.
+
 ## Wrapper Example
 
 Create a wrapper such as `cursor-agent-notify`:

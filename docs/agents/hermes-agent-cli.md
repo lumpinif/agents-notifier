@@ -29,6 +29,8 @@ agents-notifier emit \
   --body "Hermes Agent CLI finished a task."
 ```
 
+If your Hermes hook receives structured fields such as session id, prompt, response, duration, or model, use the [Structured Agent Hook](structured-agent-hook.md) format with `--source hermes_agent_cli` instead of `emit`.
+
 ## Plugin Hook Example
 
 Create a Hermes plugin that registers `post_llm_call`:

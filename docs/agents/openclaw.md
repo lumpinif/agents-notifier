@@ -30,6 +30,8 @@ agents-notifier emit \
   --body "OpenClaw finished a task."
 ```
 
+If your plugin can access structured agent data from `agent_end`, use the [Structured Agent Hook](structured-agent-hook.md) format with `--source openclaw` instead of `emit`.
+
 ## Plugin Hook Sketch
 
 Use OpenClaw's plugin entry API and register `agent_end`:

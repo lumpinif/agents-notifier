@@ -33,6 +33,8 @@ agents-notifier emit \
 
 `emit` 只把事件提交给本地 service ingress。它不会直接发送 provider 通知。
 
+如果你用自己的脚本包一层 Aider，并且能捕获 cwd、duration、prompt、answer 或 model 这类结构化字段，可以用 [Structured Agent Hook](structured-agent-hook.md) 格式，并使用 `--source aider`。
+
 ## 命令行示例
 
 用自定义 notification command 启动 Aider：

@@ -33,6 +33,8 @@ agents-notifier emit \
 
 `emit` submits the event to the local service ingress. It does not send provider notifications directly.
 
+If you wrap Aider with your own script and can capture structured fields such as cwd, duration, prompt, answer, or model, use the [Structured Agent Hook](structured-agent-hook.md) format with `--source aider`.
+
 ## Command-Line Example
 
 Run Aider with a custom notification command:

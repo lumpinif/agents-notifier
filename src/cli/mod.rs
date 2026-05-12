@@ -36,7 +36,7 @@ use agents_notifier::service::{
 };
 use agents_notifier::setup;
 use agents_notifier::sources::{
-    claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
+    agent_hook, claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
 };
 
 mod setup_flow;
@@ -172,6 +172,7 @@ enum Command {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[clap(rename_all = "snake_case")]
 enum IngestFormat {
+    AgentHookEvent,
     ClaudeCodeHook,
     CodexCliStop,
     GeminiCliHook,
@@ -1148,6 +1149,11 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
         .context("failed to read hook event from stdin")?;
 
     let event = match format {
+        IngestFormat::AgentHookEvent => {
+            let input =
+                serde_json::from_str(&raw).context("failed to parse agent_hook event JSON")?;
+            agent_hook::local_event_from_structured_hook(source_id, input)?
+        }
         IngestFormat::ClaudeCodeHook => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse claude_code hook JSON")?;

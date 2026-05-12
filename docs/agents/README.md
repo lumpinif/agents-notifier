@@ -16,3 +16,4 @@ Set up the agent after Agents Notifier is installed.
 - [OpenCode CLI](opencode-cli.md)
 - [OpenClaw](openclaw.md)
 - [Hermes Agent CLI](hermes-agent-cli.md)
+- [Structured Agent Hook](structured-agent-hook.md)
