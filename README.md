@@ -159,7 +159,7 @@ Provider setup guides:
 - [Discord](docs/providers/discord.md)
 - [Telegram](docs/providers/telegram.md)
 - [WhatsApp](docs/providers/whatsapp.md)
-- [WeChat](docs/providers/weixin.md)
+- [WeChat](docs/providers/wechat.md)
 - [Microsoft Teams](docs/providers/microsoft-teams.md)
 - [Email SMTP](docs/providers/email-smtp.md)
 - [Webhook](docs/providers/webhook.md)

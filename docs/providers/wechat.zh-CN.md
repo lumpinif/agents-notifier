@@ -1,8 +1,8 @@
-# WeChat
+# 微信
 
-English documentation: [weixin.md](weixin.md)
+English documentation: [wechat.md](wechat.md)
 
-当你想通过个人微信的 iLink bot 连接，把 Agents Notifier 通知发到一个微信聊天时，就用 WeChat。
+当你想通过个人微信的 iLink bot 连接，把 Agents Notifier 通知发到一个微信聊天时，就用 微信。
 
 这是腾讯/微信官方 OpenClaw iLink bot 通道里的个人微信连接。它不是企业微信，也不是 WhatsApp。
 
@@ -22,8 +22,8 @@ https://ilinkai.weixin.qq.com
 
 setup 里会问两个 iLink 连接参数：
 
-- `WeChat gateway URL`：微信 iLink 网关地址。普通用户直接按 Enter 使用默认值，只有服务方明确给你另一个 URL 时才需要改。
-- `Optional WeChat route tag`：高级可选路由标签，对应 iLink 的 `SKRouteTag`。普通用户直接按 Enter 跳过，只有服务方明确给你这个值时才需要填。
+- `微信 gateway URL`：微信 iLink 网关地址。普通用户直接按 Enter 使用默认值，只有服务方明确给你另一个 URL 时才需要改。
+- `Optional 微信 route tag`：高级可选路由标签，对应 iLink 的 `SKRouteTag`。普通用户直接按 Enter 跳过，只有服务方明确给你这个值时才需要填。
 
 ## 1. 连接 Agents Notifier
 
@@ -36,7 +36,7 @@ agents-notifier setup
 选择：
 
 ```text
-WeChat
+微信
 ```
 
 Agents Notifier 支持两种设置方式：
@@ -74,19 +74,19 @@ POST {base_url}/ilink/bot/sendmessage
 
 ## Answer Detail
 
-Agents Notifier 会对 WeChat 固定使用 `Preview` answer detail。
+Agents Notifier 会对 微信 固定使用 `Preview` answer detail。
 
-微信通知应该保持短小。Agents Notifier 对 WeChat iLink text message 使用 3800 字符的本地保护线；如果格式化后的通知太长，会在发送前失败。
+微信通知应该保持短小。Agents Notifier 对 微信 iLink text message 使用 3800 字符的本地保护线；如果格式化后的通知太长，会在发送前失败。
 
 ## Prompt Detail
 
-Agents Notifier 会对 WeChat 禁用 prompt detail。
+Agents Notifier 会对 微信 禁用 prompt detail。
 
-Prompt 可能很长，也可能包含私人信息，所以 Agents Notifier 不会把 prompt 放进 WeChat 通知里。
+Prompt 可能很长，也可能包含私人信息，所以 Agents Notifier 不会把 prompt 放进 微信 通知里。
 
 ## 手动配置
 
-WeChat 配置在：
+微信 配置在：
 
 ```text
 ~/.config/agents-notifier/config.toml
@@ -96,8 +96,8 @@ WeChat 配置在：
 
 ```toml
 [[providers]]
-id = "weixin"
-type = "weixin"
+id = "wechat"
+type = "wechat"
 base_url = "https://ilinkai.weixin.qq.com"
 token = "<your iLink bot token>"
 recipient_user_id = "<recipient iLink user id>"
@@ -106,7 +106,7 @@ context_token = "<recipient context token>"
 
 [[routes]]
 sources = ["codex_desktop", "agents_notifier"]
-providers = ["weixin"]
+providers = ["wechat"]
 ```
 
 进阶：支持 `token_env` 和 `context_token_env`，但只有在环境变量对本机 service 可见时才使用。普通 setup 场景下，直接写入配置更简单、更可预测。
@@ -119,25 +119,25 @@ agents-notifier start
 
 ## 限制
 
-Agents Notifier 只通过 WeChat 发送纯文本。它不通过 WeChat 发送图片、文件、音频、表情或交互卡片。
+Agents Notifier 只通过 微信 发送纯文本。它不通过 微信 发送图片、文件、音频、表情或交互卡片。
 
 Agents Notifier 不能修改微信 bot 的名字。这个 bot 名字由微信官方 iLink/OpenClaw 通道控制，当前显示为 `WeixinClawBot`。
 
-Agents Notifier 不会创建自定义微信 bot、公众号、小程序或企业微信应用。它使用现有的 WeChat iLink bot 通道。
+Agents Notifier 不会创建自定义微信 bot、公众号、小程序或企业微信应用。它使用现有的 微信 iLink bot 通道。
 
 `base_url` 必须是 HTTPS origin，例如 `https://ilinkai.weixin.qq.com`。
 
 `token`、`recipient_user_id`、`context_token` 和 `route_tag` 不能包含空白字符。
 
-如果 iLink 返回 `context_token` 过期或无效，Agents Notifier 会让这次 WeChat 投递明确失败，并保留错误。它不会在后台偷偷轮询你的微信消息。
+如果 iLink 返回 `context_token` 过期或无效，Agents Notifier 会让这次 微信 投递明确失败，并保留错误。它不会在后台偷偷轮询你的微信消息。
 
-如果 context token 过期，请重新运行 `agents-notifier setup`，重新选择 WeChat 并绑定这个聊天。
+如果 context token 过期，请重新运行 `agents-notifier setup`，重新选择 微信 并绑定这个聊天。
 
 ## 如果收不到
 
 先检查这些：
 
-- WeChat iLink token 是否有效。
+- 微信 iLink token 是否有效。
 - 被绑定的微信账号是否在 setup 时给 `WeixinClawBot` 对话发送过 `hi`。
 - `context_token` 是否已经过期。
 - `base_url` 和可选的 `route_tag` 是否与 iLink 服务方提供的一致。

@@ -80,7 +80,7 @@ Provider guides:
 - [Discord](providers/discord.md)
 - [Telegram](providers/telegram.md)
 - [WhatsApp](providers/whatsapp.md)
-- [WeChat](providers/weixin.md)
+- [WeChat](providers/wechat.md)
 - [Microsoft Teams](providers/microsoft-teams.md)
 - [Email SMTP](providers/email-smtp.md)
 - [Webhook](providers/webhook.md)

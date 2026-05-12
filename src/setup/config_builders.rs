@@ -1,0 +1,208 @@
+use super::*;
+
+pub fn build_ntfy_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    topic: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("phone", ProviderType::Ntfy);
+    provider.server = Some(DEFAULT_NTFY_SERVER.to_string());
+    provider.topic = Some(topic.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_feishu_lark_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+    secret: Option<String>,
+) -> Config {
+    let mut provider = ProviderConfig::new("work_chat", ProviderType::FeishuLark);
+    provider.url = Some(webhook_url.to_string());
+    provider.secret = secret;
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_webhook_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("webhook", ProviderType::Webhook);
+    provider.url = Some(webhook_url.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_pushover_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    app_token: &str,
+    user_key: &str,
+    device: Option<String>,
+    sound: Option<String>,
+) -> Config {
+    let mut provider = ProviderConfig::new("pushover", ProviderType::Pushover);
+    provider.app_token = Some(app_token.to_string());
+    provider.user_key = Some(user_key.to_string());
+    provider.device = device;
+    provider.sound = sound;
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_slack_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("slack", ProviderType::Slack);
+    provider.url = Some(webhook_url.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_discord_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("discord", ProviderType::Discord);
+    provider.url = Some(webhook_url.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_telegram_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    bot_token: &str,
+    chat_id: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("telegram", ProviderType::Telegram);
+    provider.bot_token = Some(bot_token.to_string());
+    provider.chat_id = Some(chat_id.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_whatsapp_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    access_token: &str,
+    phone_number_id: &str,
+    recipient_phone_number: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("whatsapp", ProviderType::Whatsapp);
+    provider.access_token = Some(access_token.to_string());
+    provider.phone_number_id = Some(phone_number_id.to_string());
+    provider.recipient_phone_number = Some(recipient_phone_number.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_wechat_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    base_url: &str,
+    token: &str,
+    recipient_user_id: &str,
+    context_token: &str,
+    route_tag: Option<String>,
+) -> Config {
+    let mut provider = ProviderConfig::new("wechat", ProviderType::Wechat);
+    provider.base_url = Some(base_url.to_string());
+    provider.token = Some(token.to_string());
+    provider.recipient_user_id = Some(recipient_user_id.to_string());
+    provider.context_token = Some(context_token.to_string());
+    provider.route_tag = route_tag;
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+pub fn build_microsoft_teams_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    webhook_url: &str,
+) -> Config {
+    let mut provider = ProviderConfig::new("microsoft_teams", ProviderType::MicrosoftTeams);
+    provider.url = Some(webhook_url.to_string());
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_email_smtp_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    host: &str,
+    port: u16,
+    security: EmailSmtpSecurity,
+    username: Option<String>,
+    password: Option<String>,
+    from: &str,
+    to: Vec<String>,
+    reply_to: Option<String>,
+) -> Config {
+    let mut provider = ProviderConfig::new("email", ProviderType::EmailSmtp);
+    provider.host = Some(host.to_string());
+    provider.port = Some(port);
+    provider.security = Some(security);
+    provider.username = username;
+    provider.password = password;
+    provider.from = Some(from.to_string());
+    provider.to = Some(to);
+    provider.reply_to = reply_to;
+
+    build_config(agent, answer_detail, prompt_detail, vec![provider])
+}
+
+fn build_config(
+    agent: AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    providers: Vec<ProviderConfig>,
+) -> Config {
+    let provider_ids = providers
+        .iter()
+        .map(|provider| provider.id.clone())
+        .collect();
+    let agent_source = agent.source_config();
+    let agent_source_id = agent_source.id.clone();
+
+    Config {
+        schema_version: CONFIG_SCHEMA_VERSION,
+        cli: CliConfig::default(),
+        log: LogConfig::default(),
+        notification: NotificationConfig {
+            answer_detail,
+            prompt_detail,
+        },
+        sources: vec![
+            agent_source,
+            SourceConfig {
+                id: "agents_notifier".to_string(),
+                source_type: SourceType::AgentsNotifier,
+            },
+        ],
+        providers,
+        routes: vec![RouteConfig {
+            sources: vec![agent_source_id, "agents_notifier".to_string()],
+            providers: provider_ids,
+        }],
+    }
+}

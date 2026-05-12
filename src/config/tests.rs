@@ -1,0 +1,1066 @@
+use super::*;
+
+const VALID_CONFIG: &str = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "my-codex-alerts"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url_env = "AGENTS_NOTIFIER_WEBHOOK_URL"
+
+[[providers]]
+id = "work_chat"
+type = "feishu_lark"
+url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
+secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token_env = "AGENTS_NOTIFIER_PUSHOVER_APP_TOKEN"
+user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
+
+[[providers]]
+id = "slack"
+type = "slack"
+url_env = "AGENTS_NOTIFIER_SLACK_WEBHOOK_URL"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
+
+[[providers]]
+id = "telegram"
+type = "telegram"
+bot_token_env = "AGENTS_NOTIFIER_TELEGRAM_BOT_TOKEN"
+chat_id = "123456789"
+
+[[providers]]
+id = "whatsapp"
+type = "whatsapp"
+access_token_env = "AGENTS_NOTIFIER_WHATSAPP_ACCESS_TOKEN"
+phone_number_id = "123456789"
+recipient_phone_number = "15551234567"
+
+[[providers]]
+id = "wechat"
+type = "wechat"
+base_url = "https://ilinkai.weixin.qq.com"
+token_env = "AGENTS_NOTIFIER_WECHAT_TOKEN"
+recipient_user_id = "user@im.wechat"
+context_token_env = "AGENTS_NOTIFIER_WECHAT_CONTEXT_TOKEN"
+
+[[providers]]
+id = "microsoft_teams"
+type = "microsoft_teams"
+url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
+
+[[providers]]
+id = "email"
+type = "email_smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+username_env = "AGENTS_NOTIFIER_EMAIL_SMTP_USERNAME"
+password_env = "AGENTS_NOTIFIER_EMAIL_SMTP_PASSWORD"
+from = "Agents Notifier <alerts@example.com>"
+to = ["felix@example.com"]
+
+[[routes]]
+sources = ["codex_desktop", "codex_cli"]
+providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discord", "telegram", "whatsapp", "wechat", "microsoft_teams", "email"]
+"#;
+
+#[test]
+fn parses_valid_config() {
+    let config = Config::from_toml_str(VALID_CONFIG).expect("valid config should parse");
+
+    assert_eq!(config.schema_version, 1);
+    assert_eq!(config.sources.len(), 2);
+    assert_eq!(config.providers.len(), 11);
+    assert_eq!(config.routes.len(), 1);
+    assert_eq!(config.cli.language, CliLanguage::English);
+    assert_eq!(config.log.level, "info");
+    assert_eq!(config.notification.answer_detail, AnswerDetail::Preview);
+    assert_eq!(config.notification.prompt_detail, PromptDetail::Off);
+}
+
+#[test]
+fn parses_cli_language() {
+    let raw = r#"
+schema_version = 1
+
+[cli]
+language = "zh-CN"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+    let config = Config::from_toml_str(raw).expect("valid config should parse");
+
+    assert_eq!(config.cli.language, CliLanguage::SimplifiedChinese);
+}
+
+#[test]
+fn parses_cli_language_aliases() {
+    assert_eq!(CliLanguage::parse("en"), Some(CliLanguage::English));
+    assert_eq!(
+        CliLanguage::parse("zh_CN"),
+        Some(CliLanguage::SimplifiedChinese)
+    );
+    assert_eq!(
+        CliLanguage::parse("简体中文"),
+        Some(CliLanguage::SimplifiedChinese)
+    );
+    assert_eq!(CliLanguage::parse("fr"), None);
+}
+
+#[test]
+fn parses_full_answer_detail() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+    let config = Config::from_toml_str(raw).expect("valid config should parse");
+
+    assert_eq!(config.notification.answer_detail, AnswerDetail::Full);
+}
+
+#[test]
+fn rejects_full_answer_detail_with_ntfy_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["phone"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("ntfy should reject full answer detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::AnswerDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "phone" && provider_type == "ntfy"
+    ));
+}
+
+#[test]
+fn rejects_full_answer_detail_with_pushover_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token = "123456789012345678901234567890"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Pushover should reject full answer detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::AnswerDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "pushover" && provider_type == "pushover"
+    ));
+}
+
+#[test]
+fn rejects_full_answer_detail_with_slack_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "slack"
+type = "slack"
+url = "https://example.com/slack"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["slack"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Slack should reject full answer detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::AnswerDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "slack" && provider_type == "slack"
+    ));
+}
+
+#[test]
+fn rejects_full_answer_detail_with_discord_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url = "https://discord.com/api/webhooks/123456789012345678/token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["discord"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Discord should reject full answer detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::AnswerDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "discord" && provider_type == "discord"
+    ));
+}
+
+#[test]
+fn rejects_full_answer_detail_with_telegram_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "telegram"
+type = "telegram"
+bot_token = "123456:test-token"
+chat_id = "123456789"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["telegram"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Telegram should reject full answer detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::AnswerDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "telegram" && provider_type == "telegram"
+    ));
+}
+
+#[test]
+fn rejects_full_answer_detail_with_wechat_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+answer_detail = "full"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "wechat"
+type = "wechat"
+base_url = "https://ilinkai.weixin.qq.com"
+token = "test-token"
+recipient_user_id = "user@im.wechat"
+context_token = "test-context-token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["wechat"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("WeChat should reject full answer detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::AnswerDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "wechat" && provider_type == "wechat"
+    ));
+}
+
+#[test]
+fn parses_on_prompt_detail() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+    let config = Config::from_toml_str(raw).expect("valid config should parse");
+
+    assert_eq!(config.notification.prompt_detail, PromptDetail::On);
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_ntfy_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["phone"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("ntfy should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "phone" && provider_type == "ntfy"
+    ));
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_pushover_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token = "123456789012345678901234567890"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Pushover should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "pushover" && provider_type == "pushover"
+    ));
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_slack_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "slack"
+type = "slack"
+url = "https://example.com/slack"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["slack"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Slack should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "slack" && provider_type == "slack"
+    ));
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_discord_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url = "https://discord.com/api/webhooks/123456789012345678/token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["discord"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Discord should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "discord" && provider_type == "discord"
+    ));
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_whatsapp_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "whatsapp"
+type = "whatsapp"
+access_token = "test-access-token"
+phone_number_id = "123456789"
+recipient_phone_number = "15551234567"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["whatsapp"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("WhatsApp should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "whatsapp" && provider_type == "whatsapp"
+    ));
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_wechat_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "wechat"
+type = "wechat"
+base_url = "https://ilinkai.weixin.qq.com"
+token = "test-token"
+recipient_user_id = "user@im.wechat"
+context_token = "test-context-token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["wechat"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("WeChat should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "wechat" && provider_type == "wechat"
+    ));
+}
+
+#[test]
+fn rejects_prompt_detail_on_with_microsoft_teams_provider() {
+    let raw = r#"
+schema_version = 1
+
+[notification]
+prompt_detail = "on"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "microsoft_teams"
+type = "microsoft_teams"
+url = "https://example.com/workflow"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["microsoft_teams"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("Microsoft Teams should reject prompt detail");
+
+    assert!(matches!(
+        err,
+        ConfigError::PromptDetailNotSupportedForProvider {
+            provider_id,
+            provider_type
+        } if provider_id == "microsoft_teams" && provider_type == "microsoft_teams"
+    ));
+}
+
+#[test]
+fn rejects_unsupported_schema_version() {
+    let err =
+        Config::from_toml_str(&VALID_CONFIG.replace("schema_version = 1", "schema_version = 2"))
+            .expect_err("unsupported schema should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::UnsupportedSchema { found: 2, .. }
+    ));
+}
+
+#[test]
+fn rejects_duplicate_source_id() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_desktop"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["phone"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("duplicate source id should fail");
+
+    assert!(matches!(err, ConfigError::DuplicateSourceId(id) if id == "codex_cli"));
+}
+
+#[test]
+fn rejects_unknown_route_source() {
+    let err =
+        Config::from_toml_str(&VALID_CONFIG.replace("codex_desktop\", \"codex_cli", "missing"))
+            .expect_err("unknown source should fail");
+
+    assert!(matches!(err, ConfigError::UnknownRouteSource(id) if id == "missing"));
+}
+
+#[test]
+fn rejects_unknown_route_provider() {
+    let err = Config::from_toml_str(&VALID_CONFIG.replace("phone\", \"debug_webhook", "missing"))
+        .expect_err("unknown provider should fail");
+
+    assert!(matches!(err, ConfigError::UnknownRouteProvider(id) if id == "missing"));
+}
+
+#[test]
+fn rejects_webhook_with_both_url_sources() {
+    let raw = VALID_CONFIG.replace(
+        "url_env = \"AGENTS_NOTIFIER_WEBHOOK_URL\"",
+        "url = \"https://example.com/hook\"\nurl_env = \"AGENTS_NOTIFIER_WEBHOOK_URL\"",
+    );
+
+    let err = Config::from_toml_str(&raw).expect_err("ambiguous webhook url should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidWebhookUrlSource { provider_id } if provider_id == "debug_webhook"
+    ));
+}
+
+#[test]
+fn rejects_feishu_lark_without_webhook_url() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "work_chat"
+type = "feishu_lark"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["work_chat"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing webhook URL should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidFeishuLarkUrlSource { provider_id } if provider_id == "work_chat"
+    ));
+}
+
+#[test]
+fn rejects_feishu_lark_with_both_secret_sources() {
+    let raw = VALID_CONFIG.replace(
+        "secret_env = \"AGENTS_NOTIFIER_FEISHU_LARK_SECRET\"",
+        "secret = \"inline-secret\"\nsecret_env = \"AGENTS_NOTIFIER_FEISHU_LARK_SECRET\"",
+    );
+
+    let err = Config::from_toml_str(&raw).expect_err("ambiguous secret source should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidFeishuLarkSecretSource { provider_id } if provider_id == "work_chat"
+    ));
+}
+
+#[test]
+fn rejects_pushover_without_app_token_source() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing app token should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidPushoverAppTokenSource { provider_id } if provider_id == "pushover"
+    ));
+}
+
+#[test]
+fn rejects_pushover_with_both_user_key_sources() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "pushover"
+type = "pushover"
+app_token = "123456789012345678901234567890"
+user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
+user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["pushover"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("ambiguous user key should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidPushoverUserKeySource { provider_id } if provider_id == "pushover"
+    ));
+}
+
+#[test]
+fn rejects_slack_without_webhook_url() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "slack"
+type = "slack"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["slack"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing Slack webhook URL should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidSlackUrlSource { provider_id } if provider_id == "slack"
+    ));
+}
+
+#[test]
+fn rejects_discord_with_both_url_sources() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "discord"
+type = "discord"
+url = "https://discord.com/api/webhooks/123456789012345678/token"
+url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["discord"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("ambiguous Discord URL should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidDiscordUrlSource { provider_id } if provider_id == "discord"
+    ));
+}
+
+#[test]
+fn rejects_telegram_without_bot_token_source() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "telegram"
+type = "telegram"
+chat_id = "123456789"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["telegram"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing Telegram bot token should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidTelegramBotTokenSource { provider_id } if provider_id == "telegram"
+    ));
+}
+
+#[test]
+fn rejects_whatsapp_without_access_token_source() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "whatsapp"
+type = "whatsapp"
+phone_number_id = "123456789"
+recipient_phone_number = "15551234567"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["whatsapp"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing WhatsApp access token should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidWhatsappAccessTokenSource { provider_id } if provider_id == "whatsapp"
+    ));
+}
+
+#[test]
+fn rejects_wechat_without_token_source() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "wechat"
+type = "wechat"
+base_url = "https://ilinkai.weixin.qq.com"
+recipient_user_id = "user@im.wechat"
+context_token = "test-context-token"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["wechat"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing WeChat token should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidWechatTokenSource { provider_id } if provider_id == "wechat"
+    ));
+}
+
+#[test]
+fn rejects_wechat_without_context_token_source() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "wechat"
+type = "wechat"
+base_url = "https://ilinkai.weixin.qq.com"
+token = "test-token"
+recipient_user_id = "user@im.wechat"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["wechat"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing WeChat context token should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidWechatContextTokenSource { provider_id } if provider_id == "wechat"
+    ));
+}
+
+#[test]
+fn rejects_microsoft_teams_with_both_url_sources() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "microsoft_teams"
+type = "microsoft_teams"
+url = "https://example.com/workflow"
+url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["microsoft_teams"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("ambiguous Microsoft Teams URL should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidMicrosoftTeamsUrlSource { provider_id } if provider_id == "microsoft_teams"
+    ));
+}
+
+#[test]
+fn rejects_email_smtp_without_required_fields() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "email"
+type = "email_smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+from = "alerts@example.com"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["email"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("missing recipients should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::MissingProviderField { provider_id, field }
+            if provider_id == "email" && field == "to"
+    ));
+}
+
+#[test]
+fn rejects_email_smtp_partial_credentials() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "email"
+type = "email_smtp"
+host = "smtp.example.com"
+port = 587
+security = "starttls"
+username = "alerts@example.com"
+from = "alerts@example.com"
+to = ["felix@example.com"]
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["email"]
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("partial credentials should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidEmailSmtpCredentials { provider_id } if provider_id == "email"
+    ));
+}

@@ -9,7 +9,7 @@ pub mod pushover;
 pub mod slack;
 pub mod telegram;
 pub mod webhook;
-pub mod weixin;
+pub mod wechat;
 pub mod whatsapp;
 
 use anyhow::anyhow;
@@ -26,7 +26,7 @@ pub use pushover::PushoverProvider;
 pub use slack::SlackProvider;
 pub use telegram::TelegramProvider;
 pub use webhook::WebhookProvider;
-pub use weixin::WeixinProvider;
+pub use wechat::WechatProvider;
 pub use whatsapp::WhatsappProvider;
 
 pub fn build_providers(config: &Config) -> anyhow::Result<Vec<Box<dyn Provider>>> {
@@ -58,8 +58,8 @@ pub fn build_providers(config: &Config) -> anyhow::Result<Vec<Box<dyn Provider>>
             ProviderType::Whatsapp => {
                 Ok(Box::new(WhatsappProvider::from_config(provider)?) as Box<dyn Provider>)
             }
-            ProviderType::Weixin => {
-                Ok(Box::new(WeixinProvider::from_config(provider)?) as Box<dyn Provider>)
+            ProviderType::Wechat => {
+                Ok(Box::new(WechatProvider::from_config(provider)?) as Box<dyn Provider>)
             }
             ProviderType::MicrosoftTeams => {
                 Ok(Box::new(MicrosoftTeamsProvider::from_config(provider)?) as Box<dyn Provider>)

@@ -1,6 +1,6 @@
 # WeChat
 
-中文文档：[weixin.zh-CN.md](weixin.zh-CN.md)
+中文文档：[wechat.zh-CN.md](wechat.zh-CN.md)
 
 Use WeChat when you want Agents Notifier updates sent to one personal WeChat chat through an iLink bot connection.
 
@@ -96,8 +96,8 @@ Simple config:
 
 ```toml
 [[providers]]
-id = "weixin"
-type = "weixin"
+id = "wechat"
+type = "wechat"
 base_url = "https://ilinkai.weixin.qq.com"
 token = "<your iLink bot token>"
 recipient_user_id = "<recipient iLink user id>"
@@ -106,7 +106,7 @@ context_token = "<recipient context token>"
 
 [[routes]]
 sources = ["codex_desktop", "agents_notifier"]
-providers = ["weixin"]
+providers = ["wechat"]
 ```
 
 Advanced: `token_env` and `context_token_env` are supported, but only use them when the environment variables are visible to the running local service. For normal setup, inline values are simpler and more predictable.

@@ -1,0 +1,198 @@
+use super::*;
+
+pub fn ntfy_subscriptions(config: &Config) -> Vec<NtfySubscription> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Ntfy)
+        .filter_map(|provider| {
+            Some(NtfySubscription {
+                provider_id: provider.id.clone(),
+                server: provider.server.as_ref()?.clone(),
+                topic: provider.topic.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn feishu_lark_targets(config: &Config) -> Vec<FeishuLarkTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::FeishuLark)
+        .filter_map(|provider| {
+            let webhook_host = match (
+                provider
+                    .url
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty()),
+                provider
+                    .url_env
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty()),
+            ) {
+                (Some(url), _) => webhook_host(url),
+                (None, Some(env_name)) => format!("env:{env_name}"),
+                (None, None) => return None,
+            };
+
+            Some(FeishuLarkTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+                signed: provider
+                    .secret
+                    .as_deref()
+                    .is_some_and(|value| !value.trim().is_empty())
+                    || provider
+                        .secret_env
+                        .as_deref()
+                        .is_some_and(|value| !value.trim().is_empty()),
+            })
+        })
+        .collect()
+}
+
+pub fn webhook_targets(config: &Config) -> Vec<WebhookTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Webhook)
+        .filter_map(|provider| {
+            let webhook_host = match (
+                provider
+                    .url
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty()),
+                provider
+                    .url_env
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty()),
+            ) {
+                (Some(url), _) => webhook_host(url),
+                (None, Some(env_name)) => format!("env:{env_name}"),
+                (None, None) => return None,
+            };
+
+            Some(WebhookTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn pushover_targets(config: &Config) -> Vec<PushoverTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Pushover)
+        .map(|provider| PushoverTarget {
+            provider_id: provider.id.clone(),
+            device: provider.device.clone(),
+            sound: provider.sound.clone(),
+        })
+        .collect()
+}
+
+pub fn slack_targets(config: &Config) -> Vec<SlackTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Slack)
+        .filter_map(|provider| {
+            provider_url_host(provider).map(|webhook_host| SlackTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn discord_targets(config: &Config) -> Vec<DiscordTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Discord)
+        .filter_map(|provider| {
+            provider_url_host(provider).map(|webhook_host| DiscordTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn telegram_targets(config: &Config) -> Vec<TelegramTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Telegram)
+        .filter_map(|provider| {
+            Some(TelegramTarget {
+                provider_id: provider.id.clone(),
+                chat_id: provider.chat_id.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn whatsapp_targets(config: &Config) -> Vec<WhatsappTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Whatsapp)
+        .filter_map(|provider| {
+            Some(WhatsappTarget {
+                provider_id: provider.id.clone(),
+                recipient_phone_number: provider.recipient_phone_number.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn wechat_targets(config: &Config) -> Vec<WechatTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::Wechat)
+        .filter_map(|provider| {
+            let base_url = provider.base_url.as_ref()?;
+            Some(WechatTarget {
+                provider_id: provider.id.clone(),
+                base_url_host: host_label(base_url),
+                recipient_user_id: provider.recipient_user_id.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}
+
+pub fn microsoft_teams_targets(config: &Config) -> Vec<MicrosoftTeamsTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::MicrosoftTeams)
+        .filter_map(|provider| {
+            provider_url_host(provider).map(|webhook_host| MicrosoftTeamsTarget {
+                provider_id: provider.id.clone(),
+                webhook_host,
+            })
+        })
+        .collect()
+}
+
+pub fn email_smtp_targets(config: &Config) -> Vec<EmailSmtpTarget> {
+    config
+        .providers
+        .iter()
+        .filter(|provider| provider.provider_type == ProviderType::EmailSmtp)
+        .filter_map(|provider| {
+            Some(EmailSmtpTarget {
+                provider_id: provider.id.clone(),
+                host: provider.host.as_ref()?.clone(),
+                port: provider.port?,
+                from: provider.from.as_ref()?.clone(),
+                to: provider.to.as_ref()?.clone(),
+            })
+        })
+        .collect()
+}

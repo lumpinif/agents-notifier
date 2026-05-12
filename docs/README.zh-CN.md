@@ -1,7 +1,7 @@
 # agents-notifier
 
 两三分钟就能 setup 好。
-然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、WeChat、Microsoft Teams、Email、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
+然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、微信、Microsoft Teams、Email、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
 
 ---
 
@@ -47,7 +47,7 @@ Providers（你想在哪里收到通知？）：
 - [Discord](https://docs.discord.com/developers/resources/webhook)
 - [Telegram](https://core.telegram.org/bots/api)
 - [WhatsApp](https://developers.facebook.com/docs/whatsapp)
-- WeChat 个人微信 iLink
+- 微信（个人微信 iLink）
 - [Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook)
 - [Email SMTP](https://www.rfc-editor.org/rfc/rfc6409)
 - Feishu/Lark Custom Bot（[飞书](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot) / [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot)）
@@ -158,7 +158,7 @@ Provider 设置教程：
 - [Discord](providers/discord.zh-CN.md)
 - [Telegram](providers/telegram.zh-CN.md)
 - [WhatsApp](providers/whatsapp.zh-CN.md)
-- [WeChat](providers/weixin.zh-CN.md)
+- [微信](providers/wechat.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
 - [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)

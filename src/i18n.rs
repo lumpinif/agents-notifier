@@ -86,28 +86,28 @@ pub enum Text {
     TelegramIntro2,
     WhatsappIntro1,
     WhatsappIntro2,
-    WeixinIntro1,
-    WeixinIntro2,
+    WechatIntro1,
+    WechatIntro2,
     TeamsIntro1,
     TeamsIntro2,
     EmailIntro1,
     EmailIntro2,
-    WeixinSetupMethodPrompt,
-    WeixinScanQrOption,
-    WeixinExistingTokenOption,
-    WeixinTokenVerifying,
-    WeixinTokenVerified,
-    WeixinKeepRecipientPrompt,
-    WeixinQrScanPrompt,
-    WeixinQrScanned,
-    WeixinQrExpired,
-    WeixinQrConfirmed,
-    WeixinActionHeading,
-    WeixinActionStep1,
-    WeixinActionStep2,
-    WeixinActionDoNotType,
-    WeixinActionDone,
-    WeixinWaitingForMessage,
+    WechatSetupMethodPrompt,
+    WechatScanQrOption,
+    WechatExistingTokenOption,
+    WechatTokenVerifying,
+    WechatTokenVerified,
+    WechatKeepRecipientPrompt,
+    WechatQrScanPrompt,
+    WechatQrScanned,
+    WechatQrExpired,
+    WechatQrConfirmed,
+    WechatActionHeading,
+    WechatActionStep1,
+    WechatActionStep2,
+    WechatActionDoNotType,
+    WechatActionDone,
+    WechatWaitingForMessage,
     ServiceSection,
     ServiceStatusAlreadyRunning,
     ServiceStatusRunning,
@@ -126,7 +126,7 @@ pub enum Text {
     NextDiscord,
     NextTelegram,
     NextWhatsapp,
-    NextWeixin,
+    NextWechat,
     NextTeams,
     NextEmail,
     SendTestPromptNtfy,
@@ -137,7 +137,7 @@ pub enum Text {
     SendTestPromptDiscord,
     SendTestPromptTelegram,
     SendTestPromptWhatsapp,
-    SendTestPromptWeixin,
+    SendTestPromptWechat,
     SendTestPromptTeams,
     SendTestPromptEmail,
     TestSent,
@@ -227,10 +227,10 @@ impl Text {
             Self::WhatsappIntro2 => {
                 "Use a WhatsApp Business phone number ID, a system user access token, and one recipient phone number."
             }
-            Self::WeixinIntro1 => {
+            Self::WechatIntro1 => {
                 "WeChat sends notifications through a personal WeChat iLink bot connection."
             }
-            Self::WeixinIntro2 => {
+            Self::WechatIntro2 => {
                 "This is personal WeChat through iLink, not WeChat Work and not WhatsApp Business."
             }
             Self::TeamsIntro1 => {
@@ -245,26 +245,26 @@ impl Text {
             Self::EmailIntro2 => {
                 "Use STARTTLS on port 587 unless your provider explicitly gives you port 465."
             }
-            Self::WeixinSetupMethodPrompt => "How should Agents Notifier connect to WeChat?",
-            Self::WeixinScanQrOption => "Scan WeChat QR code",
-            Self::WeixinExistingTokenOption => "Paste existing iLink token",
-            Self::WeixinTokenVerifying => "Verifying WeChat iLink token...",
-            Self::WeixinTokenVerified => "Token verified.",
-            Self::WeixinKeepRecipientPrompt => "Keep the current linked WeChat recipient?",
-            Self::WeixinQrScanPrompt => "Scan this QR code with WeChat:",
-            Self::WeixinQrScanned => "QR code scanned. Confirm the login in WeChat.",
-            Self::WeixinQrExpired => "QR code expired. Fetching a new one...",
-            Self::WeixinQrConfirmed => "WeChat QR login confirmed.",
-            Self::WeixinActionHeading => "ACTION REQUIRED: Open WeChat now.",
-            Self::WeixinActionStep1 => "Find the bot chat that appeared after login:",
-            Self::WeixinActionStep2 => "Send this exact message in that WeChat chat:",
-            Self::WeixinActionDoNotType => {
+            Self::WechatSetupMethodPrompt => "How should Agents Notifier connect to WeChat?",
+            Self::WechatScanQrOption => "Scan WeChat QR code",
+            Self::WechatExistingTokenOption => "Paste existing iLink token",
+            Self::WechatTokenVerifying => "Verifying WeChat iLink token...",
+            Self::WechatTokenVerified => "Token verified.",
+            Self::WechatKeepRecipientPrompt => "Keep the current linked WeChat recipient?",
+            Self::WechatQrScanPrompt => "Scan this QR code with WeChat:",
+            Self::WechatQrScanned => "QR code scanned. Confirm the login in WeChat.",
+            Self::WechatQrExpired => "QR code expired. Fetching a new one...",
+            Self::WechatQrConfirmed => "WeChat QR login confirmed.",
+            Self::WechatActionHeading => "ACTION REQUIRED: Open WeChat now.",
+            Self::WechatActionStep1 => "Find the bot chat that appeared after login:",
+            Self::WechatActionStep2 => "Send this exact message in that WeChat chat:",
+            Self::WechatActionDoNotType => {
                 "Do not type `hi` here in Terminal. Send it inside WeChat."
             }
-            Self::WeixinActionDone => {
+            Self::WechatActionDone => {
                 "DONE? Press Enter only after you sent `hi` in the WeChat bot chat."
             }
-            Self::WeixinWaitingForMessage => "Waiting for the WeChat bot message you just sent...",
+            Self::WechatWaitingForMessage => "Waiting for the WeChat bot message you just sent...",
             Self::ServiceSection => "Service",
             Self::ServiceStatusAlreadyRunning => "already running",
             Self::ServiceStatusRunning => "running",
@@ -283,7 +283,7 @@ impl Text {
             Self::NextDiscord => "Next: check your Discord channel.",
             Self::NextTelegram => "Next: check your Telegram chat.",
             Self::NextWhatsapp => "Next: check the recipient WhatsApp chat.",
-            Self::NextWeixin => "Next: check the linked WeChat chat.",
+            Self::NextWechat => "Next: check the linked WeChat chat.",
             Self::NextTeams => "Next: check your Microsoft Teams chat or channel.",
             Self::NextEmail => "Next: check the recipient email inbox.",
             Self::SendTestPromptNtfy => {
@@ -308,7 +308,7 @@ impl Text {
             Self::SendTestPromptWhatsapp => {
                 "Press Enter to send a test notification through WhatsApp."
             }
-            Self::SendTestPromptWeixin => "Press Enter to send a test notification through WeChat.",
+            Self::SendTestPromptWechat => "Press Enter to send a test notification through WeChat.",
             Self::SendTestPromptTeams => {
                 "Press Enter to send a test notification through Microsoft Teams."
             }
@@ -386,30 +386,30 @@ impl Text {
             Self::WhatsappIntro2 => {
                 "需要 phone number ID、system user access token 和一个接收手机号。"
             }
-            Self::WeixinIntro1 => "WeChat 通过个人微信 iLink bot 连接发送通知。",
-            Self::WeixinIntro2 => "这是个人微信 iLink，不是企业微信，也不是 WhatsApp Business。",
+            Self::WechatIntro1 => "微信通过个人微信 iLink bot 连接发送通知。",
+            Self::WechatIntro2 => "这是个人微信 iLink，不是企业微信，也不是 WhatsApp Business。",
             Self::TeamsIntro1 => {
                 "Microsoft Teams 通过 incoming webhook 把通知发到一个 chat 或 channel。"
             }
             Self::TeamsIntro2 => "创建 Teams workflow 或 incoming webhook，然后粘贴 webhook URL。",
             Self::EmailIntro1 => "Email SMTP 通过你的 SMTP server 发送纯文本邮件通知。",
             Self::EmailIntro2 => "默认用 587 端口 STARTTLS。只有服务商明确要求时才用 465。",
-            Self::WeixinSetupMethodPrompt => "Agents Notifier 要怎么连接 WeChat？",
-            Self::WeixinScanQrOption => "扫描微信二维码",
-            Self::WeixinExistingTokenOption => "粘贴已有 iLink token",
-            Self::WeixinTokenVerifying => "正在验证 WeChat iLink token...",
-            Self::WeixinTokenVerified => "Token 验证通过。",
-            Self::WeixinKeepRecipientPrompt => "保留当前绑定的 WeChat 接收人？",
-            Self::WeixinQrScanPrompt => "用微信扫描这个二维码：",
-            Self::WeixinQrScanned => "二维码已扫描。现在请在微信里确认登录。",
-            Self::WeixinQrExpired => "二维码已过期。正在获取新的二维码...",
-            Self::WeixinQrConfirmed => "WeChat 扫码登录已确认。",
-            Self::WeixinActionHeading => "现在打开微信。",
-            Self::WeixinActionStep1 => "找到登录后出现的 bot 对话：",
-            Self::WeixinActionStep2 => "在那个微信对话里发送这条消息：",
-            Self::WeixinActionDoNotType => "不要在终端里输入 `hi`。要发到微信里的 bot 对话。",
-            Self::WeixinActionDone => "已发送？只有在 WeChat bot 对话里发出 `hi` 后，才按 Enter。",
-            Self::WeixinWaitingForMessage => "正在等待你刚才发出的 WeChat bot 消息...",
+            Self::WechatSetupMethodPrompt => "Agents Notifier 要怎么连接微信？",
+            Self::WechatScanQrOption => "扫描微信二维码",
+            Self::WechatExistingTokenOption => "粘贴已有 iLink token",
+            Self::WechatTokenVerifying => "正在验证微信 iLink token...",
+            Self::WechatTokenVerified => "Token 验证通过。",
+            Self::WechatKeepRecipientPrompt => "保留当前绑定的微信接收人？",
+            Self::WechatQrScanPrompt => "用微信扫描这个二维码：",
+            Self::WechatQrScanned => "二维码已扫描。现在请在微信里确认登录。",
+            Self::WechatQrExpired => "二维码已过期。正在获取新的二维码...",
+            Self::WechatQrConfirmed => "微信扫码登录已确认。",
+            Self::WechatActionHeading => "现在打开微信。",
+            Self::WechatActionStep1 => "找到登录后出现的 bot 对话：",
+            Self::WechatActionStep2 => "在那个微信对话里发送这条消息：",
+            Self::WechatActionDoNotType => "不要在终端里输入 `hi`。要发到微信里的 bot 对话。",
+            Self::WechatActionDone => "已发送？只有在微信 bot 对话里发出 `hi` 后，才按 Enter。",
+            Self::WechatWaitingForMessage => "正在等待你刚才发出的微信 bot 消息...",
             Self::ServiceSection => "Service",
             Self::ServiceStatusAlreadyRunning => "已在运行",
             Self::ServiceStatusRunning => "运行中",
@@ -428,7 +428,7 @@ impl Text {
             Self::NextDiscord => "下一步：检查你的 Discord channel。",
             Self::NextTelegram => "下一步：检查你的 Telegram chat。",
             Self::NextWhatsapp => "下一步：检查接收方 WhatsApp chat。",
-            Self::NextWeixin => "下一步：检查已绑定的 WeChat chat。",
+            Self::NextWechat => "下一步：检查已绑定的微信聊天。",
             Self::NextTeams => "下一步：检查你的 Microsoft Teams chat 或 channel。",
             Self::NextEmail => "下一步：检查接收邮箱。",
             Self::SendTestPromptNtfy => "手机订阅完成后，按 Enter 发送测试通知。",
@@ -439,7 +439,7 @@ impl Text {
             Self::SendTestPromptDiscord => "按 Enter 通过 Discord 发送测试通知。",
             Self::SendTestPromptTelegram => "按 Enter 通过 Telegram 发送测试通知。",
             Self::SendTestPromptWhatsapp => "按 Enter 通过 WhatsApp 发送测试通知。",
-            Self::SendTestPromptWeixin => "按 Enter 通过 WeChat 发送测试通知。",
+            Self::SendTestPromptWechat => "按 Enter 通过微信发送测试通知。",
             Self::SendTestPromptTeams => "按 Enter 通过 Microsoft Teams 发送测试通知。",
             Self::SendTestPromptEmail => "按 Enter 通过 Email SMTP 发送测试通知。",
             Self::TestSent => "测试通知已发送。",
