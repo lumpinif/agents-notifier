@@ -4,13 +4,21 @@ English documentation: [claude-code.md](claude-code.md)
 
 当你希望 Claude Code 的生命周期 hooks 在任务结束或需要注意时发通知，就使用 Claude Code 集成。
 
-Claude Code 官方支持在 `Stop`、`Notification` 这类生命周期事件上运行用户自定义命令。Agents Notifier 走的就是这条官方 hook 路径，并且只接收你在命令里明确传入的标题和正文。
+Claude Code 官方支持在 `Stop`、`Notification` 这类生命周期事件上运行用户自定义命令。Agents Notifier 走的就是这条官方 hook 路径，并读取 Claude Code 通过 stdin 传入的 hook JSON。
 
 Claude Code 官方 hooks 文档：<https://code.claude.com/docs/en/hooks>
 
 ## Agents Notifier 需要什么
 
-Agents Notifier 只需要 Claude Code 的 hook 运行这一条命令：
+结构化通知建议让 Claude Code hook 运行：
+
+```bash
+agents-notifier ingest --source claude_code --format claude_code_hook
+```
+
+`ingest` 会读取 hook payload，并保留 Claude Code 明确暴露的字段，包括 project path、session id、transcript path、注意力提醒消息和最后一条 assistant message。如果 Claude Code payload 里明确包含 `model`，Agents Notifier 会写入结构化 signal。
+
+如果只需要一条简单自定义消息，也可以让 Claude Code 运行：
 
 ```bash
 agents-notifier emit \
@@ -19,7 +27,7 @@ agents-notifier emit \
   --body "Claude Code finished a task."
 ```
 
-`emit` 不会直接发通知。它只把事件提交给本机正在运行的 Agents Notifier service，然后由 service 按你的配置转发到 provider。
+`ingest` 和 `emit` 都不会直接发通知。它们只把事件提交给本机正在运行的 Agents Notifier service，然后由 service 按你的配置转发到 provider。
 
 ## 1. 设置 service
 
@@ -63,7 +71,7 @@ Claude Code
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier emit --source claude_code --title \"Claude Code\" --body \"Claude Code finished a task.\""
+            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -74,7 +82,7 @@ Claude Code
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier emit --source claude_code --title \"Claude Code\" --body \"Claude Code needs your attention.\""
+            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -84,6 +92,8 @@ Claude Code
 ```
 
 这条命令应该由 Claude Code runtime hook 自动触发，不要让模型在对话里手动运行它。
+
+如果当前 Claude Code 配置入口拿不到结构化 hook stdin，可以先用上面的简单 `emit` 命令。
 
 ## 3. 测试链路
 
@@ -113,4 +123,5 @@ agents-notifier status
 - 配置里是否有 `claude_code` source。
 - route 里是否包含 `claude_code`。
 - hook 命令是否使用了 `--source claude_code`。
+- 结构化 hook 是否使用 `agents-notifier ingest --source claude_code --format claude_code_hook`。
 - Claude Code 运行 hooks 的 shell 环境里是否能找到 `agents-notifier`。

@@ -4,13 +4,21 @@
 
 Use Claude Code integration when you want Claude Code lifecycle hooks to submit completion or attention events to the running Agents Notifier service.
 
-Claude Code hooks are user-defined commands that run at lifecycle points such as `Stop` and `Notification`. Agents Notifier uses that official hook path and receives only the title and body you choose to send.
+Claude Code hooks are user-defined commands that run at lifecycle points such as `Stop` and `Notification`. Agents Notifier uses that official hook path and reads the hook JSON Claude Code sends on stdin.
 
 Official Claude Code hook reference: <https://code.claude.com/docs/en/hooks>
 
 ## What Agents Notifier Needs
 
-Agents Notifier only needs Claude Code to run one command from a hook:
+For structured notifications, configure Claude Code to run:
+
+```bash
+agents-notifier ingest --source claude_code --format claude_code_hook
+```
+
+`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, transcript path, attention message, and the last assistant message. If Claude Code includes `model`, Agents Notifier includes it in the structured signal.
+
+If you only need a simple custom message, Claude Code can run this command instead:
 
 ```bash
 agents-notifier emit \
@@ -19,7 +27,7 @@ agents-notifier emit \
   --body "Claude Code finished a task."
 ```
 
-`emit` does not send notifications directly. It submits the event to the local service ingress, and the service routes it to your configured providers.
+`ingest` and `emit` do not send notifications directly. They submit the event to the local service ingress, and the service routes it to your configured providers.
 
 ## 1. Set Up the Service
 
@@ -63,7 +71,7 @@ Example:
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier emit --source claude_code --title \"Claude Code\" --body \"Claude Code finished a task.\""
+            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -74,7 +82,7 @@ Example:
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier emit --source claude_code --title \"Claude Code\" --body \"Claude Code needs your attention.\""
+            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -84,6 +92,8 @@ Example:
 ```
 
 Keep this command in the runtime hook configuration. Do not ask the agent model to run it manually.
+
+When structured hook stdin is not available, use the simple `emit` command shown above.
 
 ## 3. Test the Route
 
@@ -113,4 +123,5 @@ agents-notifier status
 - Your config includes the `claude_code` source.
 - The route includes `claude_code`.
 - The hook command uses `--source claude_code`.
+- Structured hooks use `agents-notifier ingest --source claude_code --format claude_code_hook`.
 - `agents-notifier` is available in the shell environment Claude Code uses for hooks.

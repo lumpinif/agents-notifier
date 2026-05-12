@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use anyhow::Context;
 use serde::Deserialize;
 
@@ -9,6 +7,7 @@ use crate::signal::{
     Signal, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
 };
 use crate::sources::agent_hook;
+use crate::sources::hook_payload::{present, project_name_from_cwd};
 
 const DEFAULT_TITLE: &str = "Codex CLI";
 const DEFAULT_BODY: &str = "Codex CLI finished a task.";
@@ -77,22 +76,6 @@ pub fn local_event_from_stop_hook(
     });
 
     Ok(event)
-}
-
-fn project_name_from_cwd(cwd: &str) -> Option<String> {
-    Path::new(cwd)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| present(name.to_string()))
-}
-
-fn present(value: String) -> Option<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
 }
 
 #[cfg(test)]

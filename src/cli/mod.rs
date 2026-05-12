@@ -35,7 +35,7 @@ use agents_notifier::service::{
     load_metadata,
 };
 use agents_notifier::setup;
-use agents_notifier::sources::{codex_cli, codex_desktop};
+use agents_notifier::sources::{claude_code, codex_cli, codex_desktop};
 
 mod setup_flow;
 
@@ -170,6 +170,7 @@ enum Command {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[clap(rename_all = "snake_case")]
 enum IngestFormat {
+    ClaudeCodeHook,
     CodexCliStop,
 }
 
@@ -773,11 +774,15 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
             }
             setup::AgentSelection::CodexCli => {
                 println!("Agents Notifier 已准备接收 Codex CLI hook event。");
-                println!("让 Codex CLI hook 调用：`agents-notifier emit --source codex_cli`。");
+                println!(
+                    "让 Codex CLI Stop hook 调用：`agents-notifier ingest --source codex_cli --format codex_cli_stop`。"
+                );
             }
             setup::AgentSelection::ClaudeCode => {
                 println!("Agents Notifier 已准备接收 Claude Code hook event。");
-                println!("让 Claude Code hook 调用：`agents-notifier emit --source claude_code`。");
+                println!(
+                    "让 Claude Code hook 调用：`agents-notifier ingest --source claude_code --format claude_code_hook`。"
+                );
             }
             setup::AgentSelection::CursorCli => {
                 println!("Agents Notifier 已准备接收 Cursor CLI hook event。");
@@ -832,13 +837,13 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
         setup::AgentSelection::CodexCli => {
             println!("Agents Notifier is ready for Codex CLI hook events.");
             println!(
-                "Configure your Codex CLI hook to call `agents-notifier emit --source codex_cli`."
+                "Configure your Codex CLI Stop hook to call `agents-notifier ingest --source codex_cli --format codex_cli_stop`."
             );
         }
         setup::AgentSelection::ClaudeCode => {
             println!("Agents Notifier is ready for Claude Code hook events.");
             println!(
-                "Configure your Claude Code hook to call `agents-notifier emit --source claude_code`."
+                "Configure your Claude Code hook to call `agents-notifier ingest --source claude_code --format claude_code_hook`."
             );
         }
         setup::AgentSelection::CursorCli => {
@@ -1138,6 +1143,11 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
         .context("failed to read hook event from stdin")?;
 
     let event = match format {
+        IngestFormat::ClaudeCodeHook => {
+            let input =
+                serde_json::from_str(&raw).context("failed to parse claude_code hook JSON")?;
+            claude_code::local_event_from_hook(source_id, input)?
+        }
         IngestFormat::CodexCliStop => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse codex_cli stop hook JSON")?;
