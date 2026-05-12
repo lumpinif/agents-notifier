@@ -35,7 +35,7 @@ use agents_notifier::service::{
     load_metadata,
 };
 use agents_notifier::setup;
-use agents_notifier::sources::{claude_code, codex_cli, codex_desktop};
+use agents_notifier::sources::{claude_code, codex_cli, codex_desktop, gemini_cli};
 
 mod setup_flow;
 
@@ -172,6 +172,7 @@ enum Command {
 enum IngestFormat {
     ClaudeCodeHook,
     CodexCliStop,
+    GeminiCliHook,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -817,7 +818,7 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
             setup::AgentSelection::GeminiCli => {
                 println!("Agents Notifier 已准备接收 Gemini CLI hook event。");
                 println!(
-                    "让 Gemini CLI AfterAgent 或 Notification hook 调用：`agents-notifier emit --source gemini_cli`。"
+                    "让 Gemini CLI AfterAgent 或 Notification hook 调用：`agents-notifier ingest --source gemini_cli --format gemini_cli_hook`。"
                 );
             }
             setup::AgentSelection::Aider => {
@@ -879,7 +880,7 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
         setup::AgentSelection::GeminiCli => {
             println!("Agents Notifier is ready for Gemini CLI hook events.");
             println!(
-                "Configure your Gemini CLI AfterAgent or Notification hook to call `agents-notifier emit --source gemini_cli`."
+                "Configure your Gemini CLI AfterAgent or Notification hook to call `agents-notifier ingest --source gemini_cli --format gemini_cli_hook`."
             );
         }
         setup::AgentSelection::Aider => {
@@ -1152,6 +1153,11 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
             let input =
                 serde_json::from_str(&raw).context("failed to parse codex_cli stop hook JSON")?;
             codex_cli::local_event_from_stop_hook(source_id, input)?
+        }
+        IngestFormat::GeminiCliHook => {
+            let input =
+                serde_json::from_str(&raw).context("failed to parse gemini_cli hook JSON")?;
+            gemini_cli::local_event_from_hook(source_id, input)?
         }
     };
 

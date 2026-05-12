@@ -4,7 +4,7 @@
 
 Use Gemini CLI integration when you want Gemini CLI hook events to submit notifications to the running Agents Notifier service.
 
-Gemini CLI supports JSON settings files and lifecycle hooks such as `AfterAgent` and `Notification`. Agents Notifier uses those official hook events and receives only the title and body you choose to send.
+Gemini CLI supports JSON settings files and lifecycle hooks such as `AfterAgent` and `Notification`. Agents Notifier uses those official hook events and reads the hook JSON Gemini CLI sends on stdin.
 
 Official Gemini CLI references:
 
@@ -25,7 +25,15 @@ type = "agent_hook"
 
 Then route `gemini_cli` to your provider.
 
-Agents Notifier only needs a Gemini CLI hook to run this command:
+For structured notifications, configure Gemini CLI to run:
+
+```bash
+agents-notifier ingest --source gemini_cli --format gemini_cli_hook
+```
+
+`ingest` reads the hook payload from stdin and preserves fields Gemini CLI exposes, including project path, session id, transcript path, timestamp, prompt, response, notification type, and message. If Gemini CLI includes `model`, Agents Notifier includes it in the structured signal.
+
+If you only need a simple custom message, Gemini CLI can run this command instead:
 
 ```bash
 agents-notifier emit \
@@ -34,7 +42,7 @@ agents-notifier emit \
   --body "Gemini CLI finished a task."
 ```
 
-`emit` submits the event to the local service ingress. It does not send provider notifications directly.
+`ingest` and `emit` submit the event to the local service ingress. They do not send provider notifications directly.
 
 ## Hook Example
 
@@ -53,7 +61,7 @@ Add hooks to your Gemini CLI settings file, such as `~/.gemini/settings.json` or
           {
             "name": "agents-notifier-after-agent",
             "type": "command",
-            "command": "agents-notifier emit --source gemini_cli --title \"Gemini CLI\" --body \"Gemini CLI finished a task.\"",
+            "command": "agents-notifier ingest --source gemini_cli --format gemini_cli_hook",
             "timeout": 10000
           }
         ]
@@ -66,7 +74,7 @@ Add hooks to your Gemini CLI settings file, such as `~/.gemini/settings.json` or
           {
             "name": "agents-notifier-notification",
             "type": "command",
-            "command": "agents-notifier emit --source gemini_cli --title \"Gemini CLI\" --body \"Gemini CLI needs your attention.\"",
+            "command": "agents-notifier ingest --source gemini_cli --format gemini_cli_hook",
             "timeout": 10000
           }
         ]
@@ -79,6 +87,8 @@ Add hooks to your Gemini CLI settings file, such as `~/.gemini/settings.json` or
 The Gemini CLI settings schema defines hook entries as `matcher` plus `hooks`, and command hooks run shell commands.
 
 Keep this command in the runtime hook configuration. Do not ask the agent model to run it manually.
+
+When structured hook stdin is not available, use the simple `emit` command shown above.
 
 ## Test the Route
 
@@ -100,4 +110,5 @@ Check these first:
 - Your route includes `gemini_cli`.
 - The Gemini CLI settings file is valid JSON.
 - `hooksConfig.enabled` is not disabled.
+- Structured hooks use `agents-notifier ingest --source gemini_cli --format gemini_cli_hook`.
 - `agents-notifier` is available in the shell environment Gemini CLI uses for hooks.
