@@ -94,14 +94,7 @@ async fn ingest_submits_structured_codex_cli_stop_event_to_local_service_socket(
         .spawn()
         .expect("command should spawn");
 
-    let input = br#"{
-        "cwd": "/Users/tester/projects/agents-notifier",
-        "hook_event_name": "Stop",
-        "last_assistant_message": "Ready for review.",
-        "model": "gpt-5.2-codex",
-        "session_id": "session-1",
-        "turn_id": "turn-1"
-    }"#;
+    let input = include_bytes!("fixtures/sources/codex_cli/stop.json");
     let mut stdin = child.stdin.take().expect("stdin should be piped");
     stdin
         .write_all(input)
@@ -131,7 +124,7 @@ async fn ingest_submits_structured_codex_cli_stop_event_to_local_service_socket(
         request["workspace"]["project_path"],
         "/Users/tester/projects/agents-notifier"
     );
-    assert_eq!(request["conversation"]["session_id"], "session-1");
+    assert_eq!(request["conversation"]["session_id"], "codex-session-1");
     assert_eq!(request["conversation"]["turn_id"], "turn-1");
     assert_eq!(request["conversation"]["answer"], "Ready for review.");
     assert_eq!(request["conversation"]["model"], "gpt-5.2-codex");
@@ -174,15 +167,7 @@ async fn ingest_submits_structured_claude_code_stop_event_to_local_service_socke
         .spawn()
         .expect("command should spawn");
 
-    let input = br#"{
-        "session_id": "session-1",
-        "transcript_path": "/Users/tester/.claude/projects/project/session-1.jsonl",
-        "cwd": "/Users/tester/projects/agents-notifier",
-        "hook_event_name": "Stop",
-        "permission_mode": "default",
-        "last_assistant_message": "Ready for review.",
-        "stop_hook_active": false
-    }"#;
+    let input = include_bytes!("fixtures/sources/claude_code/stop.json");
     let mut stdin = child.stdin.take().expect("stdin should be piped");
     stdin
         .write_all(input)
@@ -208,8 +193,11 @@ async fn ingest_submits_structured_claude_code_stop_event_to_local_service_socke
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "Stop");
     assert_eq!(request["workspace"]["project_name"], "agents-notifier");
-    assert_eq!(request["conversation"]["session_id"], "session-1");
-    assert_eq!(request["conversation"]["answer"], "Ready for review.");
+    assert_eq!(request["conversation"]["session_id"], "claude-session-1");
+    assert_eq!(
+        request["conversation"]["answer"],
+        "Implemented the requested change."
+    );
     assert_eq!(request["conversation"]["model"], Value::Null);
     assert_eq!(request["lifecycle"]["status"], "completed");
     assert_eq!(request["metadata"]["permission_mode"], "default");
@@ -251,14 +239,7 @@ async fn ingest_submits_claude_code_session_start_context_to_local_service_socke
         .spawn()
         .expect("command should spawn");
 
-    let input = br#"{
-        "session_id": "session-1",
-        "transcript_path": "/Users/tester/.claude/projects/project/session-1.jsonl",
-        "cwd": "/Users/tester/projects/agents-notifier",
-        "hook_event_name": "SessionStart",
-        "source": "startup",
-        "model": "claude-sonnet-4-6"
-    }"#;
+    let input = include_bytes!("fixtures/sources/claude_code/session_start.json");
     let mut stdin = child.stdin.take().expect("stdin should be piped");
     stdin
         .write_all(input)
@@ -282,7 +263,7 @@ async fn ingest_submits_claude_code_session_start_context_to_local_service_socke
     assert_eq!(request["action"], "store_session_context");
     assert_eq!(request["event"]["raw_name"], "SessionStart");
     assert_eq!(request["workspace"]["project_name"], "agents-notifier");
-    assert_eq!(request["conversation"]["session_id"], "session-1");
+    assert_eq!(request["conversation"]["session_id"], "claude-session-1");
     assert_eq!(request["conversation"]["model"], "claude-sonnet-4-6");
     assert_eq!(request["metadata"]["session_start_source"], "startup");
     assert_eq!(request["metadata"]["transcript_path"], Value::Null);
@@ -324,17 +305,7 @@ async fn ingest_submits_structured_gemini_cli_after_agent_event_to_local_service
         .spawn()
         .expect("command should spawn");
 
-    let input = br#"{
-        "session_id": "session-1",
-        "transcript_path": "/Users/tester/.gemini/tmp/session-1.json",
-        "cwd": "/Users/tester/projects/agents-notifier",
-        "hook_event_name": "AfterAgent",
-        "timestamp": "2026-05-12T10:15:30Z",
-        "prompt": "Review this patch.",
-        "prompt_response": "Ready for review.",
-        "stop_hook_active": false,
-        "model": "gemini-3-pro"
-    }"#;
+    let input = include_bytes!("fixtures/sources/gemini_cli/after_agent.json");
     let mut stdin = child.stdin.take().expect("stdin should be piped");
     stdin
         .write_all(input)
@@ -360,10 +331,10 @@ async fn ingest_submits_structured_gemini_cli_after_agent_event_to_local_service
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "AfterAgent");
     assert_eq!(request["workspace"]["project_name"], "agents-notifier");
-    assert_eq!(request["conversation"]["session_id"], "session-1");
+    assert_eq!(request["conversation"]["session_id"], "gemini-session-1");
     assert_eq!(request["conversation"]["prompt"], "Review this patch.");
     assert_eq!(request["conversation"]["answer"], "Ready for review.");
-    assert_eq!(request["conversation"]["model"], "gemini-3-pro");
+    assert_eq!(request["conversation"]["model"], Value::Null);
     assert_eq!(request["lifecycle"]["status"], "completed");
     assert_eq!(request["lifecycle"]["completed_at"], "2026-05-12T10:15:30Z");
 }
@@ -404,15 +375,7 @@ async fn ingest_submits_structured_github_copilot_cli_notification_event_to_loca
         .spawn()
         .expect("command should spawn");
 
-    let input = br#"{
-        "sessionId": "session-1",
-        "timestamp": 1775907268684,
-        "cwd": "/Users/tester/projects/agents-notifier",
-        "hook_event_name": "Notification",
-        "message": "GitHub Copilot CLI emitted a notification.",
-        "title": "GitHub Copilot CLI",
-        "notification_type": "agent_idle"
-    }"#;
+    let input = include_bytes!("fixtures/sources/github_copilot_cli/notification.json");
     let mut stdin = child.stdin.take().expect("stdin should be piped");
     stdin
         .write_all(input)
@@ -441,7 +404,7 @@ async fn ingest_submits_structured_github_copilot_cli_notification_event_to_loca
     assert_eq!(request["event"]["kind"], "custom");
     assert_eq!(request["event"]["raw_name"], "Notification");
     assert_eq!(request["workspace"]["project_name"], "agents-notifier");
-    assert_eq!(request["conversation"]["session_id"], "session-1");
+    assert_eq!(request["conversation"]["session_id"], "copilot-session-1");
     assert_eq!(request["metadata"]["notification_type"], "agent_idle");
     assert_eq!(request["metadata"]["timestamp_ms"], "1775907268684");
 }
