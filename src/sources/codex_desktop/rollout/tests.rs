@@ -1,4 +1,6 @@
 use chrono::{DateTime, Utc};
+use std::io::Write;
+use tempfile::NamedTempFile;
 
 use crate::config::{AnswerDetail, SourceConfig, SourceType};
 use crate::signal::{SignalAnswerKind, SignalEventKind, SignalLifecycleStatus};
@@ -292,6 +294,97 @@ fn parses_session_metadata_with_structured_optional_fields() {
     assert_eq!(session.model, Some("gpt-5.2-codex".to_string()));
     assert_eq!(session.model_provider, Some("openai".to_string()));
     assert_eq!(session.branch, Some("main".to_string()));
+}
+
+#[test]
+fn parses_turn_context_model_without_reading_provider_as_model() {
+    let line = r#"{"timestamp":"2026-05-12T17:35:42.000Z","type":"turn_context","payload":{"model":"gpt-5.5","model_provider":"openai","base_instructions":"private instructions stay ignored"}}"#;
+
+    let Some(RolloutItem::TurnContext(session)) =
+        parse_rollout_line(line, true).expect("line should parse")
+    else {
+        panic!("expected turn_context");
+    };
+
+    assert_eq!(session.model, Some("gpt-5.5".to_string()));
+    assert_eq!(session.model_provider, None);
+}
+
+#[test]
+fn parses_turn_context_model_from_collaboration_mode_settings() {
+    let line = r#"{"timestamp":"2026-05-12T17:35:42.000Z","type":"turn_context","payload":{"collaboration_mode":{"settings":{"model":"gpt-5.4","reasoning_effort":"high"}}}}"#;
+
+    let Some(RolloutItem::TurnContext(session)) =
+        parse_rollout_line(line, true).expect("line should parse")
+    else {
+        panic!("expected turn_context");
+    };
+
+    assert_eq!(session.model, Some("gpt-5.4".to_string()));
+}
+
+#[test]
+fn read_session_info_merges_turn_context_model() {
+    let mut rollout = NamedTempFile::new().expect("tempfile should be created");
+    writeln!(
+        rollout,
+        r#"{{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{{"id":"session-1","originator":"Codex Desktop","cwd":"/Users/tester/projects/agents-notifier","model_provider":"openai","git":{{"branch":"main"}}}}}}"#
+    )
+    .expect("session_meta should be written");
+    writeln!(
+        rollout,
+        r#"{{"timestamp":"2026-05-09T17:35:42.500Z","type":"event_msg","payload":{{"type":"task_complete"}}}}"#
+    )
+    .expect("unneeded event should be written");
+    writeln!(
+        rollout,
+        r#"{{"timestamp":"2026-05-09T17:35:43.000Z","type":"turn_context","payload":{{"model":"gpt-5.5"}}}}"#
+    )
+    .expect("turn_context should be written");
+
+    let session = read_session_info(rollout.path()).expect("session info should read");
+
+    assert_eq!(session.id, Some("session-1".to_string()));
+    assert_eq!(session.model, Some("gpt-5.5".to_string()));
+    assert_eq!(session.model_provider, Some("openai".to_string()));
+    assert_eq!(session.branch, Some("main".to_string()));
+}
+
+#[test]
+fn later_turn_context_updates_model_when_session_meta_has_no_model() {
+    let mut session = SessionInfo::default();
+
+    session.merge_turn_context(SessionInfo {
+        model: Some("gpt-5.4".to_string()),
+        model_source: Some(SessionModelSource::TurnContext),
+        ..SessionInfo::default()
+    });
+    session.merge_turn_context(SessionInfo {
+        model: Some("gpt-5.5".to_string()),
+        model_source: Some(SessionModelSource::TurnContext),
+        ..SessionInfo::default()
+    });
+
+    assert_eq!(session.model, Some("gpt-5.5".to_string()));
+}
+
+#[test]
+fn session_meta_model_takes_precedence_over_turn_context_model() {
+    let mut rollout = NamedTempFile::new().expect("tempfile should be created");
+    writeln!(
+        rollout,
+        r#"{{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{{"id":"session-1","originator":"Codex Desktop","model":"gpt-5.2-codex"}}}}"#
+    )
+    .expect("session_meta should be written");
+    writeln!(
+        rollout,
+        r#"{{"timestamp":"2026-05-09T17:35:43.000Z","type":"turn_context","payload":{{"model":"gpt-5.5"}}}}"#
+    )
+    .expect("turn_context should be written");
+
+    let session = read_session_info(rollout.path()).expect("session info should read");
+
+    assert_eq!(session.model, Some("gpt-5.2-codex".to_string()));
 }
 
 #[test]

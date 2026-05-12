@@ -40,6 +40,7 @@ fn first_run_skips_existing_rollout_events_then_emits_new_events() {
         .expect("first poll should pass");
     assert!(first.is_empty());
 
+    append_line(&rollout_path, &turn_context_line("gpt-5.5"));
     append_line(
         &rollout_path,
         &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
@@ -55,6 +56,13 @@ fn first_run_skips_existing_rollout_events_then_emits_new_events() {
             .as_ref()
             .and_then(|conversation| conversation.turn_id.as_deref()),
         Some("turn-new")
+    );
+    assert_eq!(
+        second[0]
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.model.as_deref()),
+        Some("gpt-5.5")
     );
     assert_eq!(
         second[0]
@@ -138,6 +146,12 @@ fn session_meta_line(session_id: &str) -> String {
 fn task_complete_line(turn_id: &str, timestamp: &str, last_agent_message: &str) -> String {
     format!(
         r#"{{"timestamp":"{timestamp}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"{turn_id}","completed_at":1778348142,"duration_ms":92185,"time_to_first_token_ms":1200,"last_agent_message":"{last_agent_message}"}}}}"#
+    )
+}
+
+fn turn_context_line(model: &str) -> String {
+    format!(
+        r#"{{"timestamp":"2026-05-09T17:01:20.000Z","type":"turn_context","payload":{{"model":"{model}","collaboration_mode":{{"settings":{{"model":"{model}"}}}}}}}}"#
     )
 }
 

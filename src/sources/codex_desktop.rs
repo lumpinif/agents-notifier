@@ -168,6 +168,15 @@ impl CodexDesktopSessionWatcher {
                             .merge(session);
                         changed = true;
                     }
+                    RolloutItem::TurnContext(session) => {
+                        self.state
+                            .files
+                            .get_mut(&path_key)
+                            .expect("file state should exist before context update")
+                            .session
+                            .merge_turn_context(session);
+                        changed = true;
+                    }
                     RolloutItem::UserMessage(prompt) => {
                         if prompt_detail == PromptDetail::On {
                             self.pending_prompts.insert(path_key.clone(), prompt);

@@ -28,8 +28,17 @@ pub(super) struct SessionInfo {
     cwd: Option<String>,
     cli_version: Option<String>,
     model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_source: Option<SessionModelSource>,
     model_provider: Option<String>,
     branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SessionModelSource {
+    SessionMeta,
+    TurnContext,
 }
 
 impl SessionInfo {
@@ -51,12 +60,20 @@ impl SessionInfo {
         }
         if next.model.is_some() {
             self.model = next.model;
+            self.model_source = next.model_source;
         }
         if next.model_provider.is_some() {
             self.model_provider = next.model_provider;
         }
         if next.branch.is_some() {
             self.branch = next.branch;
+        }
+    }
+
+    pub(super) fn merge_turn_context(&mut self, next: Self) {
+        if next.model.is_some() && self.model_source != Some(SessionModelSource::SessionMeta) {
+            self.model = next.model;
+            self.model_source = next.model_source;
         }
     }
 
@@ -89,6 +106,7 @@ pub(super) struct TaskComplete {
 
 pub(super) enum RolloutItem {
     SessionMeta(SessionInfo),
+    TurnContext(SessionInfo),
     UserMessage(String),
     TaskComplete(TaskComplete),
 }
@@ -157,14 +175,21 @@ pub(super) fn read_session_info(path: &Path) -> anyhow::Result<SessionInfo> {
         File::open(path).with_context(|| format!("failed to open rollout `{}`", path.display()))?;
     let reader = BufReader::new(file);
 
+    let mut session = SessionInfo::default();
     for line in reader.lines() {
         let line = line.with_context(|| format!("failed to read rollout `{}`", path.display()))?;
-        if let Some(RolloutItem::SessionMeta(session)) = parse_rollout_line(&line, false)? {
-            return Ok(session);
+        match parse_rollout_session_context_line(&line) {
+            Some(RolloutItem::SessionMeta(next)) => session.merge(next),
+            Some(RolloutItem::TurnContext(next)) => session.merge_turn_context(next),
+            _ => {}
+        }
+
+        if initial_session_info_is_complete(&session) {
+            break;
         }
     }
 
-    Ok(SessionInfo::default())
+    Ok(session)
 }
 
 pub(super) fn signal_from_task_complete(
@@ -401,6 +426,9 @@ fn parse_rollout_line(
         "session_meta" => Ok(Some(RolloutItem::SessionMeta(session_info_from_payload(
             &payload,
         )))),
+        "turn_context" => {
+            Ok(turn_context_info_from_payload(&payload).map(RolloutItem::TurnContext))
+        }
         "event_msg" => {
             let Some(payload_type) = payload.get("type").and_then(serde_json::Value::as_str) else {
                 return Ok(None);
@@ -420,6 +448,36 @@ fn parse_rollout_line(
         }
         _ => Ok(None),
     }
+}
+
+fn parse_rollout_session_context_line(line: &str) -> Option<RolloutItem> {
+    let value: serde_json::Value = match serde_json::from_str(line) {
+        Ok(value) => value,
+        Err(error) => {
+            warn!(
+                error = %error,
+                event = "watch.line.ignored",
+            );
+            return None;
+        }
+    };
+    let record_type = value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let payload = value.get("payload").cloned().unwrap_or_default();
+
+    match record_type {
+        "session_meta" => Some(RolloutItem::SessionMeta(session_info_from_payload(
+            &payload,
+        ))),
+        "turn_context" => turn_context_info_from_payload(&payload).map(RolloutItem::TurnContext),
+        _ => None,
+    }
+}
+
+fn initial_session_info_is_complete(session: &SessionInfo) -> bool {
+    session.id.is_some() && (!session.is_codex_desktop() || session.model.is_some())
 }
 
 fn parse_user_message(payload: &serde_json::Value) -> Option<String> {
@@ -475,13 +533,17 @@ fn parse_task_complete(
 }
 
 fn session_info_from_payload(payload: &serde_json::Value) -> SessionInfo {
+    let model = string_field(payload, "model");
+    let model_source = model.as_ref().map(|_| SessionModelSource::SessionMeta);
+
     SessionInfo {
         id: string_field(payload, "id"),
         originator: string_field(payload, "originator"),
         source: string_field(payload, "source"),
         cwd: string_field(payload, "cwd"),
         cli_version: string_field(payload, "cli_version"),
-        model: string_field(payload, "model"),
+        model,
+        model_source,
         model_provider: string_field(payload, "model_provider"),
         branch: payload
             .get("git")
@@ -491,6 +553,23 @@ fn session_info_from_payload(payload: &serde_json::Value) -> SessionInfo {
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned),
     }
+}
+
+fn turn_context_info_from_payload(payload: &serde_json::Value) -> Option<SessionInfo> {
+    turn_context_model(payload).map(|model| SessionInfo {
+        model: Some(model),
+        model_source: Some(SessionModelSource::TurnContext),
+        ..SessionInfo::default()
+    })
+}
+
+fn turn_context_model(payload: &serde_json::Value) -> Option<String> {
+    string_field(payload, "model").or_else(|| {
+        payload
+            .get("collaboration_mode")
+            .and_then(|collaboration_mode| collaboration_mode.get("settings"))
+            .and_then(|settings| string_field(settings, "model"))
+    })
 }
 
 fn string_field(payload: &serde_json::Value, key: &str) -> Option<String> {
