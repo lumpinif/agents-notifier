@@ -35,7 +35,9 @@ use agents_notifier::service::{
     load_metadata,
 };
 use agents_notifier::setup;
-use agents_notifier::sources::{claude_code, codex_cli, codex_desktop, gemini_cli};
+use agents_notifier::sources::{
+    claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli,
+};
 
 mod setup_flow;
 
@@ -173,6 +175,7 @@ enum IngestFormat {
     ClaudeCodeHook,
     CodexCliStop,
     GeminiCliHook,
+    GithubCopilotCliNotification,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -812,7 +815,7 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
             setup::AgentSelection::GithubCopilotCli => {
                 println!("Agents Notifier 已准备接收 GitHub Copilot CLI hook event。");
                 println!(
-                    "让 GitHub Copilot CLI notification hook 调用：`agents-notifier emit --source github_copilot_cli`。"
+                    "让 GitHub Copilot CLI notification hook 调用：`agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification`。"
                 );
             }
             setup::AgentSelection::GeminiCli => {
@@ -874,7 +877,7 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
         setup::AgentSelection::GithubCopilotCli => {
             println!("Agents Notifier is ready for GitHub Copilot CLI hook events.");
             println!(
-                "Configure your GitHub Copilot CLI notification hook to call `agents-notifier emit --source github_copilot_cli`."
+                "Configure your GitHub Copilot CLI notification hook to call `agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification`."
             );
         }
         setup::AgentSelection::GeminiCli => {
@@ -1158,6 +1161,11 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
             let input =
                 serde_json::from_str(&raw).context("failed to parse gemini_cli hook JSON")?;
             gemini_cli::local_event_from_hook(source_id, input)?
+        }
+        IngestFormat::GithubCopilotCliNotification => {
+            let input = serde_json::from_str(&raw)
+                .context("failed to parse github_copilot_cli notification hook JSON")?;
+            github_copilot_cli::local_event_from_notification_hook(source_id, input)?
         }
     };
 
