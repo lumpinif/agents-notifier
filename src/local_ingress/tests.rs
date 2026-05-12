@@ -17,6 +17,10 @@ struct TestProvider {
     calls: Arc<Mutex<Vec<String>>>,
 }
 
+struct SignalCaptureProvider {
+    signals: Arc<Mutex<Vec<Signal>>>,
+}
+
 impl Provider for TestProvider {
     fn id(&self) -> &str {
         "debug"
@@ -32,6 +36,30 @@ impl Provider for TestProvider {
                 .lock()
                 .expect("calls lock should not be poisoned")
                 .push(format!("{}:{}", signal.source_id(), signal.summary()));
+            Ok(ProviderSendResult::sent(
+                self.id(),
+                self.provider_type(),
+                signal,
+            ))
+        })
+    }
+}
+
+impl Provider for SignalCaptureProvider {
+    fn id(&self) -> &str {
+        "debug"
+    }
+
+    fn provider_type(&self) -> &str {
+        "test"
+    }
+
+    fn send<'a>(&'a self, signal: &'a Signal) -> ProviderFuture<'a> {
+        Box::pin(async move {
+            self.signals
+                .lock()
+                .expect("signals lock should not be poisoned")
+                .push(signal.clone());
             Ok(ProviderSendResult::sent(
                 self.id(),
                 self.provider_type(),
@@ -105,6 +133,68 @@ async fn route_event_creates_claude_code_signal_and_uses_service_router() {
     assert_eq!(
         *calls.lock().expect("calls lock should not be poisoned"),
         vec!["claude_code:Claude Code finished a task.".to_string()]
+    );
+}
+
+#[tokio::test]
+async fn route_event_merges_claude_session_start_model_into_stop_signal() {
+    let signals = Arc::new(Mutex::new(Vec::new()));
+    let provider = SignalCaptureProvider {
+        signals: Arc::clone(&signals),
+    };
+    let state = LocalIngressState::default();
+    let config = test_config("claude_code", SourceType::ClaudeCode);
+
+    let mut session_start =
+        LocalSignalEvent::new("claude_code", "Claude Code", "Claude Code session started.");
+    session_start.action = LocalSignalAction::StoreSessionContext;
+    session_start.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: None,
+        model: Some("claude-sonnet-4-6".to_string()),
+    });
+
+    route_event_with_state(&config, &[&provider], &state, session_start)
+        .await
+        .expect("SessionStart should store Claude Code session context");
+    assert!(
+        signals
+            .lock()
+            .expect("signals lock should not be poisoned")
+            .is_empty(),
+        "SessionStart should not route a provider notification"
+    );
+
+    let mut stop =
+        LocalSignalEvent::new("claude_code", "Claude Code", "Claude Code finished a task.");
+    stop.event = Some(SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("Stop".to_string()),
+    });
+    stop.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: Some("Ready for review.".to_string()),
+        model: None,
+    });
+
+    route_event_with_state(&config, &[&provider], &state, stop)
+        .await
+        .expect("Stop should route a Claude Code completion signal");
+
+    let routed = signals.lock().expect("signals lock should not be poisoned");
+    assert_eq!(routed.len(), 1);
+    assert_eq!(
+        routed[0]
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.model.as_deref()),
+        Some("claude-sonnet-4-6")
     );
 }
 

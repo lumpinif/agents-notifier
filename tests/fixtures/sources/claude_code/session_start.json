@@ -1,0 +1,8 @@
+{
+  "session_id": "claude-session-1",
+  "transcript_path": "/Users/tester/.claude/projects/agents-notifier/claude-session-1.jsonl",
+  "cwd": "/Users/tester/projects/agents-notifier",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "model": "claude-sonnet-4-6"
+}

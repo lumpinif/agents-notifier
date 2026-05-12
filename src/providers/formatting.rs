@@ -41,10 +41,10 @@ pub(super) fn format_signal_body(signal: &Signal, formatted_time: &str) -> Strin
         push_link(&mut details, link);
     }
 
-    if let Some(lifecycle) = &signal.lifecycle {
-        if let Some(duration_ms) = lifecycle.duration_ms {
-            details.push(format!("Duration: {}", format_duration_ms(duration_ms)));
-        }
+    if let Some(lifecycle) = &signal.lifecycle
+        && let Some(duration_ms) = lifecycle.duration_ms
+    {
+        details.push(format!("Duration: {}", format_duration_ms(duration_ms)));
     }
 
     if let Some(workspace) = &signal.workspace {

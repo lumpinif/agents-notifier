@@ -4,7 +4,7 @@ use anyhow::Context;
 use serde::Deserialize;
 
 use crate::config::{Config, SourceType};
-use crate::local_ingress::{LocalSignalConversation, LocalSignalEvent};
+use crate::local_ingress::{LocalSignalAction, LocalSignalConversation, LocalSignalEvent};
 use crate::signal::{
     Signal, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
 };
@@ -32,6 +32,8 @@ pub struct ClaudeCodeHookInput {
     #[serde(default)]
     permission_mode: Option<String>,
     #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
     last_assistant_message: Option<String>,
     #[serde(default)]
     model: Option<String>,
@@ -53,14 +55,51 @@ pub fn local_event_from_hook(
         present(&input.hook_event_name).context("claude_code hook missing `hook_event_name`")?;
 
     match hook_event_name.as_str() {
+        "SessionStart" => local_event_from_session_start_hook(source_id, input, hook_event_name),
         "Stop" => local_event_from_stop_hook(source_id, input, hook_event_name),
         "Notification" => local_event_from_notification_hook(source_id, input, hook_event_name),
         event_name => {
             anyhow::bail!(
-                "claude_code ingest expected `hook_event_name` to be `Stop` or `Notification`, got `{event_name}`"
+                "claude_code ingest expected `hook_event_name` to be `SessionStart`, `Stop`, or `Notification`, got `{event_name}`"
             )
         }
     }
+}
+
+fn local_event_from_session_start_hook(
+    source_id: impl Into<String>,
+    input: ClaudeCodeHookInput,
+    hook_event_name: String,
+) -> anyhow::Result<LocalSignalEvent> {
+    let common = common_hook_fields(&input)?;
+    let model = input
+        .model
+        .as_deref()
+        .and_then(present)
+        .context("claude_code SessionStart hook missing `model`")?;
+
+    let mut event = LocalSignalEvent::new(
+        source_id,
+        DEFAULT_TITLE,
+        "Claude Code session context updated.",
+    );
+    event.action = LocalSignalAction::StoreSessionContext;
+    event.event = Some(SignalEvent {
+        kind: SignalEventKind::Custom,
+        raw_name: Some(hook_event_name),
+    });
+    event.workspace = Some(workspace_from_cwd(&common.cwd));
+    event.conversation = Some(LocalSignalConversation {
+        session_id: Some(common.session_id),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: None,
+        model: Some(model),
+    });
+    event.metadata = metadata_from_hook_input(&input);
+
+    Ok(event)
 }
 
 fn local_event_from_stop_hook(
@@ -159,6 +198,9 @@ fn metadata_from_hook_input(input: &ClaudeCodeHookInput) -> BTreeMap<String, Str
     if let Some(permission_mode) = input.permission_mode.as_deref().and_then(present) {
         metadata.insert("permission_mode".to_string(), permission_mode);
     }
+    if let Some(source) = input.source.as_deref().and_then(present) {
+        metadata.insert("session_start_source".to_string(), source);
+    }
     if let Some(stop_hook_active) = input.stop_hook_active {
         metadata.insert("stop_hook_active".to_string(), stop_hook_active.to_string());
     }
@@ -215,6 +257,7 @@ mod tests {
                 cwd: "/Users/tester/projects/agents-notifier".to_string(),
                 hook_event_name: "Stop".to_string(),
                 permission_mode: Some("default".to_string()),
+                source: None,
                 last_assistant_message: Some("Ready for review.".to_string()),
                 model: Some("claude-sonnet-4-6".to_string()),
                 stop_hook_active: Some(false),
@@ -269,6 +312,60 @@ mod tests {
     }
 
     #[test]
+    fn creates_local_session_context_from_session_start_hook_input() {
+        let event = local_event_from_hook(
+            "claude_code",
+            ClaudeCodeHookInput {
+                session_id: "session-1".to_string(),
+                transcript_path: "/Users/tester/.claude/projects/project/session-1.jsonl"
+                    .to_string(),
+                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                hook_event_name: "SessionStart".to_string(),
+                permission_mode: None,
+                source: Some("startup".to_string()),
+                last_assistant_message: None,
+                model: Some("claude-sonnet-4-6".to_string()),
+                stop_hook_active: None,
+                title: None,
+                message: None,
+                notification_type: None,
+            },
+        )
+        .expect("SessionStart hook should create session context event");
+
+        assert_eq!(event.source_id, "claude_code");
+        assert_eq!(event.action, LocalSignalAction::StoreSessionContext);
+        assert_eq!(
+            event
+                .event
+                .as_ref()
+                .and_then(|event| event.raw_name.as_deref()),
+            Some("SessionStart")
+        );
+        assert_eq!(
+            event
+                .conversation
+                .as_ref()
+                .and_then(|conversation| conversation.session_id.as_deref()),
+            Some("session-1")
+        );
+        assert_eq!(
+            event
+                .conversation
+                .as_ref()
+                .and_then(|conversation| conversation.model.as_deref()),
+            Some("claude-sonnet-4-6")
+        );
+        assert_eq!(
+            event
+                .metadata
+                .get("session_start_source")
+                .map(String::as_str),
+            Some("startup")
+        );
+    }
+
+    #[test]
     fn creates_local_event_from_notification_hook_input() {
         let event = local_event_from_hook(
             "claude_code",
@@ -279,6 +376,7 @@ mod tests {
                 cwd: "/Users/tester/projects/agents-notifier".to_string(),
                 hook_event_name: "Notification".to_string(),
                 permission_mode: Some("default".to_string()),
+                source: None,
                 last_assistant_message: None,
                 model: None,
                 stop_hook_active: None,
@@ -312,6 +410,7 @@ mod tests {
                 cwd: "/Users/tester/projects/agents-notifier".to_string(),
                 hook_event_name: "PreToolUse".to_string(),
                 permission_mode: Some("default".to_string()),
+                source: None,
                 last_assistant_message: None,
                 model: None,
                 stop_hook_active: None,
@@ -322,7 +421,7 @@ mod tests {
         )
         .expect_err("unsupported hook should fail");
 
-        assert!(err.to_string().contains("Stop` or `Notification"));
+        assert!(err.to_string().contains("SessionStart"));
     }
 
     fn test_config(source_type: SourceType) -> Config {

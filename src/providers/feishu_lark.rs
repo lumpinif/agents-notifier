@@ -500,11 +500,7 @@ impl FeishuLarkCardBody {
         let mut columns = Vec::new();
 
         if let Some(project) = self.project.as_deref() {
-            columns.push(metric_column(
-                "Project Name",
-                project,
-                self.project_path.as_deref(),
-            ));
+            columns.push(metric_column("Project Name", project, None));
         }
         if let Some(branch) = self.branch.as_deref() {
             columns.push(metric_column("Branch", branch, None));

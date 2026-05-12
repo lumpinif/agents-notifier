@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::fs;
 #[cfg(unix)]
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,8 @@ pub struct LocalSignalEvent {
     pub source_id: String,
     pub title: String,
     pub body: String,
+    #[serde(default, skip_serializing_if = "LocalSignalAction::is_route_signal")]
+    pub action: LocalSignalAction,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<SignalEvent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -51,6 +54,7 @@ impl LocalSignalEvent {
             source_id: source_id.into(),
             title: title.into(),
             body: body.into(),
+            action: LocalSignalAction::RouteSignal,
             event: None,
             workspace: None,
             conversation: None,
@@ -58,6 +62,20 @@ impl LocalSignalEvent {
             links: Vec::new(),
             metadata: BTreeMap::new(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalSignalAction {
+    #[default]
+    RouteSignal,
+    StoreSessionContext,
+}
+
+impl LocalSignalAction {
+    fn is_route_signal(action: &Self) -> bool {
+        *action == Self::RouteSignal
     }
 }
 
@@ -75,6 +93,57 @@ pub struct LocalSignalConversation {
     pub answer: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct LocalIngressState {
+    session_context: Mutex<BTreeMap<SessionContextKey, LocalSessionContext>>,
+}
+
+impl LocalIngressState {
+    fn record_session_model(
+        &self,
+        source_id: String,
+        session_id: String,
+        model: String,
+    ) -> anyhow::Result<()> {
+        let mut session_context = self
+            .session_context
+            .lock()
+            .map_err(|_| anyhow::anyhow!("local ingress session context lock is poisoned"))?;
+        session_context.insert(
+            SessionContextKey {
+                source_id,
+                session_id,
+            },
+            LocalSessionContext { model },
+        );
+        Ok(())
+    }
+
+    fn session_model(&self, source_id: &str, session_id: &str) -> anyhow::Result<Option<String>> {
+        let session_context = self
+            .session_context
+            .lock()
+            .map_err(|_| anyhow::anyhow!("local ingress session context lock is poisoned"))?;
+        Ok(session_context
+            .get(&SessionContextKey {
+                source_id: source_id.to_string(),
+                session_id: session_id.to_string(),
+            })
+            .map(|context| context.model.clone()))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SessionContextKey {
+    source_id: String,
+    session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalSessionContext {
+    model: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -228,12 +297,13 @@ async fn serve_unix_socket(
         event = "ingress.started",
     );
 
+    let state = LocalIngressState::default();
     loop {
         let (stream, _) = listener
             .accept()
             .await
             .context("failed to accept local ingress connection")?;
-        if let Err(error) = handle_unix_connection(stream, config, providers).await {
+        if let Err(error) = handle_unix_connection(stream, config, providers, &state).await {
             warn!(
                 error = %error,
                 event = "ingress.client.failed",
@@ -253,6 +323,7 @@ async fn serve_windows_named_pipe(
         event = "ingress.started",
     );
 
+    let state = LocalIngressState::default();
     loop {
         let server = ServerOptions::new()
             .first_pipe_instance(true)
@@ -263,7 +334,7 @@ async fn serve_windows_named_pipe(
             .await
             .with_context(|| format!("failed to accept local ingress named pipe `{pipe_name}`"))?;
 
-        if let Err(error) = handle_windows_pipe(server, config, providers).await {
+        if let Err(error) = handle_windows_pipe(server, config, providers, &state).await {
             warn!(
                 error = %error,
                 event = "ingress.client.failed",
@@ -277,12 +348,29 @@ pub async fn route_event(
     providers: &[&dyn Provider],
     event: LocalSignalEvent,
 ) -> anyhow::Result<()> {
+    let state = LocalIngressState::default();
+    route_event_with_state(config, providers, &state, event).await
+}
+
+pub async fn route_event_with_state(
+    config: &Config,
+    providers: &[&dyn Provider],
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+) -> anyhow::Result<()> {
     info!(
         source.id = %event.source_id,
+        action = ?event.action,
         event = "ingress.received",
     );
 
-    let signal = create_signal(config, event)?;
+    if event.action == LocalSignalAction::StoreSessionContext {
+        store_session_context(config, state, event)?;
+        return Ok(());
+    }
+
+    let mut signal = create_signal(config, event)?;
+    apply_session_context(state, &mut signal)?;
     info!(
         signal.id = %signal.id,
         source.id = %signal.source_id(),
@@ -294,13 +382,40 @@ pub async fn route_event(
     Ok(())
 }
 
+fn store_session_context(
+    config: &Config,
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+) -> anyhow::Result<()> {
+    let source_id = event.source_id;
+    validate_local_ingress_source(config, &source_id)?;
+    let conversation = event
+        .conversation
+        .context("local ingress session context event missing `conversation`")?;
+    let session_id = conversation
+        .session_id
+        .and_then(present_owned)
+        .context("local ingress session context event missing `conversation.session_id`")?;
+    let model = conversation
+        .model
+        .and_then(present_owned)
+        .context("local ingress session context event missing `conversation.model`")?;
+
+    state.record_session_model(source_id.clone(), session_id.clone(), model.clone())?;
+    info!(
+        source.id = %source_id,
+        conversation.session_id = %session_id,
+        conversation.model = %model,
+        event = "ingress.session_context.stored",
+    );
+    Ok(())
+}
+
 fn create_signal(config: &Config, event: LocalSignalEvent) -> anyhow::Result<Signal> {
     let source_id = event.source_id.clone();
     let title = event.title.clone();
     let body = event.body.clone();
-    let source = config
-        .source(&source_id)
-        .with_context(|| format!("source `{source_id}` is not configured"))?;
+    let source = validate_local_ingress_source(config, &source_id)?;
 
     let mut signal = match source.source_type {
         SourceType::AgentsNotifier => {
@@ -310,15 +425,30 @@ fn create_signal(config: &Config, event: LocalSignalEvent) -> anyhow::Result<Sig
         SourceType::ClaudeCode => claude_code::create_signal(config, &source_id, title, body),
         SourceType::CodexCli => codex_cli::create_signal(config, &source_id, title, body),
         SourceType::CodexDesktop => {
-            anyhow::bail!(
-                "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier`, `agent_hook`, `codex_cli`, and `claude_code` events",
-                source.id
-            )
+            unreachable!("codex_desktop is rejected before signal creation")
         }
     }?;
 
     apply_local_structured_fields(config, &mut signal, event);
     Ok(signal)
+}
+
+fn validate_local_ingress_source<'a>(
+    config: &'a Config,
+    source_id: &str,
+) -> anyhow::Result<&'a crate::config::SourceConfig> {
+    let source = config
+        .source(source_id)
+        .with_context(|| format!("source `{source_id}` is not configured"))?;
+
+    if source.source_type == SourceType::CodexDesktop {
+        anyhow::bail!(
+            "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier`, `agent_hook`, `codex_cli`, and `claude_code` events",
+            source.id
+        );
+    }
+
+    Ok(source)
 }
 
 fn apply_local_structured_fields(config: &Config, signal: &mut Signal, event: LocalSignalEvent) {
@@ -339,6 +469,23 @@ fn apply_local_structured_fields(config: &Config, signal: &mut Signal, event: Lo
             model: conversation.model,
         });
     }
+}
+
+fn apply_session_context(state: &LocalIngressState, signal: &mut Signal) -> anyhow::Result<()> {
+    let source_id = signal.source_id().to_string();
+    let Some(conversation) = signal.conversation.as_mut() else {
+        return Ok(());
+    };
+    if conversation.model.is_some() {
+        return Ok(());
+    }
+    let Some(session_id) = conversation.session_id.as_deref() else {
+        return Ok(());
+    };
+    if let Some(model) = state.session_model(&source_id, session_id)? {
+        conversation.model = Some(model);
+    }
+    Ok(())
 }
 
 fn prompt_for_config(prompt: Option<String>, prompt_detail: PromptDetail) -> Option<String> {
@@ -390,6 +537,7 @@ async fn handle_unix_connection(
     mut stream: UnixStream,
     config: &Config,
     providers: &[&dyn Provider],
+    state: &LocalIngressState,
 ) -> anyhow::Result<()> {
     let mut raw_request = Vec::new();
     stream
@@ -397,7 +545,7 @@ async fn handle_unix_connection(
         .await
         .context("failed to read local ingress request")?;
 
-    let raw_response = handle_request_bytes(config, providers, &raw_request).await?;
+    let raw_response = handle_request_bytes(config, providers, state, &raw_request).await?;
 
     stream
         .write_all(&raw_response)
@@ -412,13 +560,14 @@ async fn handle_windows_pipe(
     mut pipe: tokio::net::windows::named_pipe::NamedPipeServer,
     config: &Config,
     providers: &[&dyn Provider],
+    state: &LocalIngressState,
 ) -> anyhow::Result<()> {
     let mut raw_request = Vec::new();
     pipe.read_to_end(&mut raw_request)
         .await
         .context("failed to read local ingress request")?;
 
-    let raw_response = handle_request_bytes(config, providers, &raw_request).await?;
+    let raw_response = handle_request_bytes(config, providers, state, &raw_request).await?;
     pipe.write_all(&raw_response)
         .await
         .context("failed to write local ingress response")?;
@@ -429,6 +578,7 @@ async fn handle_windows_pipe(
 async fn handle_request_bytes(
     config: &Config,
     providers: &[&dyn Provider],
+    state: &LocalIngressState,
     raw_request: &[u8],
 ) -> anyhow::Result<Vec<u8>> {
     if is_ping_request(raw_request) {
@@ -439,7 +589,7 @@ async fn handle_request_bytes(
     let result = async {
         let event: LocalSignalEvent = serde_json::from_slice(raw_request)
             .context("failed to parse local ingress event JSON")?;
-        route_event(config, providers, event).await
+        route_event_with_state(config, providers, state, event).await
     }
     .await;
 

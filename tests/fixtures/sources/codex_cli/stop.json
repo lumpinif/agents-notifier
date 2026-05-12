@@ -1,0 +1,8 @@
+{
+  "cwd": "/Users/tester/projects/agents-notifier",
+  "hook_event_name": "Stop",
+  "last_assistant_message": "Ready for review.",
+  "model": "gpt-5.2-codex",
+  "session_id": "codex-session-1",
+  "turn_id": "turn-1"
+}

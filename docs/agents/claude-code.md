@@ -4,7 +4,7 @@
 
 Use Claude Code integration when you want Claude Code lifecycle hooks to submit completion or attention events to the running Agents Notifier service.
 
-Claude Code hooks are user-defined commands that run at lifecycle points such as `Stop` and `Notification`. Agents Notifier uses that official hook path and reads the hook JSON Claude Code sends on stdin.
+Claude Code hooks are user-defined commands that run at lifecycle points such as `SessionStart`, `Stop`, and `Notification`. Agents Notifier uses that official hook path and reads the hook JSON Claude Code sends on stdin.
 
 Official Claude Code hook reference: <https://code.claude.com/docs/en/hooks>
 
@@ -16,7 +16,7 @@ For structured notifications, configure Claude Code to run:
 agents-notifier ingest --source claude_code --format claude_code_hook
 ```
 
-`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, and the last assistant message. If Claude Code includes `model`, Agents Notifier includes it in the structured signal. Agents Notifier validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
+`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, model, and the last assistant message. Claude Code exposes `model` on `SessionStart`, so Agents Notifier records that session context and merges it into the later `Stop` signal for the same session. Agents Notifier validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
 
 If you only need a simple custom message, Claude Code can run this command instead:
 
@@ -47,7 +47,7 @@ Then choose a provider.
 
 ## 2. Connect Claude Code
 
-Add command hooks to your Claude Code settings. Use `Stop` when you want a notification after Claude finishes responding. Use `Notification` when you want Claude Code attention prompts to reach your provider too.
+Add command hooks to your Claude Code settings. Use `SessionStart` when you want completion notifications to include the model. Use `Stop` when you want a notification after Claude finishes responding. Use `Notification` when you want Claude Code attention prompts to reach your provider too.
 
 For a single machine, use:
 
@@ -66,6 +66,16 @@ Example:
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

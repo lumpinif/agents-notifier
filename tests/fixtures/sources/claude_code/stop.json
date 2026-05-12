@@ -1,0 +1,9 @@
+{
+  "session_id": "claude-session-1",
+  "transcript_path": "/Users/tester/.claude/projects/agents-notifier/claude-session-1.jsonl",
+  "cwd": "/Users/tester/projects/agents-notifier",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "Implemented the requested change."
+}

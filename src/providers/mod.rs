@@ -1,3 +1,5 @@
+#[cfg(test)]
+pub(crate) mod contract_test;
 pub mod discord;
 pub mod email_smtp;
 pub mod feishu_lark;

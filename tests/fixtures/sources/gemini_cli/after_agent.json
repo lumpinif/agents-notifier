@@ -1,0 +1,10 @@
+{
+  "session_id": "gemini-session-1",
+  "transcript_path": "/Users/tester/.gemini/tmp/gemini-session-1.json",
+  "cwd": "/Users/tester/projects/agents-notifier",
+  "hook_event_name": "AfterAgent",
+  "timestamp": "2026-05-12T10:15:30Z",
+  "prompt": "Review this patch.",
+  "prompt_response": "Ready for review.",
+  "stop_hook_active": false
+}

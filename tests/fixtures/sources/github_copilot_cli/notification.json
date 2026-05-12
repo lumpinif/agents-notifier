@@ -1,0 +1,9 @@
+{
+  "sessionId": "copilot-session-1",
+  "timestamp": 1775907268684,
+  "cwd": "/Users/tester/projects/agents-notifier",
+  "hook_event_name": "Notification",
+  "message": "GitHub Copilot CLI emitted a notification.",
+  "title": "GitHub Copilot CLI",
+  "notification_type": "agent_idle"
+}

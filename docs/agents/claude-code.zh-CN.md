@@ -4,7 +4,7 @@ English documentation: [claude-code.md](claude-code.md)
 
 当你希望 Claude Code 的生命周期 hooks 在任务结束或需要注意时发通知，就使用 Claude Code 集成。
 
-Claude Code 官方支持在 `Stop`、`Notification` 这类生命周期事件上运行用户自定义命令。Agents Notifier 走的就是这条官方 hook 路径，并读取 Claude Code 通过 stdin 传入的 hook JSON。
+Claude Code 官方支持在 `SessionStart`、`Stop`、`Notification` 这类生命周期事件上运行用户自定义命令。Agents Notifier 走的就是这条官方 hook 路径，并读取 Claude Code 通过 stdin 传入的 hook JSON。
 
 Claude Code 官方 hooks 文档：<https://code.claude.com/docs/en/hooks>
 
@@ -16,7 +16,7 @@ Claude Code 官方 hooks 文档：<https://code.claude.com/docs/en/hooks>
 agents-notifier ingest --source claude_code --format claude_code_hook
 ```
 
-`ingest` 会读取 hook payload，并保留 Claude Code 明确暴露的字段，包括 project path、session id、注意力提醒消息和最后一条 assistant message。如果 Claude Code payload 里明确包含 `model`，Agents Notifier 会写入结构化 signal。Claude Code 传入 `transcript_path` 时，Agents Notifier 会校验它存在，但不会把这个本机路径转发给 providers。
+`ingest` 会读取 hook payload，并保留 Claude Code 明确暴露的字段，包括 project path、session id、注意力提醒消息、model 和最后一条 assistant message。Claude Code 会在 `SessionStart` 暴露 `model`，所以 Agents Notifier 会先记录这个 session context，再合并到同一个 session 后续的 `Stop` signal 里。Claude Code 传入 `transcript_path` 时，Agents Notifier 会校验它存在，但不会把这个本机路径转发给 providers。
 
 如果只需要一条简单自定义消息，也可以让 Claude Code 运行：
 
@@ -47,7 +47,7 @@ Claude Code
 
 ## 2. 连接 Claude Code
 
-把 command hook 加到 Claude Code settings 里。想在 Claude 回复完成后收到通知，就使用 `Stop`。想把 Claude Code 的注意力提醒也转发到 provider，就再加 `Notification`。
+把 command hook 加到 Claude Code settings 里。想让完成通知带上 model，就使用 `SessionStart`。想在 Claude 回复完成后收到通知，就使用 `Stop`。想把 Claude Code 的注意力提醒也转发到 provider，就再加 `Notification`。
 
 只给这台机器用：
 
@@ -66,6 +66,16 @@ Claude Code
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

@@ -111,24 +111,17 @@ fn present(value: Option<&str>) -> Option<&str> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use chrono::{DateTime, Utc};
-    use wiremock::matchers::{body_json, method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
     use super::*;
     use crate::config::ProviderType;
     use crate::delivery::DeliveryErrorKind;
+    use crate::providers::contract_test::ProviderHttpSimulator;
+    use chrono::{DateTime, Utc};
 
     #[tokio::test]
     async fn posts_complete_signal_json() {
-        let server = MockServer::start().await;
+        let simulator = ProviderHttpSimulator::start().await;
         let signal = test_signal();
-        Mock::given(method("POST"))
-            .and(path("/hook"))
-            .and(body_json(&signal))
-            .respond_with(ResponseTemplate::new(200))
-            .mount(&server)
-            .await;
+        simulator.expect_post_json("/hook", &signal, 200).await;
 
         let provider = WebhookProvider::from_config(&ProviderConfig {
             id: "debug".to_string(),
@@ -136,7 +129,7 @@ mod tests {
             base_url: None,
             server: None,
             topic: None,
-            url: Some(format!("{}/hook", server.uri())),
+            url: Some(simulator.url("/hook")),
             url_env: None,
             secret: None,
             secret_env: None,
@@ -227,12 +220,8 @@ mod tests {
 
     #[tokio::test]
     async fn returns_error_for_non_success_status() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/hook"))
-            .respond_with(ResponseTemplate::new(500))
-            .mount(&server)
-            .await;
+        let simulator = ProviderHttpSimulator::start().await;
+        simulator.expect_post_status("/hook", 500).await;
 
         let provider = WebhookProvider::from_config(&ProviderConfig {
             id: "debug".to_string(),
@@ -240,7 +229,7 @@ mod tests {
             base_url: None,
             server: None,
             topic: None,
-            url: Some(format!("{}/hook", server.uri())),
+            url: Some(simulator.url("/hook")),
             url_env: None,
             secret: None,
             secret_env: None,

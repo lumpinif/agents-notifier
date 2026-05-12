@@ -161,11 +161,7 @@ fn formats_codex_desktop_message_with_clickable_open_link() {
                 flex_mode: "bisect",
                 background_style: "default",
                 columns: vec![
-                    metric_column(
-                        "Project Name",
-                        "agents-notifier",
-                        Some("/Users/tester/projects/agents-notifier")
-                    ),
+                    metric_column("Project Name", "agents-notifier", None),
                     metric_column("Branch", "main", None),
                     metric_column("Model", "gpt-5.2-codex", None)
                 ]
