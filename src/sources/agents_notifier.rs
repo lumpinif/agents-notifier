@@ -118,10 +118,10 @@ mod tests {
                 context_token_env: None,
                 route_tag: None,
             }],
-            routes: vec![RouteConfig {
-                sources: vec!["agents_notifier".to_string()],
-                providers: vec!["debug".to_string()],
-            }],
+            routes: vec![RouteConfig::new(
+                vec!["agents_notifier".to_string()],
+                vec!["debug".to_string()],
+            )],
         }
     }
 }

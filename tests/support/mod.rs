@@ -68,9 +68,9 @@ pub fn source_contract_config(source_id: &str, source_type: SourceType) -> Confi
             source_type,
         }],
         providers: vec![provider],
-        routes: vec![RouteConfig {
-            sources: vec![source_id.to_string()],
-            providers: vec!["capture".to_string()],
-        }],
+        routes: vec![RouteConfig::new(
+            vec![source_id.to_string()],
+            vec!["capture".to_string()],
+        )],
     }
 }

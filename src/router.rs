@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::Path;
 use std::pin::Pin;
 
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
-use crate::config::Config;
+use crate::config::{Config, RouteConfig, is_clean_absolute_project_path};
 use crate::delivery::{DeliveryError, DeliveryErrorKind, ProviderSendResult};
 use crate::signal::Signal;
 
@@ -62,22 +63,39 @@ impl<'a> Router<'a> {
             .iter()
             .map(|provider| (provider.id(), *provider))
             .collect();
-        let matching_routes: Vec<_> = self
+        let candidate_routes: Vec<_> = self
             .config
             .routes
             .iter()
-            .filter(|route| {
-                route
-                    .sources
-                    .iter()
-                    .any(|source| source == signal.source_id())
-            })
+            .enumerate()
+            .filter(|(_, route)| route.matches_source(signal.source_id()))
             .collect();
+        let candidate_route_count = candidate_routes.len();
+        let mut matching_routes = Vec::new();
+        let mut filtered_routes = 0;
+
+        for (route_index, route) in candidate_routes {
+            if let Some(reason) = route_filter_miss(signal, route) {
+                filtered_routes += 1;
+                debug!(
+                    signal.id = %signal.id,
+                    source.id = %signal.source_id(),
+                    route.index = route_index,
+                    reason = %reason.as_str(),
+                    event = "route.filtered",
+                );
+                continue;
+            }
+
+            matching_routes.push(route);
+        }
 
         info!(
             signal.id = %signal.id,
             source.id = %signal.source_id(),
+            candidate_routes = candidate_route_count,
             matched_routes = matching_routes.len(),
+            filtered_routes,
             event = "route.matched",
         );
 
@@ -174,6 +192,69 @@ impl<'a> Router<'a> {
             retriable: false,
         }
     }
+}
+
+impl RouteConfig {
+    fn matches_source(&self, source_id: &str) -> bool {
+        self.sources.iter().any(|source| source == source_id)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RouteFilterMissReason {
+    MissingDuration,
+    DurationTooShort,
+    MissingProjectPath,
+    ProjectPathNotAllowed,
+}
+
+impl RouteFilterMissReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingDuration => "missing_duration",
+            Self::DurationTooShort => "duration_too_short",
+            Self::MissingProjectPath => "missing_project_path",
+            Self::ProjectPathNotAllowed => "project_path_not_allowed",
+        }
+    }
+}
+
+fn route_filter_miss(signal: &Signal, route: &RouteConfig) -> Option<RouteFilterMissReason> {
+    if let Some(minimum_duration_ms) = route.minimum_task_duration_ms() {
+        let Some(duration_ms) = signal
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.duration_ms)
+        else {
+            return Some(RouteFilterMissReason::MissingDuration);
+        };
+
+        if duration_ms < minimum_duration_ms {
+            return Some(RouteFilterMissReason::DurationTooShort);
+        }
+    }
+
+    if !route.only_forward_from_project_paths.is_empty() {
+        let Some(project_path) = signal
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.project_path.as_deref())
+            .filter(|path| is_clean_absolute_project_path(path))
+        else {
+            return Some(RouteFilterMissReason::MissingProjectPath);
+        };
+
+        let allowed = route
+            .only_forward_from_project_paths
+            .iter()
+            .any(|allowed_path| Path::new(project_path).starts_with(Path::new(allowed_path)));
+
+        if !allowed {
+            return Some(RouteFilterMissReason::ProjectPathNotAllowed);
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

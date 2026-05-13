@@ -181,6 +181,130 @@ pub(in crate::cli) fn prompt_for_prompt_detail(
     Ok(options[selection])
 }
 
+pub(in crate::cli) fn prompt_for_notification_preference(
+    default: Option<u64>,
+    i18n: I18n,
+) -> anyhow::Result<Option<u64>> {
+    let effective_default = match default {
+        None => NotificationPreference::EveryCompletedTask,
+        Some(5) => NotificationPreference::FiveMinutesOrLonger,
+        Some(_) => NotificationPreference::CustomMinimumDuration,
+    };
+    let options = [
+        NotificationPreference::EveryCompletedTask,
+        NotificationPreference::FiveMinutesOrLonger,
+        NotificationPreference::CustomMinimumDuration,
+    ];
+    let default_index = options
+        .iter()
+        .position(|preference| *preference == effective_default)
+        .unwrap_or(0);
+    let items = options
+        .iter()
+        .map(|preference| {
+            let mut label = notification_preference_label(*preference, default, i18n);
+            if *preference == effective_default && default.is_some() {
+                label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
+            } else if default.is_none() && *preference == NotificationPreference::EveryCompletedTask
+            {
+                label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
+            }
+            label
+        })
+        .collect::<Vec<_>>();
+    let theme = prompt_theme();
+    let selection = Select::with_theme(&theme)
+        .with_prompt(i18n.text(Text::NotificationPreferencePrompt))
+        .items(&items)
+        .default(default_index)
+        .interact()
+        .context("failed to read notification preference")?;
+
+    match options[selection] {
+        NotificationPreference::EveryCompletedTask => Ok(None),
+        NotificationPreference::FiveMinutesOrLonger => Ok(Some(5)),
+        NotificationPreference::CustomMinimumDuration => {
+            prompt_for_custom_minimum_task_duration_minutes(default, i18n).map(Some)
+        }
+    }
+}
+
+fn notification_preference_label(
+    preference: NotificationPreference,
+    default: Option<u64>,
+    i18n: I18n,
+) -> String {
+    match preference {
+        NotificationPreference::EveryCompletedTask => {
+            localized(i18n, "Every completed task", "每个完成的任务").to_string()
+        }
+        NotificationPreference::FiveMinutesOrLonger => {
+            localized(i18n, "Tasks 5 minutes or longer", "5 分钟或更久的任务").to_string()
+        }
+        NotificationPreference::CustomMinimumDuration => match default {
+            Some(minutes) if minutes != 5 => localized_string(
+                i18n,
+                format!("Custom minimum duration ({minutes} minutes)"),
+                format!("自定义最短任务时长（{minutes} 分钟）"),
+            ),
+            _ => localized(i18n, "Custom minimum duration", "自定义最短任务时长").to_string(),
+        },
+    }
+}
+
+fn prompt_for_custom_minimum_task_duration_minutes(
+    default: Option<u64>,
+    i18n: I18n,
+) -> anyhow::Result<u64> {
+    loop {
+        let prompt = match default {
+            Some(minutes) => localized_string(
+                i18n,
+                format!("Minimum task duration in minutes [{minutes}, press Enter to keep]"),
+                format!("最短任务时长，单位分钟 [{minutes}，按 Enter 保留]"),
+            ),
+            None => localized(
+                i18n,
+                "Minimum task duration in minutes",
+                "最短任务时长，单位分钟",
+            )
+            .to_string(),
+        };
+        let input = prompt_text(prompt, "failed to read minimum task duration")?;
+        let candidate = if input.trim().is_empty() {
+            default.map(|minutes| minutes.to_string())
+        } else {
+            Some(input.trim().to_string())
+        };
+
+        let Some(candidate) = candidate else {
+            println!(
+                "{}",
+                localized(
+                    i18n,
+                    "Enter a whole number greater than 0.",
+                    "请输入大于 0 的整数。"
+                )
+            );
+            continue;
+        };
+
+        match candidate.parse::<u64>() {
+            Ok(minutes) if minutes > 0 && minutes.checked_mul(60_000).is_some() => {
+                return Ok(minutes);
+            }
+            _ => println!(
+                "{}",
+                localized(
+                    i18n,
+                    "Enter a whole number greater than 0.",
+                    "请输入大于 0 的整数。"
+                )
+            ),
+        }
+    }
+}
+
 pub(in crate::cli) fn prompt_for_initial_provider(
     default: Option<InitialProvider>,
     i18n: I18n,

@@ -171,13 +171,30 @@ pub fn build_email_smtp_config(
     build_config(agent, answer_detail, prompt_detail, vec![provider])
 }
 
+pub fn apply_agent_route_filters(
+    config: &mut Config,
+    agent: AgentSelection,
+    minimum_task_duration_minutes: Option<u64>,
+    only_forward_from_project_paths: Vec<String>,
+) {
+    let source_id = agent.source_id();
+    if let Some(route) = config
+        .routes
+        .iter_mut()
+        .find(|route| route.sources.iter().any(|source| source == source_id))
+    {
+        route.minimum_task_duration_minutes = minimum_task_duration_minutes;
+        route.only_forward_from_project_paths = only_forward_from_project_paths;
+    }
+}
+
 fn build_config(
     agent: AgentSelection,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     providers: Vec<ProviderConfig>,
 ) -> Config {
-    let provider_ids = providers
+    let provider_ids: Vec<String> = providers
         .iter()
         .map(|provider| provider.id.clone())
         .collect();
@@ -200,9 +217,9 @@ fn build_config(
             },
         ],
         providers,
-        routes: vec![RouteConfig {
-            sources: vec![agent_source_id, "agents_notifier".to_string()],
-            providers: provider_ids,
-        }],
+        routes: vec![
+            RouteConfig::new(vec![agent_source_id], provider_ids.clone()),
+            RouteConfig::new(vec!["agents_notifier".to_string()], provider_ids),
+        ],
     }
 }

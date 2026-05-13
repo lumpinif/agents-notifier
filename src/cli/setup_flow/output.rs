@@ -35,6 +35,7 @@ pub(in crate::cli) fn print_setup_summary(
     agent: setup::AgentSelection,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
+    route_filters: &SetupRouteFilters,
     i18n: I18n,
 ) {
     println!(
@@ -57,6 +58,48 @@ pub(in crate::cli) fn print_setup_summary(
         i18n.text(Text::PromptDetailField),
         style(i18n.prompt_detail(prompt_detail)).green()
     );
+    println!(
+        "{}: {}",
+        i18n.text(Text::NotificationPreferenceField),
+        style(notification_preference_summary(
+            route_filters.minimum_task_duration_minutes,
+            i18n
+        ))
+        .green()
+    );
+    if !route_filters.only_forward_from_project_paths.is_empty() {
+        println!(
+            "{}: {}",
+            i18n.text(Text::ProjectFilterField),
+            style(project_filter_summary(
+                route_filters.only_forward_from_project_paths.len(),
+                i18n
+            ))
+            .green()
+        );
+    }
+}
+
+pub(in crate::cli) fn notification_preference_summary(
+    minimum_task_duration_minutes: Option<u64>,
+    i18n: I18n,
+) -> String {
+    match minimum_task_duration_minutes {
+        None => localized(i18n, "Every completed task", "每个完成的任务").to_string(),
+        Some(minutes) => localized_string(
+            i18n,
+            format!("Tasks {minutes} minutes or longer"),
+            format!("{minutes} 分钟或更久的任务"),
+        ),
+    }
+}
+
+pub(in crate::cli) fn project_filter_summary(count: usize, i18n: I18n) -> String {
+    localized_string(
+        i18n,
+        format!("{count} project path{}", if count == 1 { "" } else { "s" }),
+        format!("{count} 个项目路径"),
+    )
 }
 
 pub(in crate::cli) fn print_provider_configured(provider: &str, i18n: I18n) {

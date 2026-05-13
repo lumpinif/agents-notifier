@@ -11,11 +11,12 @@ use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 use qrcode::QrCode;
 use qrcode::render::unicode;
+use tokio::task::JoinSet;
 use tokio::time::sleep;
 
 use agents_notifier::config::{
     AnswerDetail, CliConfig, CliLanguage, Config, ConfigError, EmailSmtpSecurity, PromptDetail,
-    ProviderConfig, ProviderType, SourceConfig, SourceType,
+    ProviderConfig, ProviderType, RouteConfig, SourceType,
 };
 use agents_notifier::i18n::{I18n, Text};
 use agents_notifier::local_ingress::{self, LocalSignalEvent};
@@ -29,7 +30,9 @@ use agents_notifier::paths::{
 #[cfg(target_os = "macos")]
 use agents_notifier::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_notifier::providers::build_providers;
-use agents_notifier::router::Provider;
+use agents_notifier::runtime::{
+    RuntimeState, ensure_sources_supported_on_current_platform, reload_config_on_change,
+};
 use agents_notifier::service::{
     PlatformServiceManager, ServiceDefinition, ServiceStartOutcome, ServiceStopOutcome,
     load_metadata,
@@ -40,6 +43,7 @@ use agents_notifier::sources::{
 };
 
 mod setup_flow;
+mod update_flow;
 
 use setup_flow::*;
 
@@ -196,7 +200,10 @@ pub async fn run() -> anyhow::Result<()> {
             config: config_path,
         } => {
             let config_path = resolve_config_path(config_path)?;
-            let loaded = run_provider_setup(&config_path).await?;
+            let loaded = match run_provider_setup(&config_path).await? {
+                ProviderSetupOutcome::Loaded(loaded) => loaded,
+                ProviderSetupOutcome::Exit(code) => std::process::exit(code),
+            };
             run_start_service(&config_path, loaded, true).await
         }
         Command::Watch {
@@ -205,7 +212,7 @@ pub async fn run() -> anyhow::Result<()> {
             let config_path = resolve_config_path(config_path)?;
             let loaded = load_config(&config_path, false).await?;
             init_tracing(&loaded.config.log.level)?;
-            run_watch(&loaded.config).await
+            run_watch(&config_path, loaded.config).await
         }
         Command::Stop => run_stop(),
         Command::Uninstall => run_uninstall(),
@@ -1080,60 +1087,46 @@ fn cleanup_ingress_endpoint_if_exists() -> anyhow::Result<()> {
     local_ingress::cleanup_endpoint(&endpoint)
 }
 
-async fn run_watch(config: &Config) -> anyhow::Result<()> {
-    ensure_sources_supported_on_current_platform(config)?;
-    let providers = build_providers(config).context("provider setup failed")?;
-    let provider_refs: Vec<&dyn Provider> = providers
-        .iter()
-        .map(|provider| provider.as_ref() as &dyn Provider)
-        .collect();
+async fn run_watch(config_path: &Path, config: Config) -> anyhow::Result<()> {
+    let runtime = RuntimeState::new(config)?;
     let endpoint = ingress_endpoint()?;
-    let codex_desktop_source = codex_desktop_source(config);
-    let needs_local_open_bridge = config
-        .providers
-        .iter()
-        .any(|provider| provider.provider_type == ProviderType::FeishuLark);
-
-    if let (Some(source), true) = (codex_desktop_source, needs_local_open_bridge) {
-        tokio::select! {
-            result = codex_desktop::watch(config, source, &provider_refs) => result,
-            result = local_ingress::serve(config, &provider_refs, &endpoint) => result,
-            result = local_open_bridge::serve() => result,
-        }
-    } else if let Some(source) = codex_desktop_source {
-        tokio::select! {
-            result = codex_desktop::watch(config, source, &provider_refs) => result,
-            result = local_ingress::serve(config, &provider_refs, &endpoint) => result,
-        }
-    } else if needs_local_open_bridge {
-        tokio::select! {
-            result = local_ingress::serve(config, &provider_refs, &endpoint) => result,
-            result = local_open_bridge::serve() => result,
-        }
-    } else {
-        local_ingress::serve(config, &provider_refs, &endpoint).await
-    }
+    run_service_tasks(config_path.to_path_buf(), runtime, endpoint).await
 }
 
-fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
-    config
-        .sources
-        .iter()
-        .find(|source| source.source_type == SourceType::CodexDesktop)
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+async fn run_service_tasks(
+    config_path: PathBuf,
+    runtime: RuntimeState,
+    endpoint: agents_notifier::paths::IngressEndpoint,
+) -> anyhow::Result<()> {
+    let mut tasks = JoinSet::new();
+    tasks.spawn(reload_config_on_change(config_path, runtime.clone()));
+    tasks.spawn(codex_desktop::watch(runtime.clone()));
+    tasks.spawn(local_ingress::serve(runtime.clone(), endpoint));
+    tasks.spawn(local_open_bridge::serve_when_needed(runtime));
+    wait_for_service_task(tasks).await
 }
 
-fn ensure_sources_supported_on_current_platform(config: &Config) -> anyhow::Result<()> {
-    #[cfg(target_os = "linux")]
-    if config
-        .sources
-        .iter()
-        .any(|source| source.source_type == SourceType::CodexDesktop)
-    {
-        anyhow::bail!("Codex Desktop source is supported only on macOS and Windows");
-    }
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+async fn run_service_tasks(
+    config_path: PathBuf,
+    runtime: RuntimeState,
+    endpoint: agents_notifier::paths::IngressEndpoint,
+) -> anyhow::Result<()> {
+    let mut tasks = JoinSet::new();
+    tasks.spawn(reload_config_on_change(config_path, runtime.clone()));
+    tasks.spawn(local_ingress::serve(runtime.clone(), endpoint));
+    tasks.spawn(local_open_bridge::serve_when_needed(runtime));
+    wait_for_service_task(tasks).await
+}
 
-    let _ = config;
-    Ok(())
+async fn wait_for_service_task(mut tasks: JoinSet<anyhow::Result<()>>) -> anyhow::Result<()> {
+    let result = tasks
+        .join_next()
+        .await
+        .context("service task set ended unexpectedly")?;
+    tasks.abort_all();
+    result.context("service task panicked")?
 }
 
 async fn run_emit(source_id: &str, title: String, body: String) -> anyhow::Result<()> {

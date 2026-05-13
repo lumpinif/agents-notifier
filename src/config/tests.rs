@@ -101,6 +101,142 @@ fn parses_valid_config() {
 }
 
 #[test]
+fn parses_and_serializes_route_filters() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["debug_webhook"]
+minimum_task_duration_minutes = 5
+only_forward_from_project_paths = [
+  "/Users/tester/projects/agents-notifier",
+  "/Users/tester/projects/other",
+]
+"#;
+
+    let config = Config::from_toml_str(raw).expect("route filters should parse");
+
+    assert_eq!(config.routes[0].minimum_task_duration_minutes, Some(5));
+    assert_eq!(
+        config.routes[0].only_forward_from_project_paths,
+        vec![
+            "/Users/tester/projects/agents-notifier".to_string(),
+            "/Users/tester/projects/other".to_string(),
+        ]
+    );
+
+    let serialized = toml::to_string_pretty(&config).expect("config should serialize");
+    assert!(serialized.contains("minimum_task_duration_minutes = 5"));
+    assert!(serialized.contains("only_forward_from_project_paths"));
+}
+
+#[test]
+fn rejects_zero_route_minimum_task_duration() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["debug_webhook"]
+minimum_task_duration_minutes = 0
+"#;
+
+    let err = Config::from_toml_str(raw).expect_err("zero route duration should be rejected");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidMinimumTaskDuration { route_index: 0 }
+    ));
+}
+
+#[test]
+fn rejects_too_large_route_minimum_task_duration() {
+    let raw = format!(
+        r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["debug_webhook"]
+minimum_task_duration_minutes = {}
+"#,
+        u64::MAX
+    );
+
+    let err = Config::from_toml_str(&raw).expect_err("oversized route duration should be rejected");
+
+    assert!(matches!(
+        err,
+        ConfigError::MinimumTaskDurationTooLarge { route_index: 0 }
+    ));
+}
+
+#[test]
+fn rejects_invalid_route_project_paths() {
+    for invalid_path in [
+        "",
+        "relative/project",
+        "/Users/tester/../project",
+        "/Users/./project",
+    ] {
+        let raw = format!(
+            r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "https://example.com/hook"
+
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["debug_webhook"]
+only_forward_from_project_paths = ["{invalid_path}"]
+"#
+        );
+
+        let err = Config::from_toml_str(&raw).expect_err("invalid project path should be rejected");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidRouteProjectPath { route_index: 0, .. }
+        ));
+    }
+}
+
+#[test]
 fn parses_cli_language() {
     let raw = r#"
 schema_version = 1

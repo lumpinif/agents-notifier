@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -326,6 +326,26 @@ impl ProviderType {
 pub struct RouteConfig {
     pub sources: Vec<String>,
     pub providers: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_task_duration_minutes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub only_forward_from_project_paths: Vec<String>,
+}
+
+impl RouteConfig {
+    pub fn new(sources: Vec<String>, providers: Vec<String>) -> Self {
+        Self {
+            sources,
+            providers,
+            minimum_task_duration_minutes: None,
+            only_forward_from_project_paths: Vec::new(),
+        }
+    }
+
+    pub fn minimum_task_duration_ms(&self) -> Option<u64> {
+        self.minimum_task_duration_minutes
+            .and_then(|minutes| minutes.checked_mul(60_000))
+    }
 }
 
 #[derive(Debug, Error)]
@@ -349,6 +369,14 @@ pub enum ConfigError {
     UnknownRouteSource(String),
     #[error("route references unknown provider `{0}`")]
     UnknownRouteProvider(String),
+    #[error("route {route_index} `minimum_task_duration_minutes` must be greater than 0")]
+    InvalidMinimumTaskDuration { route_index: usize },
+    #[error("route {route_index} `minimum_task_duration_minutes` is too large")]
+    MinimumTaskDurationTooLarge { route_index: usize },
+    #[error(
+        "route {route_index} `only_forward_from_project_paths` contains invalid project path `{path}`; paths must be clean absolute paths"
+    )]
+    InvalidRouteProjectPath { route_index: usize, path: String },
     #[error("provider `{provider_id}` requires `{field}`")]
     MissingProviderField {
         provider_id: String,
@@ -471,7 +499,7 @@ impl Config {
             provider.validate()?;
         }
 
-        for route in &self.routes {
+        for (route_index, route) in self.routes.iter().enumerate() {
             for source_id in &route.sources {
                 if !source_ids.contains(source_id.as_str()) {
                     return Err(ConfigError::UnknownRouteSource(source_id.clone()));
@@ -483,6 +511,8 @@ impl Config {
                     return Err(ConfigError::UnknownRouteProvider(provider_id.clone()));
                 }
             }
+
+            route.validate_filters(route_index)?;
         }
 
         self.validate_notification_provider_compatibility()?;
@@ -520,6 +550,49 @@ impl Config {
 
         Ok(())
     }
+}
+
+impl RouteConfig {
+    fn validate_filters(&self, route_index: usize) -> Result<(), ConfigError> {
+        if let Some(minutes) = self.minimum_task_duration_minutes {
+            if minutes == 0 {
+                return Err(ConfigError::InvalidMinimumTaskDuration { route_index });
+            }
+            if minutes.checked_mul(60_000).is_none() {
+                return Err(ConfigError::MinimumTaskDurationTooLarge { route_index });
+            }
+        }
+
+        for path in &self.only_forward_from_project_paths {
+            if !is_clean_absolute_project_path(path) {
+                return Err(ConfigError::InvalidRouteProjectPath {
+                    route_index,
+                    path: path.clone(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub(crate) fn is_clean_absolute_project_path(value: &str) -> bool {
+    if value.trim().is_empty() || value.trim() != value {
+        return false;
+    }
+
+    let path = Path::new(value);
+    path.is_absolute()
+        && !has_dot_project_path_component(value)
+        && path
+            .components()
+            .all(|component| !matches!(component, Component::CurDir | Component::ParentDir))
+}
+
+fn has_dot_project_path_component(value: &str) -> bool {
+    value
+        .split(['/', '\\'])
+        .any(|component| component == "." || component == "..")
 }
 
 impl ProviderConfig {

@@ -1,11 +1,16 @@
 use anyhow::{Context, anyhow};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{self, Duration, MissedTickBehavior};
 use tracing::{info, warn};
+
+use crate::config::ProviderType;
+use crate::runtime::RuntimeState;
 
 pub const LOCAL_OPEN_BRIDGE_BASE_URL: &str = "http://127.0.0.1:17674";
 const LISTEN_ADDRESS: &str = "127.0.0.1:17674";
 const CODEX_THREAD_PREFIX: &str = "/open/codex/thread/";
+const BRIDGE_CONFIG_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 pub fn codex_thread_bridge_url(session_id: &str) -> Option<String> {
     let session_id = session_id.trim();
@@ -19,9 +24,7 @@ pub fn codex_thread_bridge_url(session_id: &str) -> Option<String> {
 }
 
 pub async fn serve() -> anyhow::Result<()> {
-    let listener = TcpListener::bind(LISTEN_ADDRESS)
-        .await
-        .with_context(|| format!("failed to bind local open bridge at `{LISTEN_ADDRESS}`"))?;
+    let listener = bind_listener().await?;
 
     info!(address = LISTEN_ADDRESS, event = "link_bridge.started",);
 
@@ -39,6 +42,81 @@ pub async fn serve() -> anyhow::Result<()> {
             }
         });
     }
+}
+
+pub async fn serve_when_needed(runtime: RuntimeState) -> anyhow::Result<()> {
+    let mut listener: Option<TcpListener> = None;
+    let mut interval = time::interval(BRIDGE_CONFIG_POLL_INTERVAL);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        let needs_bridge = runtime_requires_bridge(&runtime)?;
+        match (needs_bridge, listener.is_some()) {
+            (true, false) => match bind_listener().await {
+                Ok(bound_listener) => {
+                    info!(address = LISTEN_ADDRESS, event = "link_bridge.started",);
+                    listener = Some(bound_listener);
+                }
+                Err(error) => {
+                    warn!(
+                        address = LISTEN_ADDRESS,
+                        error = %error,
+                        event = "link_bridge.start.failed",
+                    );
+                }
+            },
+            (false, true) => {
+                listener = None;
+                info!(address = LISTEN_ADDRESS, event = "link_bridge.stopped",);
+            }
+            _ => {}
+        }
+
+        if let Some(active_listener) = listener.as_ref() {
+            tokio::select! {
+                accepted = active_listener.accept() => {
+                    match accepted {
+                        Ok((stream, _)) => {
+                            tokio::spawn(async move {
+                                if let Err(error) = handle_connection(stream).await {
+                                    warn!(
+                                        error = %error,
+                                        event = "link_bridge.client.failed",
+                                    );
+                                }
+                            });
+                        }
+                        Err(error) => {
+                            warn!(
+                                address = LISTEN_ADDRESS,
+                                error = %error,
+                                event = "link_bridge.accept.failed",
+                            );
+                            listener = None;
+                        }
+                    }
+                }
+                _ = interval.tick() => {}
+            }
+        } else {
+            interval.tick().await;
+        }
+    }
+}
+
+async fn bind_listener() -> anyhow::Result<TcpListener> {
+    TcpListener::bind(LISTEN_ADDRESS)
+        .await
+        .with_context(|| format!("failed to bind local open bridge at `{LISTEN_ADDRESS}`"))
+}
+
+fn runtime_requires_bridge(runtime: &RuntimeState) -> anyhow::Result<bool> {
+    Ok(runtime
+        .current()?
+        .config
+        .providers
+        .iter()
+        .any(|provider| provider.provider_type == ProviderType::FeishuLark))
 }
 
 async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {

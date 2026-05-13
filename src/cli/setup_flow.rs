@@ -11,6 +11,29 @@ pub(super) struct LoadedConfig {
     pub(super) guided_setup: Option<GuidedSetup>,
 }
 
+pub(super) enum ProviderSetupOutcome {
+    Loaded(LoadedConfig),
+    Exit(i32),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct SetupRouteFilters {
+    pub(super) minimum_task_duration_minutes: Option<u64>,
+    pub(super) only_forward_from_project_paths: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ProviderSetupContext<'a> {
+    path: &'a Path,
+    mode: ConfigWriteMode,
+    agent: setup::AgentSelection,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+    route_filters: &'a SetupRouteFilters,
+    defaults: &'a SetupDefaults,
+    i18n: I18n,
+}
+
 pub(super) enum GuidedSetup {
     Ntfy {
         agent: setup::AgentSelection,
@@ -75,12 +98,21 @@ pub(super) struct WechatLogin {
     scanned_user_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NotificationPreference {
+    EveryCompletedTask,
+    FiveMinutesOrLonger,
+    CustomMinimumDuration,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(super) struct SetupDefaults {
     pub(super) language: Option<CliLanguage>,
     pub(super) agent: Option<setup::AgentSelection>,
     pub(super) answer_detail: Option<AnswerDetail>,
     pub(super) prompt_detail: Option<PromptDetail>,
+    pub(super) minimum_task_duration_minutes: Option<u64>,
+    pub(super) only_forward_from_project_paths: Vec<String>,
     pub(super) provider: Option<InitialProvider>,
     pub(super) ntfy_topic: Option<String>,
     pub(super) feishu_lark_webhook_url: Option<String>,
@@ -115,11 +147,17 @@ pub(super) struct SetupDefaults {
 
 impl SetupDefaults {
     pub(super) fn from_config(config: &Config) -> Self {
+        let agent_route = first_agent_route(config);
         Self {
             language: Some(config.cli.language),
             agent: first_configured_agent(config),
             answer_detail: Some(config.notification.answer_detail),
             prompt_detail: Some(config.notification.prompt_detail),
+            minimum_task_duration_minutes: agent_route
+                .and_then(|route| route.minimum_task_duration_minutes),
+            only_forward_from_project_paths: agent_route
+                .map(|route| route.only_forward_from_project_paths.clone())
+                .unwrap_or_default(),
             provider: first_configured_provider(config),
             ntfy_topic: first_provider_of_type(config, ProviderType::Ntfy)
                 .and_then(|provider| provider.topic.clone()),
@@ -193,6 +231,15 @@ impl SetupDefaults {
         let config = Config::from_path(path)?;
         Ok(Self::from_config(&config))
     }
+}
+
+fn first_agent_route(config: &Config) -> Option<&RouteConfig> {
+    let agent = first_configured_agent(config)?;
+    let source_id = agent.source_id();
+    config
+        .routes
+        .iter()
+        .find(|route| route.sources.iter().any(|source| source == source_id))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -371,6 +418,22 @@ pub(super) fn write_setup_config(
     setup::write_config(path, config)
 }
 
+fn write_setup_config_with_route_filters(
+    path: &Path,
+    config: &mut Config,
+    language: CliLanguage,
+    agent: setup::AgentSelection,
+    route_filters: &SetupRouteFilters,
+) -> anyhow::Result<()> {
+    setup::apply_agent_route_filters(
+        config,
+        agent,
+        route_filters.minimum_task_duration_minutes,
+        route_filters.only_forward_from_project_paths.clone(),
+    );
+    write_setup_config(path, config, language)
+}
+
 pub(super) async fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
     let language = prompt_for_language(None)?;
     let i18n = I18n::new(language);
@@ -400,7 +463,7 @@ pub(super) async fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedC
     .await
 }
 
-pub(super) async fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConfig> {
+pub(super) async fn run_provider_setup(path: &Path) -> anyhow::Result<ProviderSetupOutcome> {
     if !is_interactive_terminal() {
         anyhow::bail!("{}", I18n::default().text(Text::SetupInteractiveRequired));
     }
@@ -414,6 +477,13 @@ pub(super) async fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConf
     let language = prompt_for_language(defaults.language)?;
     defaults.language = Some(language);
     let i18n = I18n::new(language);
+
+    match super::update_flow::maybe_update_before_setup(path, i18n).await? {
+        super::update_flow::SetupUpdateOutcome::Continue => {}
+        super::update_flow::SetupUpdateOutcome::Exit(code) => {
+            return Ok(ProviderSetupOutcome::Exit(code));
+        }
+    }
 
     print_heading(i18n.text(Text::SetupTitle));
     match language {
@@ -429,7 +499,9 @@ pub(super) async fn run_provider_setup(path: &Path) -> anyhow::Result<LoadedConf
     println!("{}", i18n.text(Text::SetupDoesNotChangeAgentSettings));
     println!();
 
-    run_guided_provider_setup(path, mode, defaults, i18n).await
+    run_guided_provider_setup(path, mode, defaults, i18n)
+        .await
+        .map(ProviderSetupOutcome::Loaded)
 }
 
 pub(super) async fn run_guided_provider_setup(
@@ -442,110 +514,35 @@ pub(super) async fn run_guided_provider_setup(
     let provider = prompt_for_initial_provider(defaults.provider, i18n)?;
     let answer_detail = answer_detail_for_provider(provider, defaults.answer_detail, i18n)?;
     let prompt_detail = prompt_detail_for_provider(provider, defaults.prompt_detail, i18n)?;
+    let minimum_task_duration_minutes =
+        prompt_for_notification_preference(defaults.minimum_task_duration_minutes, i18n)?;
+    let route_filters = SetupRouteFilters {
+        minimum_task_duration_minutes,
+        only_forward_from_project_paths: defaults.only_forward_from_project_paths.clone(),
+    };
+    let context = ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters: &route_filters,
+        defaults: &defaults,
+        i18n,
+    };
 
     match provider {
-        InitialProvider::Ntfy => run_ntfy_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::FeishuLark => run_feishu_lark_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Webhook => run_webhook_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Pushover => run_pushover_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Slack => run_slack_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Discord => run_discord_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Telegram => run_telegram_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Whatsapp => run_whatsapp_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::Wechat => {
-            run_wechat_setup(
-                path,
-                mode,
-                agent,
-                answer_detail,
-                prompt_detail,
-                &defaults,
-                i18n,
-            )
-            .await
-        }
-        InitialProvider::MicrosoftTeams => run_microsoft_teams_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
-        InitialProvider::EmailSmtp => run_email_smtp_setup(
-            path,
-            mode,
-            agent,
-            answer_detail,
-            prompt_detail,
-            &defaults,
-            i18n,
-        ),
+        InitialProvider::Ntfy => run_ntfy_setup(context),
+        InitialProvider::FeishuLark => run_feishu_lark_setup(context),
+        InitialProvider::Webhook => run_webhook_setup(context),
+        InitialProvider::Pushover => run_pushover_setup(context),
+        InitialProvider::Slack => run_slack_setup(context),
+        InitialProvider::Discord => run_discord_setup(context),
+        InitialProvider::Telegram => run_telegram_setup(context),
+        InitialProvider::Whatsapp => run_whatsapp_setup(context),
+        InitialProvider::Wechat => run_wechat_setup(context).await,
+        InitialProvider::MicrosoftTeams => run_microsoft_teams_setup(context),
+        InitialProvider::EmailSmtp => run_email_smtp_setup(context),
     }
 }
 
@@ -813,15 +810,17 @@ pub(super) fn fixed_prompt_detail_message(
     }
 }
 
-pub(super) fn run_ntfy_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
-) -> anyhow::Result<LoadedConfig> {
+pub(super) fn run_ntfy_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     let generated_topic = setup::generated_ntfy_topic();
 
     println!();
@@ -831,10 +830,24 @@ pub(super) fn run_ntfy_setup(
 
     let topic = prompt_for_ntfy_topic(&generated_topic, defaults.ntfy_topic.as_deref(), i18n)?;
     let mut config = setup::build_ntfy_config(agent, answer_detail, prompt_detail, &topic);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -844,14 +857,18 @@ pub(super) fn run_ntfy_setup(
 }
 
 pub(super) fn run_feishu_lark_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::FeishuLarkIntro1));
     println!("{}", i18n.text(Text::FeishuLarkIntro2));
@@ -863,10 +880,24 @@ pub(super) fn run_feishu_lark_setup(
     let secret = prompt_for_feishu_lark_secret(defaults.feishu_lark_secret.as_deref(), i18n)?;
     let mut config =
         setup::build_feishu_lark_config(agent, answer_detail, prompt_detail, &webhook_url, secret);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -875,15 +906,17 @@ pub(super) fn run_feishu_lark_setup(
     })
 }
 
-pub(super) fn run_webhook_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
-) -> anyhow::Result<LoadedConfig> {
+pub(super) fn run_webhook_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::WebhookIntro1));
     println!("{}", i18n.text(Text::WebhookIntro2));
@@ -891,10 +924,24 @@ pub(super) fn run_webhook_setup(
 
     let webhook_url = prompt_for_webhook_url(defaults.webhook_url.as_deref(), i18n)?;
     let mut config = setup::build_webhook_config(agent, answer_detail, prompt_detail, &webhook_url);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -904,14 +951,18 @@ pub(super) fn run_webhook_setup(
 }
 
 pub(super) fn run_pushover_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::PushoverIntro1));
     println!("{}", i18n.text(Text::PushoverIntro2));
@@ -930,10 +981,24 @@ pub(super) fn run_pushover_setup(
         device,
         sound,
     );
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -942,15 +1007,17 @@ pub(super) fn run_pushover_setup(
     })
 }
 
-pub(super) fn run_slack_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
-) -> anyhow::Result<LoadedConfig> {
+pub(super) fn run_slack_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::SlackIntro1));
     println!("{}", i18n.text(Text::SlackIntro2));
@@ -958,10 +1025,24 @@ pub(super) fn run_slack_setup(
 
     let webhook_url = prompt_for_slack_webhook_url(defaults.slack_webhook_url.as_deref(), i18n)?;
     let mut config = setup::build_slack_config(agent, answer_detail, prompt_detail, &webhook_url);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -970,15 +1051,17 @@ pub(super) fn run_slack_setup(
     })
 }
 
-pub(super) fn run_discord_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
-) -> anyhow::Result<LoadedConfig> {
+pub(super) fn run_discord_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::DiscordIntro1));
     println!("{}", i18n.text(Text::DiscordIntro2));
@@ -987,10 +1070,24 @@ pub(super) fn run_discord_setup(
     let webhook_url =
         prompt_for_discord_webhook_url(defaults.discord_webhook_url.as_deref(), i18n)?;
     let mut config = setup::build_discord_config(agent, answer_detail, prompt_detail, &webhook_url);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -1000,14 +1097,18 @@ pub(super) fn run_discord_setup(
 }
 
 pub(super) fn run_telegram_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::TelegramIntro1));
     println!("{}", i18n.text(Text::TelegramIntro2));
@@ -1017,10 +1118,24 @@ pub(super) fn run_telegram_setup(
     let chat_id = prompt_for_telegram_chat_id(defaults.telegram_chat_id.as_deref(), i18n)?;
     let mut config =
         setup::build_telegram_config(agent, answer_detail, prompt_detail, &bot_token, &chat_id);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -1030,14 +1145,18 @@ pub(super) fn run_telegram_setup(
 }
 
 pub(super) fn run_whatsapp_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::WhatsappIntro1));
     println!("{}", i18n.text(Text::WhatsappIntro2));
@@ -1059,10 +1178,24 @@ pub(super) fn run_whatsapp_setup(
         &phone_number_id,
         &recipient_phone_number,
     );
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -1072,14 +1205,18 @@ pub(super) fn run_whatsapp_setup(
 }
 
 pub(super) async fn run_wechat_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::WechatIntro1));
     println!("{}", i18n.text(Text::WechatIntro2));
@@ -1146,10 +1283,24 @@ pub(super) async fn run_wechat_setup(
         &linked_recipient.context_token,
         route_tag,
     );
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -1159,14 +1310,18 @@ pub(super) async fn run_wechat_setup(
 }
 
 pub(super) fn run_microsoft_teams_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::TeamsIntro1));
     println!("{}", i18n.text(Text::TeamsIntro2));
@@ -1178,10 +1333,24 @@ pub(super) fn run_microsoft_teams_setup(
     )?;
     let mut config =
         setup::build_microsoft_teams_config(agent, answer_detail, prompt_detail, &webhook_url);
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {
@@ -1191,14 +1360,18 @@ pub(super) fn run_microsoft_teams_setup(
 }
 
 pub(super) fn run_email_smtp_setup(
-    path: &Path,
-    mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
-    answer_detail: AnswerDetail,
-    prompt_detail: PromptDetail,
-    defaults: &SetupDefaults,
-    i18n: I18n,
+    context: ProviderSetupContext<'_>,
 ) -> anyhow::Result<LoadedConfig> {
+    let ProviderSetupContext {
+        path,
+        mode,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        defaults,
+        i18n,
+    } = context;
     println!();
     println!("{}", i18n.text(Text::EmailIntro1));
     println!("{}", i18n.text(Text::EmailIntro2));
@@ -1242,10 +1415,24 @@ pub(super) fn run_email_smtp_setup(
         to,
         reply_to,
     );
-    write_setup_config(path, &mut config, i18n.language())?;
+    write_setup_config_with_route_filters(
+        path,
+        &mut config,
+        i18n.language(),
+        agent,
+        route_filters,
+    )?;
 
     println!();
-    print_setup_summary(mode, path, agent, answer_detail, prompt_detail, i18n);
+    print_setup_summary(
+        mode,
+        path,
+        agent,
+        answer_detail,
+        prompt_detail,
+        route_filters,
+        i18n,
+    );
     print_setup_provider_summary(&config, i18n);
 
     Ok(LoadedConfig {

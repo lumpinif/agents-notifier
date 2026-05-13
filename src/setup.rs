@@ -144,7 +144,26 @@ pub fn write_config(path: &Path, config: &Config) -> anyhow::Result<()> {
     }
 
     let raw = toml::to_string_pretty(config).context("failed to serialize config")?;
-    fs::write(path, raw).with_context(|| format!("failed to write config `{}`", path.display()))
+    let temp_path = temporary_config_path(path)?;
+    fs::write(&temp_path, raw)
+        .with_context(|| format!("failed to write config `{}`", temp_path.display()))?;
+    fs::rename(&temp_path, path).with_context(|| {
+        let _ = fs::remove_file(&temp_path);
+        format!(
+            "failed to replace config `{}` with `{}`",
+            path.display(),
+            temp_path.display()
+        )
+    })
+}
+
+fn temporary_config_path(path: &Path) -> anyhow::Result<std::path::PathBuf> {
+    let file_name = path
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+        .context("config path must include a file name")?;
+    let temp_file_name = format!(".{file_name}.{}.tmp", Uuid::new_v4());
+    Ok(path.with_file_name(temp_file_name))
 }
 
 pub fn missing_config_message(path: &str) -> String {

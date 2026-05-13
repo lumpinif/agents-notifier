@@ -359,9 +359,9 @@ fn test_config(source_id: &str, source_type: SourceType) -> Config {
             context_token_env: None,
             route_tag: None,
         }],
-        routes: vec![RouteConfig {
-            sources: vec![source_id.to_string()],
-            providers: vec!["debug".to_string()],
-        }],
+        routes: vec![RouteConfig::new(
+            vec![source_id.to_string()],
+            vec!["debug".to_string()],
+        )],
     }
 }

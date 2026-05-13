@@ -474,10 +474,10 @@ mod tests {
                 context_token_env: None,
                 route_tag: None,
             }],
-            routes: vec![RouteConfig {
-                sources: vec!["claude_code".to_string()],
-                providers: vec!["debug".to_string()],
-            }],
+            routes: vec![RouteConfig::new(
+                vec!["claude_code".to_string()],
+                vec!["debug".to_string()],
+            )],
         }
     }
 }

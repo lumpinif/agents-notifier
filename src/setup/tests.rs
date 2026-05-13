@@ -42,9 +42,12 @@ fn writes_parseable_ntfy_config() {
     assert!(parsed.source("codex_desktop").is_some());
     assert!(parsed.source("agents_notifier").is_some());
     assert!(parsed.source("codex_cli").is_none());
+    assert_eq!(parsed.routes[0].sources, vec!["codex_desktop".to_string()]);
+    assert_eq!(parsed.routes[0].minimum_task_duration_minutes, None);
+    assert!(parsed.routes[0].only_forward_from_project_paths.is_empty());
     assert_eq!(
-        parsed.routes[0].sources,
-        vec!["codex_desktop".to_string(), "agents_notifier".to_string()]
+        parsed.routes[1].sources,
+        vec!["agents_notifier".to_string()]
     );
 }
 
@@ -99,9 +102,10 @@ fn writes_parseable_codex_cli_config() {
     assert!(parsed.source("codex_cli").is_some());
     assert!(parsed.source("agents_notifier").is_some());
     assert!(parsed.source("codex_desktop").is_none());
+    assert_eq!(parsed.routes[0].sources, vec!["codex_cli".to_string()]);
     assert_eq!(
-        parsed.routes[0].sources,
-        vec!["codex_cli".to_string(), "agents_notifier".to_string()]
+        parsed.routes[1].sources,
+        vec!["agents_notifier".to_string()]
     );
 }
 
@@ -123,9 +127,10 @@ fn writes_parseable_claude_code_config() {
     assert!(parsed.source("agents_notifier").is_some());
     assert!(parsed.source("codex_desktop").is_none());
     assert!(parsed.source("codex_cli").is_none());
+    assert_eq!(parsed.routes[0].sources, vec!["claude_code".to_string()]);
     assert_eq!(
-        parsed.routes[0].sources,
-        vec!["claude_code".to_string(), "agents_notifier".to_string()]
+        parsed.routes[1].sources,
+        vec!["agents_notifier".to_string()]
     );
 }
 
@@ -150,10 +155,46 @@ fn writes_parseable_agent_hook_config() {
     assert!(parsed.source("agents_notifier").is_some());
     assert!(parsed.source("codex_desktop").is_none());
     assert!(parsed.source("codex_cli").is_none());
+    assert_eq!(parsed.routes[0].sources, vec!["opencode_cli".to_string()]);
     assert_eq!(
-        parsed.routes[0].sources,
-        vec!["opencode_cli".to_string(), "agents_notifier".to_string()]
+        parsed.routes[1].sources,
+        vec!["agents_notifier".to_string()]
     );
+}
+
+#[test]
+fn applies_agent_route_filters_without_filtering_setup_test_route() {
+    let dir = tempdir().expect("tempdir should be created");
+    let path = dir.path().join("config.toml");
+    let mut config = build_ntfy_config(
+        AgentSelection::CodexDesktop,
+        AnswerDetail::Preview,
+        PromptDetail::Off,
+        "agents-notifier-test",
+    );
+
+    apply_agent_route_filters(
+        &mut config,
+        AgentSelection::CodexDesktop,
+        Some(12),
+        vec!["/Users/tester/projects/agents-notifier".to_string()],
+    );
+    write_config(&path, &config).expect("config should be written");
+
+    let parsed = Config::from_path(&path).expect("written config should parse");
+    assert_eq!(parsed.routes.len(), 2);
+    assert_eq!(parsed.routes[0].sources, vec!["codex_desktop".to_string()]);
+    assert_eq!(parsed.routes[0].minimum_task_duration_minutes, Some(12));
+    assert_eq!(
+        parsed.routes[0].only_forward_from_project_paths,
+        vec!["/Users/tester/projects/agents-notifier".to_string()]
+    );
+    assert_eq!(
+        parsed.routes[1].sources,
+        vec!["agents_notifier".to_string()]
+    );
+    assert_eq!(parsed.routes[1].minimum_task_duration_minutes, None);
+    assert!(parsed.routes[1].only_forward_from_project_paths.is_empty());
 }
 
 #[test]

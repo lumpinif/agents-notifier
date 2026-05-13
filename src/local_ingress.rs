@@ -17,6 +17,7 @@ use tracing::{info, warn};
 use crate::config::{AnswerDetail, Config, PromptDetail, SourceType};
 use crate::paths::IngressEndpoint;
 use crate::router::{Provider, Router};
+use crate::runtime::RuntimeState;
 use crate::signal::{
     Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalLifecycle,
     SignalLink, SignalWorkspace,
@@ -260,29 +261,19 @@ async fn submit_event_to_windows_named_pipe(
     }
 }
 
-pub async fn serve(
-    config: &Config,
-    providers: &[&dyn Provider],
-    endpoint: &IngressEndpoint,
-) -> anyhow::Result<()> {
-    match endpoint {
+pub async fn serve(runtime: RuntimeState, endpoint: IngressEndpoint) -> anyhow::Result<()> {
+    match &endpoint {
         #[cfg(unix)]
-        IngressEndpoint::UnixSocket(socket_path) => {
-            serve_unix_socket(config, providers, socket_path).await
-        }
+        IngressEndpoint::UnixSocket(socket_path) => serve_unix_socket(runtime, socket_path).await,
         #[cfg(windows)]
         IngressEndpoint::WindowsNamedPipe(pipe_name) => {
-            serve_windows_named_pipe(config, providers, pipe_name).await
+            serve_windows_named_pipe(runtime, pipe_name).await
         }
     }
 }
 
 #[cfg(unix)]
-async fn serve_unix_socket(
-    config: &Config,
-    providers: &[&dyn Provider],
-    socket_path: &Path,
-) -> anyhow::Result<()> {
+async fn serve_unix_socket(runtime: RuntimeState, socket_path: &Path) -> anyhow::Result<()> {
     prepare_socket_path(socket_path).await?;
     let listener = UnixListener::bind(socket_path).with_context(|| {
         format!(
@@ -303,7 +294,7 @@ async fn serve_unix_socket(
             .accept()
             .await
             .context("failed to accept local ingress connection")?;
-        if let Err(error) = handle_unix_connection(stream, config, providers, &state).await {
+        if let Err(error) = handle_unix_connection(stream, &runtime, &state).await {
             warn!(
                 error = %error,
                 event = "ingress.client.failed",
@@ -313,11 +304,7 @@ async fn serve_unix_socket(
 }
 
 #[cfg(windows)]
-async fn serve_windows_named_pipe(
-    config: &Config,
-    providers: &[&dyn Provider],
-    pipe_name: &str,
-) -> anyhow::Result<()> {
+async fn serve_windows_named_pipe(runtime: RuntimeState, pipe_name: &str) -> anyhow::Result<()> {
     info!(
         pipe.name = %pipe_name,
         event = "ingress.started",
@@ -334,7 +321,7 @@ async fn serve_windows_named_pipe(
             .await
             .with_context(|| format!("failed to accept local ingress named pipe `{pipe_name}`"))?;
 
-        if let Err(error) = handle_windows_pipe(server, config, providers, &state).await {
+        if let Err(error) = handle_windows_pipe(server, &runtime, &state).await {
             warn!(
                 error = %error,
                 event = "ingress.client.failed",
@@ -380,6 +367,16 @@ pub async fn route_event_with_state(
 
     Router::new(config).route(&signal, providers).await?;
     Ok(())
+}
+
+pub async fn route_event_with_runtime(
+    runtime: &RuntimeState,
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+) -> anyhow::Result<()> {
+    let snapshot = runtime.current()?;
+    let providers = snapshot.provider_refs();
+    route_event_with_state(&snapshot.config, &providers, state, event).await
 }
 
 fn store_session_context(
@@ -535,8 +532,7 @@ fn present_owned(value: String) -> Option<String> {
 #[cfg(unix)]
 async fn handle_unix_connection(
     mut stream: UnixStream,
-    config: &Config,
-    providers: &[&dyn Provider],
+    runtime: &RuntimeState,
     state: &LocalIngressState,
 ) -> anyhow::Result<()> {
     let mut raw_request = Vec::new();
@@ -545,7 +541,7 @@ async fn handle_unix_connection(
         .await
         .context("failed to read local ingress request")?;
 
-    let raw_response = handle_request_bytes(config, providers, state, &raw_request).await?;
+    let raw_response = handle_request_bytes(runtime, state, &raw_request).await?;
 
     stream
         .write_all(&raw_response)
@@ -558,8 +554,7 @@ async fn handle_unix_connection(
 #[cfg(windows)]
 async fn handle_windows_pipe(
     mut pipe: tokio::net::windows::named_pipe::NamedPipeServer,
-    config: &Config,
-    providers: &[&dyn Provider],
+    runtime: &RuntimeState,
     state: &LocalIngressState,
 ) -> anyhow::Result<()> {
     let mut raw_request = Vec::new();
@@ -567,7 +562,7 @@ async fn handle_windows_pipe(
         .await
         .context("failed to read local ingress request")?;
 
-    let raw_response = handle_request_bytes(config, providers, state, &raw_request).await?;
+    let raw_response = handle_request_bytes(runtime, state, &raw_request).await?;
     pipe.write_all(&raw_response)
         .await
         .context("failed to write local ingress response")?;
@@ -576,8 +571,7 @@ async fn handle_windows_pipe(
 }
 
 async fn handle_request_bytes(
-    config: &Config,
-    providers: &[&dyn Provider],
+    runtime: &RuntimeState,
     state: &LocalIngressState,
     raw_request: &[u8],
 ) -> anyhow::Result<Vec<u8>> {
@@ -589,7 +583,7 @@ async fn handle_request_bytes(
     let result = async {
         let event: LocalSignalEvent = serde_json::from_slice(raw_request)
             .context("failed to parse local ingress event JSON")?;
-        route_event_with_state(config, providers, state, event).await
+        route_event_with_runtime(runtime, state, event).await
     }
     .await;
 

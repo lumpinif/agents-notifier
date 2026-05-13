@@ -10,11 +10,12 @@ use serde::{Deserialize, Serialize};
 use tokio::time;
 use tracing::{debug, info, warn};
 
-use crate::config::{AnswerDetail, Config, PromptDetail, SourceConfig};
+use crate::config::{AnswerDetail, Config, PromptDetail, SourceConfig, SourceType};
 use crate::paths::{
     codex_desktop_source_state_path, codex_session_index_path, codex_sessions_dir_path,
 };
-use crate::router::{Provider, Router};
+use crate::router::Router;
+use crate::runtime::RuntimeState;
 use crate::signal::Signal;
 use rollout::{
     RolloutItem, SessionInfo, discover_rollout_paths, load_session_titles, path_key,
@@ -23,32 +24,44 @@ use rollout::{
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
-pub async fn watch(
-    config: &Config,
-    source: &SourceConfig,
-    providers: &[&dyn Provider],
-) -> anyhow::Result<()> {
-    let mut watcher = CodexDesktopSessionWatcher::new(
-        codex_sessions_dir_path()?,
-        codex_session_index_path()?,
-        codex_desktop_source_state_path()?,
-    )?;
+pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
+    let mut watcher: Option<CodexDesktopSessionWatcher> = None;
     let mut interval = time::interval(POLL_INTERVAL);
 
-    info!(
-        source.id = %source.id,
-        source.type = %source.source_type.as_str(),
-        event = "watch.started",
-    );
+    info!(event = "watch.supervisor.started",);
 
     loop {
         tokio::select! {
             _ = interval.tick() => {
+                let snapshot = runtime.current()?;
+                let Some(source) = codex_desktop_source(&snapshot.config) else {
+                    if let Some(watcher) = watcher.take() {
+                        watcher.save_state()?;
+                        info!(event = "watch.stopped");
+                    }
+                    continue;
+                };
+                if watcher.is_none() {
+                    watcher = Some(CodexDesktopSessionWatcher::new(
+                        codex_sessions_dir_path()?,
+                        codex_session_index_path()?,
+                        codex_desktop_source_state_path()?,
+                    )?);
+                    info!(
+                        source.id = %source.id,
+                        source.type = %source.source_type.as_str(),
+                        event = "watch.started",
+                    );
+                }
+                let watcher = watcher
+                    .as_mut()
+                    .expect("Codex Desktop watcher should exist after start");
                 let signals = watcher.poll(
                     source,
-                    config.notification.answer_detail,
-                    config.notification.prompt_detail,
+                    snapshot.config.notification.answer_detail,
+                    snapshot.config.notification.prompt_detail,
                 )?;
+                let providers = snapshot.provider_refs();
                 for signal in signals {
                     info!(
                         signal.id = %signal.id,
@@ -57,7 +70,7 @@ pub async fn watch(
                         event = "signal.created",
                     );
 
-                    if let Err(error) = Router::new(config).route(&signal, providers).await {
+                    if let Err(error) = Router::new(&snapshot.config).route(&signal, &providers).await {
                         warn!(
                             signal.id = %signal.id,
                             source.id = %signal.source_id(),
@@ -71,12 +84,21 @@ pub async fn watch(
             signal = tokio::signal::ctrl_c() => {
                 signal.context("failed to listen for shutdown signal")?;
                 info!(event = "shutdown.requested");
-                watcher.save_state()?;
+                if let Some(watcher) = watcher {
+                    watcher.save_state()?;
+                }
                 info!(event = "shutdown.completed");
                 return Ok(());
             }
         }
     }
+}
+
+fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
+    config
+        .sources
+        .iter()
+        .find(|source| source.source_type == SourceType::CodexDesktop)
 }
 
 struct CodexDesktopSessionWatcher {

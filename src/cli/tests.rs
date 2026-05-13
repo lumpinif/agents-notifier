@@ -45,6 +45,12 @@ fn setup_defaults_preserve_existing_config_answers() {
         "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
         Some("signing-secret".to_string()),
     );
+    setup::apply_agent_route_filters(
+        &mut config,
+        setup::AgentSelection::ClaudeCode,
+        Some(12),
+        vec!["/Users/tester/projects/agents-notifier".to_string()],
+    );
     config.cli.language = CliLanguage::SimplifiedChinese;
 
     let defaults = SetupDefaults::from_config(&config);
@@ -53,6 +59,11 @@ fn setup_defaults_preserve_existing_config_answers() {
     assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
     assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
     assert_eq!(defaults.prompt_detail, Some(PromptDetail::On));
+    assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
+    assert_eq!(
+        defaults.only_forward_from_project_paths,
+        vec!["/Users/tester/projects/agents-notifier".to_string()]
+    );
     assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
     assert_eq!(
         defaults.feishu_lark_webhook_url.as_deref(),
