@@ -135,6 +135,7 @@ Default behavior:
 - `Tasks 5 minutes or longer` writes `minimum_task_duration_minutes = 5`.
 - `Custom minimum duration` writes the positive integer number of minutes you enter.
 - If a route has `minimum_task_duration_minutes`, a signal without `lifecycle.duration_ms` does not match that route.
+- Setup only asks for this preference when the selected integration can reliably provide task duration. For wrapper-based integrations, configure the route manually and pass duration through `agents-router emit --duration-ms` or the structured hook `lifecycle.duration_ms` field.
 
 Manual config:
 
@@ -147,6 +148,16 @@ minimum_task_duration_minutes = 5
 [[routes]]
 sources = ["agents_router"]
 providers = ["feishu_lark"]
+```
+
+Wrapper example:
+
+```bash
+agents-router emit \
+  --source aider \
+  --title "Aider" \
+  --body "Aider finished a task." \
+  --duration-ms 420000
 ```
 
 The `agents_router` route is intentionally separate and unfiltered. Setup test notifications use

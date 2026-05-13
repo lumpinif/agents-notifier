@@ -542,7 +542,6 @@ fn has_structured_card_content(signal: &Signal) -> bool {
                 || conversation.answer.is_some()
                 || conversation.model.is_some()
         })
-        || signal.lifecycle.is_some()
         || !signal.links.is_empty()
 }
 

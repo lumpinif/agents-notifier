@@ -96,7 +96,6 @@ fn has_structured_details(signal: &Signal) -> bool {
                 || conversation.answer.is_some()
                 || conversation.model.is_some()
         })
-        || signal.lifecycle.is_some()
         || !signal.links.is_empty()
 }
 
@@ -162,6 +161,30 @@ mod tests {
         assert_eq!(
             format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
             "Ready for review.\nTime: 2026-05-10 10:31:43 +08:00"
+        );
+    }
+
+    #[test]
+    fn formats_summary_when_simple_signal_only_adds_duration() {
+        let mut signal = Signal::new_with_timestamp(
+            "signal-1",
+            "aider",
+            "agent_hook",
+            "Aider",
+            "Aider finished a task.",
+            timestamp(),
+            BTreeMap::new(),
+        );
+        signal.lifecycle = Some(SignalLifecycle {
+            status: Some(SignalLifecycleStatus::Completed),
+            started_at: None,
+            completed_at: None,
+            duration_ms: Some(420_000),
+        });
+
+        assert_eq!(
+            format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
+            "Aider finished a task.\nDuration: 7m 0s\nTime: 2026-05-10 10:31:43 +08:00"
         );
     }
 

@@ -262,6 +262,32 @@ async fn route_event_creates_generic_agent_hook_signal_and_uses_service_router()
 }
 
 #[tokio::test]
+async fn route_event_supplied_duration_matches_duration_filter_for_agent_hook() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let provider = TestProvider {
+        calls: Arc::clone(&calls),
+    };
+    let mut config = test_config("aider", SourceType::AgentHook);
+    config.routes[0].minimum_task_duration_minutes = Some(5);
+    let mut event = LocalSignalEvent::new("aider", "Aider", "Aider finished a long-running task.");
+    event.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: None,
+        duration_ms: Some(300_000),
+    });
+
+    route_event(&config, &[&provider], event)
+        .await
+        .expect("supplied duration should satisfy the route filter");
+
+    assert_eq!(
+        *calls.lock().expect("calls lock should not be poisoned"),
+        vec!["aider:Aider finished a long-running task.".to_string()]
+    );
+}
+
+#[tokio::test]
 async fn route_event_rejects_codex_desktop_local_ingress() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let provider = TestProvider {

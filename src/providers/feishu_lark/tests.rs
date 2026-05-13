@@ -243,6 +243,44 @@ fn builds_card_body_from_structured_signal() {
 }
 
 #[test]
+fn builds_card_body_with_summary_when_simple_signal_only_adds_duration() {
+    let mut signal = Signal::new_with_timestamp(
+        "signal-1",
+        "aider",
+        "agent_hook",
+        "Aider",
+        "Aider finished a task.",
+        DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        BTreeMap::new(),
+    );
+    signal.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: None,
+        duration_ms: Some(420_000),
+    });
+
+    assert_eq!(
+        FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00"),
+        FeishuLarkCardBody {
+            project: None,
+            project_path: None,
+            session: None,
+            model: None,
+            duration: Some("7m 0s".to_string()),
+            branch: None,
+            time: Some("2026-05-10 01:35:42 +08:00".to_string()),
+            other_details: vec!["**Aider finished a task.**".to_string()],
+            open_link: None,
+            prompt: None,
+            answer: None,
+        }
+    );
+}
+
+#[test]
 fn builds_card_body_with_multiline_answer_block() {
     let signal = structured_codex_signal(
         None,

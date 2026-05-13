@@ -52,3 +52,13 @@ Required fields:
 Valid `event.kind` values are `turn_completed` and `custom`.
 
 Optional fields follow the shared Signal model. The service still applies the configured prompt and answer privacy policy before routing the notification to providers.
+
+If your wrapper only needs to submit a title, body, and duration, the simpler `emit` command can also provide duration:
+
+```bash
+agents-router emit \
+  --source cursor_cli \
+  --title "Cursor CLI" \
+  --body "Cursor CLI finished a task." \
+  --duration-ms 420000
+```

@@ -41,6 +41,8 @@ async fn emit_submits_event_to_local_service_socket() {
             "Codex",
             "--body",
             "Ready for review.",
+            "--duration-ms",
+            "420000",
         ])
         .output()
         .await
@@ -56,6 +58,8 @@ async fn emit_submits_event_to_local_service_socket() {
     assert_eq!(request["source_id"], "codex_cli");
     assert_eq!(request["title"], "Codex");
     assert_eq!(request["body"], "Ready for review.");
+    assert_eq!(request["lifecycle"]["status"], "completed");
+    assert_eq!(request["lifecycle"]["duration_ms"], 420000);
 }
 
 #[tokio::test]

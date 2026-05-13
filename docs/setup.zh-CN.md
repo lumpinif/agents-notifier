@@ -133,6 +133,7 @@ type = "feishu_lark"
 - 选择 `Tasks 5 minutes or longer` 时，会写入 `minimum_task_duration_minutes = 5`。
 - 选择 `Custom minimum duration` 时，会写入你输入的正整数分钟数。
 - 如果某条 route 设置了 `minimum_task_duration_minutes`，但某个 Signal 没有 `lifecycle.duration_ms`，这条 route 不会匹配。
+- setup 只会在所选集成能可靠提供任务耗时时询问这个偏好。如果你用 wrapper 接入 agent，需要手动配置 route，并通过 `agents-router emit --duration-ms` 或 structured hook 的 `lifecycle.duration_ms` 字段传入真实耗时。
 
 手动配置：
 
@@ -145,6 +146,16 @@ minimum_task_duration_minutes = 5
 [[routes]]
 sources = ["agents_router"]
 providers = ["feishu_lark"]
+```
+
+Wrapper 示例：
+
+```bash
+agents-router emit \
+  --source aider \
+  --title "Aider" \
+  --body "Aider finished a task." \
+  --duration-ms 420000
 ```
 
 `agents_router` route 会故意保持独立且不加过滤。setup 测试通知使用这个内部 source，

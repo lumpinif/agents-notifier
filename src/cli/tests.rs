@@ -127,6 +127,66 @@ fn setup_defaults_drop_duration_filter_for_agents_without_duration_support() {
 }
 
 #[test]
+fn emit_event_includes_supplied_duration() {
+    let event = local_event_from_emit(
+        "aider",
+        "Aider".to_string(),
+        "Aider finished a task.".to_string(),
+        Some(420_000),
+    );
+
+    assert_eq!(event.source_id, "aider");
+    assert_eq!(event.title, "Aider");
+    assert_eq!(event.body, "Aider finished a task.");
+    assert_eq!(
+        event
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.status),
+        Some(SignalLifecycleStatus::Completed)
+    );
+    assert_eq!(
+        event
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.duration_ms),
+        Some(420_000)
+    );
+}
+
+#[test]
+fn emit_event_without_duration_preserves_existing_shape() {
+    let event = local_event_from_emit(
+        "aider",
+        "Aider".to_string(),
+        "Aider finished a task.".to_string(),
+        None,
+    );
+
+    assert_eq!(event.source_id, "aider");
+    assert!(event.lifecycle.is_none());
+}
+
+#[test]
+fn emit_rejects_negative_duration_argument() {
+    let err = Cli::try_parse_from([
+        "agents-router",
+        "emit",
+        "--source",
+        "aider",
+        "--title",
+        "Aider",
+        "--body",
+        "Aider finished a task.",
+        "--duration-ms",
+        "-1",
+    ])
+    .expect_err("negative duration should be rejected by CLI parsing");
+
+    assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+}
+
+#[test]
 fn setup_defaults_do_not_inline_env_values() {
     let config = Config::from_toml_str(
         r#"

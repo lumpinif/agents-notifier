@@ -39,6 +39,7 @@ use agents_router::service::{
     load_metadata,
 };
 use agents_router::setup;
+use agents_router::signal::{SignalLifecycle, SignalLifecycleStatus};
 use agents_router::sources::{
     agent_hook, claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
 };
@@ -170,6 +171,12 @@ enum Command {
         title: String,
         #[arg(long, help = "Notification body")]
         body: String,
+        #[arg(
+            long,
+            value_name = "MILLISECONDS",
+            help = "Task duration in milliseconds, when your wrapper can provide it"
+        )]
+        duration_ms: Option<u64>,
     },
     #[command(about = "Submit a structured hook event from stdin")]
     Ingest {
@@ -248,7 +255,8 @@ pub async fn run() -> anyhow::Result<()> {
             source,
             title,
             body,
-        } => run_emit(&source, title, body).await,
+            duration_ms,
+        } => run_emit(&source, title, body, duration_ms).await,
         Command::Ingest { source, format } => run_ingest(&source, format).await,
         Command::MigrateLegacy {
             config: config_path,
@@ -1200,10 +1208,33 @@ async fn wait_for_service_task(mut tasks: JoinSet<anyhow::Result<()>>) -> anyhow
     result.context("service task panicked")?
 }
 
-async fn run_emit(source_id: &str, title: String, body: String) -> anyhow::Result<()> {
+async fn run_emit(
+    source_id: &str,
+    title: String,
+    body: String,
+    duration_ms: Option<u64>,
+) -> anyhow::Result<()> {
     let endpoint = ingress_endpoint()?;
-    let event = LocalSignalEvent::new(source_id, title, body);
+    let event = local_event_from_emit(source_id, title, body, duration_ms);
     local_ingress::submit_event(&endpoint, &event).await
+}
+
+fn local_event_from_emit(
+    source_id: &str,
+    title: String,
+    body: String,
+    duration_ms: Option<u64>,
+) -> LocalSignalEvent {
+    let mut event = LocalSignalEvent::new(source_id, title, body);
+    if let Some(duration_ms) = duration_ms {
+        event.lifecycle = Some(SignalLifecycle {
+            status: Some(SignalLifecycleStatus::Completed),
+            started_at: None,
+            completed_at: None,
+            duration_ms: Some(duration_ms),
+        });
+    }
+    event
 }
 
 async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()> {
