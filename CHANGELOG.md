@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/lumpinif/agents-router/compare/v0.9.0...v0.9.1) (2026-05-13)
+
+
+### Bug Fixes
+
+* preserve cargo-installed legacy binary during migration ([b17d90c](https://github.com/lumpinif/agents-router/commit/b17d90cee15d894afe1607fedc83ec75d927fec0))
+
 ## [0.9.0](https://github.com/lumpinif/agents-router/compare/v0.8.1...v0.9.0) (2026-05-13)
 
 
