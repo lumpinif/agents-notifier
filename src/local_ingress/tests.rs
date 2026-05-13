@@ -1,5 +1,14 @@
 use std::sync::{Arc, Mutex};
 
+#[cfg(unix)]
+use std::fs;
+#[cfg(unix)]
+use std::time::{Duration, Instant};
+#[cfg(unix)]
+use tempfile::tempdir;
+#[cfg(unix)]
+use tokio::net::UnixListener;
+
 use crate::config::{
     AnswerDetail, CliConfig, Config, LogConfig, NotificationConfig, PromptDetail, ProviderConfig,
     ProviderType, RouteConfig, SourceConfig, SourceType,
@@ -12,6 +21,35 @@ use crate::signal::{
 };
 
 use super::*;
+
+#[cfg(unix)]
+#[tokio::test]
+async fn unix_ready_requires_accepting_service_not_just_socket_file() {
+    let dir = tempdir().expect("tempdir should be created");
+    let socket_path = dir.path().join("agents-router.sock");
+    fs::write(&socket_path, "stale").expect("stale socket path should be written");
+
+    assert!(!is_ready(&crate::paths::IngressEndpoint::UnixSocket(socket_path)).await);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn unix_ready_times_out_when_peer_does_not_respond() {
+    let dir = tempdir().expect("tempdir should be created");
+    let socket_path = dir.path().join("agents-router.sock");
+    let listener = UnixListener::bind(&socket_path).expect("test socket should bind");
+    let server = tokio::spawn(async move {
+        let (_stream, _) = listener.accept().await.expect("client should connect");
+        tokio::time::sleep(Duration::from_secs(60)).await;
+    });
+
+    let started = Instant::now();
+    let ready = is_ready(&crate::paths::IngressEndpoint::UnixSocket(socket_path)).await;
+    server.abort();
+
+    assert!(!ready);
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
 
 struct TestProvider {
     calls: Arc<Mutex<Vec<String>>>,

@@ -17,12 +17,11 @@ use crate::config::{
 };
 use crate::provider_urls::{
     host_label, validate_custom_webhook_url, validate_discord_webhook_url,
-    validate_microsoft_teams_webhook_url, validate_slack_webhook_url,
+    validate_feishu_lark_webhook_url, validate_microsoft_teams_webhook_url,
+    validate_slack_webhook_url,
 };
 
 const DEFAULT_NTFY_SERVER: &str = "https://ntfy.sh";
-const FEISHU_WEBHOOK_PREFIX: &str = "https://open.feishu.cn/open-apis/bot/v2/hook/";
-const LARK_WEBHOOK_PREFIX: &str = "https://open.larksuite.com/open-apis/bot/v2/hook/";
 pub const DEFAULT_WECHAT_BASE_URL: &str = "https://ilinkai.weixin.qq.com";
 pub const DEFAULT_WECHAT_BOT_TYPE: &str = "3";
 pub const DEFAULT_WECHAT_QR_TIMEOUT: Duration = Duration::from_secs(480);

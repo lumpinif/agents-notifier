@@ -1,6 +1,24 @@
 use anyhow::Context;
 use reqwest::Url;
 
+const FEISHU_WEBHOOK_PREFIX: &str = "https://open.feishu.cn/open-apis/bot/v2/hook/";
+const LARK_WEBHOOK_PREFIX: &str = "https://open.larksuite.com/open-apis/bot/v2/hook/";
+
+pub fn validate_feishu_lark_webhook_url(input: &str) -> anyhow::Result<String> {
+    let url = input.trim();
+    if url.is_empty() {
+        anyhow::bail!("Feishu/Lark webhook URL is required");
+    }
+    if !url.starts_with(FEISHU_WEBHOOK_PREFIX) && !url.starts_with(LARK_WEBHOOK_PREFIX) {
+        anyhow::bail!(
+            "Feishu/Lark webhook URL must start with `https://open.feishu.cn/open-apis/bot/v2/hook/` or `https://open.larksuite.com/open-apis/bot/v2/hook/`"
+        );
+    }
+
+    Url::parse(url).context("Feishu/Lark webhook URL must be a valid URL")?;
+    Ok(url.to_string())
+}
+
 pub fn validate_slack_webhook_url(input: &str) -> anyhow::Result<String> {
     let url = parse_https_provider_url(input, "Slack webhook URL")?;
     let host = url.host_str().unwrap_or_default();

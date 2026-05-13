@@ -244,7 +244,11 @@ impl<R: LaunchctlRunner> LaunchAgentManager<R> {
         }
 
         if needs_update {
-            self.bootout_targets();
+            if status.running {
+                self.bootout_targets()?;
+            } else {
+                let _ = self.bootout_targets();
+            }
             write_plist(plist_path, &desired_plist)?;
         } else if !installed {
             write_plist(plist_path, &desired_plist)?;
@@ -277,11 +281,15 @@ impl<R: LaunchctlRunner> LaunchAgentManager<R> {
             return Ok(ServiceStopOutcome::NotInstalled);
         }
 
-        self.bootout_targets();
-
         if status.running {
+            self.bootout_targets()?;
+            let next_status = self.status(plist_path)?;
+            if next_status.running {
+                anyhow::bail!("LaunchAgent remained running after launchctl bootout");
+            }
             Ok(ServiceStopOutcome::Stopped)
         } else {
+            let _ = self.bootout_targets();
             Ok(ServiceStopOutcome::AlreadyStopped)
         }
     }
@@ -333,10 +341,23 @@ impl<R: LaunchctlRunner> LaunchAgentManager<R> {
         }
     }
 
-    fn bootout_targets(&self) {
+    fn bootout_targets(&self) -> anyhow::Result<()> {
+        let mut failed = Vec::new();
+        let mut succeeded = false;
         for domain in self.launchd_domains() {
-            let args = vec!["bootout".to_string(), launchd_target(&domain)];
-            let _ = self.runner.run(&args);
+            let target = launchd_target(&domain);
+            let args = vec!["bootout".to_string(), target.clone()];
+            match self.runner.run(&args) {
+                Ok(_) => succeeded = true,
+                Err(error) => {
+                    failed.push(format!("launchctl bootout {target} failed: {error}"));
+                }
+            }
+        }
+        if succeeded {
+            Ok(())
+        } else {
+            anyhow::bail!("{}", failed.join("; "))
         }
     }
 

@@ -178,6 +178,11 @@ pub fn apply_agent_route_filters(
     only_forward_from_project_paths: Vec<String>,
 ) {
     let source_id = agent.source_id();
+    let minimum_task_duration_minutes = if agent.supports_duration_filter() {
+        minimum_task_duration_minutes
+    } else {
+        None
+    };
     if let Some(route) = config
         .routes
         .iter_mut()

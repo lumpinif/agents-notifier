@@ -45,6 +45,10 @@ impl AgentSelection {
         }
     }
 
+    pub fn supports_duration_filter(self) -> bool {
+        matches!(self, Self::CodexDesktop)
+    }
+
     pub fn from_hook_source_id(source_id: &str) -> Option<Self> {
         match source_id {
             "cursor_cli" => Some(Self::CursorCli),

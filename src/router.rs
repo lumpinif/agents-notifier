@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::error::Error as StdError;
+use std::fmt;
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 
-use thiserror::Error;
 use tracing::{debug, info, warn};
 
 use crate::config::{Config, RouteConfig, is_clean_absolute_project_path};
@@ -39,11 +40,53 @@ pub struct ProviderFailure {
     pub retriable: bool,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum RouterError {
-    #[error("one or more providers failed")]
     ProviderFailures(Vec<ProviderFailure>),
 }
+
+impl fmt::Display for RouterError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ProviderFailures(failures) => {
+                write!(
+                    f,
+                    "{} provider failure{}",
+                    failures.len(),
+                    if failures.len() == 1 { "" } else { "s" }
+                )?;
+                for (index, failure) in failures.iter().take(3).enumerate() {
+                    write!(
+                        f,
+                        "{}{} `{}` ({}) failed for signal `{}` from `{}`: {}",
+                        if index == 0 { ": " } else { "; " },
+                        failure.provider_type,
+                        failure.provider_id,
+                        failure.kind.as_str(),
+                        failure.signal_id,
+                        failure.source_id,
+                        failure.message
+                    )?;
+                    if let Some(http_status) = failure.http_status {
+                        write!(f, " http_status={http_status}")?;
+                    }
+                    if let Some(provider_code) = failure.provider_code.as_deref() {
+                        write!(f, " provider_code={provider_code}")?;
+                    }
+                    if failure.retriable {
+                        write!(f, " retriable=true")?;
+                    }
+                }
+                if failures.len() > 3 {
+                    write!(f, "; {} more provider failures omitted", failures.len() - 3)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl StdError for RouterError {}
 
 pub struct Router<'a> {
     config: &'a Config,

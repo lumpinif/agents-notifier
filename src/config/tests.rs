@@ -387,7 +387,7 @@ type = "codex_cli"
 [[providers]]
 id = "slack"
 type = "slack"
-url = "https://example.com/slack"
+url = "https://hooks.slack.com/services/T00000000/B00000000/test-token"
 
 [[routes]]
 sources = ["codex_cli"]
@@ -618,7 +618,7 @@ type = "codex_cli"
 [[providers]]
 id = "slack"
 type = "slack"
-url = "https://example.com/slack"
+url = "https://hooks.slack.com/services/T00000000/B00000000/test-token"
 
 [[routes]]
 sources = ["codex_cli"]
@@ -967,6 +967,68 @@ providers = ["slack"]
         err,
         ConfigError::InvalidSlackUrlSource { provider_id } if provider_id == "slack"
     ));
+}
+
+#[test]
+fn rejects_invalid_inline_provider_urls() {
+    let cases = [
+        (
+            "webhook",
+            r#"type = "webhook"
+url = "http://example.com/hook""#,
+        ),
+        (
+            "work_chat",
+            r#"type = "feishu_lark"
+url = "https://example.com/hook""#,
+        ),
+        (
+            "slack",
+            r#"type = "slack"
+url = "https://example.com/services/T00000000/B00000000/test-token""#,
+        ),
+        (
+            "discord",
+            r#"type = "discord"
+url = "https://example.com/api/webhooks/123456789012345678/token""#,
+        ),
+        (
+            "microsoft_teams",
+            r#"type = "microsoft_teams"
+url = "http://example.com/workflow""#,
+        ),
+    ];
+
+    for (provider_id, provider_fields) in cases {
+        let raw = format!(
+            r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "{provider_id}"
+{provider_fields}
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["{provider_id}"]
+"#
+        );
+
+        let err = Config::from_toml_str(&raw).expect_err("invalid provider URL should fail");
+
+        assert!(matches!(
+            err,
+            ConfigError::InvalidProviderUrl {
+                provider_id: actual_provider_id,
+                field: "url",
+                ..
+            } if actual_provider_id == provider_id
+        ));
+    }
 }
 
 #[test]

@@ -18,8 +18,9 @@ use crate::router::Router;
 use crate::runtime::RuntimeState;
 use crate::signal::Signal;
 use rollout::{
-    RolloutItem, SessionInfo, discover_rollout_paths, load_session_titles, path_key,
-    read_new_rollout_items, read_session_info, signal_from_task_complete,
+    RolloutItem, SessionInfo, completed_rollout_offset, discover_rollout_paths,
+    load_session_titles, path_key, read_new_rollout_items, read_session_info,
+    signal_from_task_complete,
 };
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -56,13 +57,14 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
                 let watcher = watcher
                     .as_mut()
                     .expect("Codex Desktop watcher should exist after start");
-                let signals = watcher.poll(
+                let batch = watcher.poll(
                     source,
                     snapshot.config.notification.answer_detail,
                     snapshot.config.notification.prompt_detail,
                 )?;
                 let providers = snapshot.provider_refs();
-                for signal in signals {
+                let mut route_failed = false;
+                for signal in &batch.signals {
                     info!(
                         signal.id = %signal.id,
                         source.id = %signal.source_id(),
@@ -70,7 +72,8 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
                         event = "signal.created",
                     );
 
-                    if let Err(error) = Router::new(&snapshot.config).route(&signal, &providers).await {
+                    if let Err(error) = Router::new(&snapshot.config).route(signal, &providers).await {
+                        route_failed = true;
                         warn!(
                             signal.id = %signal.id,
                             source.id = %signal.source_id(),
@@ -79,6 +82,9 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
                             event = "provider.send.failed",
                         );
                     }
+                }
+                if !route_failed {
+                    watcher.commit(batch)?;
                 }
             }
             signal = tokio::signal::ctrl_c() => {
@@ -110,6 +116,14 @@ struct CodexDesktopSessionWatcher {
     bootstrap_existing_files: bool,
 }
 
+struct CodexDesktopPollBatch {
+    signals: Vec<Signal>,
+    state: WatchState,
+    pending_prompts: BTreeMap<String, String>,
+    bootstrap_existing_files: bool,
+    changed: bool,
+}
+
 impl CodexDesktopSessionWatcher {
     fn new(
         sessions_dir: PathBuf,
@@ -131,29 +145,27 @@ impl CodexDesktopSessionWatcher {
     }
 
     fn poll(
-        &mut self,
+        &self,
         source: &SourceConfig,
         answer_detail: AnswerDetail,
         prompt_detail: PromptDetail,
-    ) -> anyhow::Result<Vec<Signal>> {
+    ) -> anyhow::Result<CodexDesktopPollBatch> {
         let titles = load_session_titles(&self.session_index_path)?;
+        let mut state = self.state.clone();
+        let mut pending_prompts = self.pending_prompts.clone();
         let mut signals = Vec::new();
         let mut changed = false;
 
         for path in discover_rollout_paths(&self.sessions_dir)? {
             let path_key = path_key(&path);
-            if !self.state.files.contains_key(&path_key) {
+            if !state.files.contains_key(&path_key) {
                 let offset = if self.bootstrap_existing_files {
-                    path.metadata()
-                        .with_context(|| {
-                            format!("failed to read rollout metadata `{}`", path.display())
-                        })?
-                        .len()
+                    completed_rollout_offset(&path)?
                 } else {
                     0
                 };
                 let session = read_session_info(&path)?;
-                self.state
+                state
                     .files
                     .insert(path_key.clone(), FileWatchState { offset, session });
                 changed = true;
@@ -161,7 +173,7 @@ impl CodexDesktopSessionWatcher {
 
             let mut result = read_new_rollout_items(
                 &path,
-                self.state
+                state
                     .files
                     .get(&path_key)
                     .expect("file state should exist after insertion")
@@ -170,8 +182,7 @@ impl CodexDesktopSessionWatcher {
             )?;
 
             if result.offset_changed {
-                let file_state = self
-                    .state
+                let file_state = state
                     .files
                     .get_mut(&path_key)
                     .expect("file state should exist before update");
@@ -182,7 +193,7 @@ impl CodexDesktopSessionWatcher {
             for item in result.items.drain(..) {
                 match item {
                     RolloutItem::SessionMeta(session) => {
-                        self.state
+                        state
                             .files
                             .get_mut(&path_key)
                             .expect("file state should exist before metadata update")
@@ -191,7 +202,7 @@ impl CodexDesktopSessionWatcher {
                         changed = true;
                     }
                     RolloutItem::TurnContext(session) => {
-                        self.state
+                        state
                             .files
                             .get_mut(&path_key)
                             .expect("file state should exist before context update")
@@ -201,12 +212,11 @@ impl CodexDesktopSessionWatcher {
                     }
                     RolloutItem::UserMessage(prompt) => {
                         if prompt_detail == PromptDetail::On {
-                            self.pending_prompts.insert(path_key.clone(), prompt);
+                            pending_prompts.insert(path_key.clone(), prompt);
                         }
                     }
                     RolloutItem::TaskComplete(task) => {
-                        let session = self
-                            .state
+                        let session = state
                             .files
                             .get(&path_key)
                             .expect("file state should exist before task processing")
@@ -221,11 +231,11 @@ impl CodexDesktopSessionWatcher {
                             continue;
                         };
                         let delivery_key = format!("{}:{}", session_id, task.turn_id);
-                        if self.state.delivered_turns.contains(&delivery_key) {
+                        if state.delivered_turns.contains(&delivery_key) {
                             continue;
                         }
                         let prompt = if prompt_detail == PromptDetail::On {
-                            self.pending_prompts.remove(&path_key)
+                            pending_prompts.remove(&path_key)
                         } else {
                             None
                         };
@@ -238,8 +248,8 @@ impl CodexDesktopSessionWatcher {
                             answer_detail,
                             prompt.as_deref(),
                         ) {
-                            self.state.delivered_turns.insert(delivery_key);
-                            self.state.prune_delivered_turns();
+                            state.delivered_turns.insert(delivery_key);
+                            state.prune_delivered_turns();
                             signals.push(signal);
                             changed = true;
                         }
@@ -248,12 +258,23 @@ impl CodexDesktopSessionWatcher {
             }
         }
 
-        self.bootstrap_existing_files = false;
-        if changed {
+        Ok(CodexDesktopPollBatch {
+            signals,
+            state,
+            pending_prompts,
+            bootstrap_existing_files: false,
+            changed,
+        })
+    }
+
+    fn commit(&mut self, batch: CodexDesktopPollBatch) -> anyhow::Result<()> {
+        self.state = batch.state;
+        self.pending_prompts = batch.pending_prompts;
+        self.bootstrap_existing_files = batch.bootstrap_existing_files;
+        if batch.changed {
             self.save_state()?;
         }
-
-        Ok(signals)
+        Ok(())
     }
 
     fn bootstrap(&mut self) -> anyhow::Result<()> {
@@ -274,10 +295,7 @@ impl CodexDesktopSessionWatcher {
                 continue;
             }
 
-            let offset = path
-                .metadata()
-                .with_context(|| format!("failed to read rollout metadata `{}`", path.display()))?
-                .len();
+            let offset = completed_rollout_offset(&path)?;
             self.state.files.insert(
                 path_key,
                 FileWatchState {
@@ -300,7 +318,7 @@ impl CodexDesktopSessionWatcher {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct WatchState {
     files: BTreeMap<String, FileWatchState>,
     delivered_turns: BTreeSet<String>,
@@ -357,7 +375,7 @@ impl WatchState {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct FileWatchState {
     offset: u64,
     #[serde(default)]

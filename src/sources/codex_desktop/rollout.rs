@@ -144,6 +144,9 @@ pub(super) fn read_new_rollout_items(
         if bytes == 0 {
             break;
         }
+        if !line.ends_with('\n') {
+            break;
+        }
         position += bytes as u64;
 
         let line = line.trim_end();
@@ -168,6 +171,29 @@ pub(super) fn read_new_rollout_items(
         new_offset: position,
         offset_changed: position != offset,
     })
+}
+
+pub(super) fn completed_rollout_offset(path: &Path) -> anyhow::Result<u64> {
+    let file =
+        File::open(path).with_context(|| format!("failed to open rollout `{}`", path.display()))?;
+    let mut reader = BufReader::new(file);
+    let mut position = 0;
+
+    loop {
+        let mut line = String::new();
+        let bytes = reader
+            .read_line(&mut line)
+            .with_context(|| format!("failed to read rollout `{}`", path.display()))?;
+        if bytes == 0 {
+            break;
+        }
+        if !line.ends_with('\n') {
+            break;
+        }
+        position += bytes as u64;
+    }
+
+    Ok(position)
 }
 
 pub(super) fn read_session_info(path: &Path) -> anyhow::Result<SessionInfo> {

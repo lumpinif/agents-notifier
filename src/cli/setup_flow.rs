@@ -148,13 +148,19 @@ pub(super) struct SetupDefaults {
 impl SetupDefaults {
     pub(super) fn from_config(config: &Config) -> Self {
         let agent_route = first_agent_route(config);
+        let agent = first_configured_agent(config);
+        let supports_duration_filter =
+            agent.is_some_and(setup::AgentSelection::supports_duration_filter);
         Self {
             language: Some(config.cli.language),
-            agent: first_configured_agent(config),
+            agent,
             answer_detail: Some(config.notification.answer_detail),
             prompt_detail: Some(config.notification.prompt_detail),
-            minimum_task_duration_minutes: agent_route
-                .and_then(|route| route.minimum_task_duration_minutes),
+            minimum_task_duration_minutes: if supports_duration_filter {
+                agent_route.and_then(|route| route.minimum_task_duration_minutes)
+            } else {
+                None
+            },
             only_forward_from_project_paths: agent_route
                 .map(|route| route.only_forward_from_project_paths.clone())
                 .unwrap_or_default(),
@@ -514,8 +520,11 @@ pub(super) async fn run_guided_provider_setup(
     let provider = prompt_for_initial_provider(defaults.provider, i18n)?;
     let answer_detail = answer_detail_for_provider(provider, defaults.answer_detail, i18n)?;
     let prompt_detail = prompt_detail_for_provider(provider, defaults.prompt_detail, i18n)?;
-    let minimum_task_duration_minutes =
-        prompt_for_notification_preference(defaults.minimum_task_duration_minutes, i18n)?;
+    let minimum_task_duration_minutes = if agent.supports_duration_filter() {
+        prompt_for_notification_preference(defaults.minimum_task_duration_minutes, i18n)?
+    } else {
+        None
+    };
     let route_filters = SetupRouteFilters {
         minimum_task_duration_minutes,
         only_forward_from_project_paths: defaults.only_forward_from_project_paths.clone(),

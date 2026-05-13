@@ -6,6 +6,11 @@ use std::path::{Component, Path};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::provider_urls::{
+    validate_custom_webhook_url, validate_discord_webhook_url, validate_feishu_lark_webhook_url,
+    validate_microsoft_teams_webhook_url, validate_slack_webhook_url,
+};
+
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -383,6 +388,12 @@ pub enum ConfigError {
         provider_id: String,
         field: &'static str,
     },
+    #[error("provider `{provider_id}` has invalid `{field}`: {message}")]
+    InvalidProviderUrl {
+        provider_id: String,
+        field: &'static str,
+        message: String,
+    },
     #[error("webhook provider `{provider_id}` must set exactly one of `url` or `url_env`")]
     InvalidWebhookUrlSource { provider_id: String },
     #[error("feishu_lark provider `{provider_id}` must set exactly one of `url` or `url_env`")]
@@ -654,6 +665,7 @@ impl ProviderConfig {
                         provider_id: self.id.clone(),
                     });
                 }
+                self.validate_inline_url("url", validate_custom_webhook_url)?;
             }
             ProviderType::FeishuLark => {
                 let has_url = is_present(self.url.as_deref());
@@ -663,6 +675,7 @@ impl ProviderConfig {
                         provider_id: self.id.clone(),
                     });
                 }
+                self.validate_inline_url("url", validate_feishu_lark_webhook_url)?;
 
                 let has_secret = is_present(self.secret.as_deref());
                 let has_secret_env = is_present(self.secret_env.as_deref());
@@ -697,6 +710,7 @@ impl ProviderConfig {
                         provider_id: self.id.clone(),
                     });
                 }
+                self.validate_inline_url("url", validate_slack_webhook_url)?;
             }
             ProviderType::Discord => {
                 let has_url = is_present(self.url.as_deref());
@@ -706,6 +720,7 @@ impl ProviderConfig {
                         provider_id: self.id.clone(),
                     });
                 }
+                self.validate_inline_url("url", validate_discord_webhook_url)?;
             }
             ProviderType::Telegram => {
                 let has_bot_token = is_present(self.bot_token.as_deref());
@@ -757,6 +772,7 @@ impl ProviderConfig {
                         provider_id: self.id.clone(),
                     });
                 }
+                self.validate_inline_url("url", validate_microsoft_teams_webhook_url)?;
             }
             ProviderType::EmailSmtp => {
                 self.require_present("host", self.host.as_deref())?;
@@ -809,6 +825,24 @@ impl ProviderConfig {
         }
 
         Ok(())
+    }
+
+    fn validate_inline_url(
+        &self,
+        field: &'static str,
+        validate: fn(&str) -> anyhow::Result<String>,
+    ) -> Result<(), ConfigError> {
+        let Some(url) = self.url.as_deref().filter(|url| is_present(Some(url))) else {
+            return Ok(());
+        };
+
+        validate(url)
+            .map(|_| ())
+            .map_err(|error| ConfigError::InvalidProviderUrl {
+                provider_id: self.id.clone(),
+                field,
+                message: error.to_string(),
+            })
     }
 
     fn require_present(&self, field: &'static str, value: Option<&str>) -> Result<(), ConfigError> {

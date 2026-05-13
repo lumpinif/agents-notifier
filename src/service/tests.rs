@@ -7,24 +7,36 @@ use super::*;
 
 struct FakeLaunchctl {
     commands: RefCell<Vec<Vec<String>>>,
-    target_print: Option<String>,
+    target_print: RefCell<Option<String>>,
     gui_available: bool,
+    bootout_error: Option<String>,
 }
 
 impl FakeLaunchctl {
     fn new() -> Self {
         Self {
             commands: RefCell::new(Vec::new()),
-            target_print: None,
+            target_print: RefCell::new(None),
             gui_available: true,
+            bootout_error: None,
         }
     }
 
     fn with_target_print(output: &str) -> Self {
         Self {
             commands: RefCell::new(Vec::new()),
-            target_print: Some(output.to_string()),
+            target_print: RefCell::new(Some(output.to_string())),
             gui_available: true,
+            bootout_error: None,
+        }
+    }
+
+    fn with_target_print_and_bootout_error(output: &str, bootout_error: &str) -> Self {
+        Self {
+            commands: RefCell::new(Vec::new()),
+            target_print: RefCell::new(Some(output.to_string())),
+            gui_available: true,
+            bootout_error: Some(bootout_error.to_string()),
         }
     }
 }
@@ -46,8 +58,15 @@ impl LaunchctlRunner for FakeLaunchctl {
         {
             return self
                 .target_print
+                .borrow()
                 .clone()
                 .ok_or_else(|| anyhow!("target not loaded"));
+        }
+        if args.first().map(String::as_str) == Some("bootout") {
+            if let Some(error) = &self.bootout_error {
+                return Err(anyhow!(error.clone()));
+            }
+            self.target_print.replace(None);
         }
         Ok(String::new())
     }
@@ -193,6 +212,25 @@ fn stop_boots_out_loaded_targets() {
         "bootout".to_string(),
         "user/501/com.agents-router.service".to_string()
     ]));
+}
+
+#[test]
+fn stop_surfaces_launchctl_bootout_failure() {
+    let dir = tempdir().expect("tempdir should be created");
+    let plist = dir.path().join("service.plist");
+    fs::write(&plist, "plist").expect("plist should be written");
+    let runner = FakeLaunchctl::with_target_print_and_bootout_error(
+        "state = running\npid = 123\n",
+        "bootout failed",
+    );
+    let manager = LaunchAgentManager::with_uid(runner, 501);
+
+    let err = manager
+        .stop(&plist)
+        .expect_err("bootout failure should stop the command");
+
+    assert!(err.to_string().contains("bootout"));
+    assert!(err.to_string().contains("bootout failed"));
 }
 
 fn test_definition() -> ServiceDefinition {

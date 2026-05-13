@@ -145,6 +145,31 @@ async fn provider_failure_does_not_block_other_providers() {
 }
 
 #[tokio::test]
+async fn provider_failure_display_includes_actionable_context() {
+    let config = test_config(vec![RouteConfig::new(
+        vec!["codex_cli".to_string()],
+        vec!["phone".to_string()],
+    )]);
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let phone = TestProvider::failing(
+        "phone",
+        Arc::clone(&calls),
+        DeliveryErrorKind::ProviderRejected,
+    );
+
+    let err = Router::new(&config)
+        .route(&test_signal("codex_cli"), &[&phone])
+        .await
+        .expect_err("provider failure should be returned");
+    let message = err.to_string();
+
+    assert!(message.contains("phone"));
+    assert!(message.contains("test"));
+    assert!(message.contains("provider_rejected"));
+    assert!(message.contains("send failed"));
+}
+
+#[tokio::test]
 async fn duration_filter_matches_tasks_at_or_above_threshold() {
     let mut route = RouteConfig::new(vec!["codex_cli".to_string()], vec!["phone".to_string()]);
     route.minimum_task_duration_minutes = Some(5);

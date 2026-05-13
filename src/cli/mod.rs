@@ -42,6 +42,7 @@ use agents_router::setup;
 use agents_router::sources::{
     agent_hook, claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
 };
+use agents_router::update;
 
 mod setup_flow;
 mod update_flow;
@@ -1081,9 +1082,15 @@ fn run_uninstall() -> anyhow::Result<()> {
     }
 
     let current_binary = std::env::current_exe().context("failed to locate current binary")?;
-    let install_method = std::env::var("AGENTS_ROUTER_INSTALL_METHOD").ok();
+    let marker_install_method = update::read_install_method_marker(&current_binary)?;
+    let install_method = std::env::var(update::INSTALL_METHOD_ENV)
+        .ok()
+        .or(marker_install_method);
     if should_remove_current_binary_for_install_method(&current_binary, install_method.as_deref()) {
         remove_path_if_exists(&current_binary)?;
+        if let Some(marker_path) = update::install_method_marker_path(&current_binary) {
+            remove_path_if_exists(&marker_path)?;
+        }
     } else if install_method.as_deref() == Some("npm") {
         println!(
             "left npm-managed binary in place: {}",
@@ -1092,9 +1099,10 @@ fn run_uninstall() -> anyhow::Result<()> {
         println!("Remove the npm package with: npm uninstall -g agents-router");
     } else {
         println!(
-            "left development binary in place: {}",
+            "left unmanaged binary in place: {}",
             current_binary.display()
         );
+        println!("Remove it with the installer or package manager that owns this binary.");
     }
 
     println!("agents-router uninstalled.");
@@ -1129,7 +1137,7 @@ fn should_remove_current_binary_for_install_method(
     path: &Path,
     install_method: Option<&str>,
 ) -> bool {
-    if install_method == Some("npm") {
+    if install_method != Some("script") {
         return false;
     }
 

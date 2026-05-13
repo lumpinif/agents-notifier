@@ -12,6 +12,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::{ClientOptions, ServerOptions};
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
+use tokio::time::{Duration, timeout};
 use tracing::{info, warn};
 
 use crate::config::{AnswerDetail, Config, PromptDetail, SourceType};
@@ -23,6 +24,8 @@ use crate::signal::{
     SignalLink, SignalWorkspace,
 };
 use crate::sources::{agent_hook, agents_router, claude_code, codex_cli};
+
+const READINESS_PING_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSignalEvent {
@@ -649,10 +652,41 @@ async fn prepare_socket_path(socket_path: &Path) -> anyhow::Result<()> {
 pub async fn is_ready(endpoint: &IngressEndpoint) -> bool {
     match endpoint {
         #[cfg(unix)]
-        IngressEndpoint::UnixSocket(socket_path) => socket_path.exists(),
+        IngressEndpoint::UnixSocket(socket_path) => {
+            timeout(READINESS_PING_TIMEOUT, ping_unix_socket(socket_path))
+                .await
+                .unwrap_or(false)
+        }
         #[cfg(windows)]
-        IngressEndpoint::WindowsNamedPipe(pipe_name) => ping_windows_named_pipe(pipe_name).await,
+        IngressEndpoint::WindowsNamedPipe(pipe_name) => {
+            timeout(READINESS_PING_TIMEOUT, ping_windows_named_pipe(pipe_name))
+                .await
+                .unwrap_or(false)
+        }
     }
+}
+
+#[cfg(unix)]
+async fn ping_unix_socket(socket_path: &Path) -> bool {
+    let Ok(mut stream) = UnixStream::connect(socket_path).await else {
+        return false;
+    };
+
+    if stream.write_all(br#"{"kind":"ping"}"#).await.is_err() {
+        return false;
+    }
+    if stream.shutdown().await.is_err() {
+        return false;
+    }
+
+    let mut raw_response = Vec::new();
+    if stream.read_to_end(&mut raw_response).await.is_err() {
+        return false;
+    }
+
+    serde_json::from_slice::<LocalIngressResponse>(&raw_response)
+        .map(|response| response.ok)
+        .unwrap_or(false)
 }
 
 #[cfg(windows)]

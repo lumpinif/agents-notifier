@@ -3,23 +3,32 @@ use std::path::Path;
 use super::*;
 
 #[test]
-fn uninstall_removes_installed_binary_paths() {
-    assert!(should_remove_current_binary(Path::new(
+fn uninstall_removes_script_installed_binary_paths() {
+    assert!(should_remove_current_binary_for_install_method(
+        Path::new("/Users/tester/.local/bin/agents-router"),
+        Some("script")
+    ));
+}
+
+#[test]
+fn uninstall_keeps_unknown_binary_paths() {
+    assert!(!should_remove_current_binary(Path::new(
         "/Users/tester/.local/bin/agents-router"
     )));
-    assert!(should_remove_current_binary(Path::new(
-        "/Users/tester/.cargo/bin/agents-router"
+    assert!(!should_remove_current_binary(Path::new(
+        "/opt/homebrew/bin/agents-router"
     )));
 }
 
 #[test]
-fn uninstall_keeps_development_binary_paths() {
+fn uninstall_keeps_development_binary_paths_even_with_script_marker() {
     assert!(!should_remove_current_binary(Path::new(
         "/repo/target/debug/agents-router"
     )));
-    assert!(!should_remove_current_binary(Path::new(
-        "/repo/target/release/agents-router"
-    )));
+    assert!(!should_remove_current_binary_for_install_method(
+        Path::new("/repo/target/release/agents-router"),
+        Some("script")
+    ));
 }
 
 #[test]
@@ -59,7 +68,7 @@ fn setup_defaults_preserve_existing_config_answers() {
     assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
     assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
     assert_eq!(defaults.prompt_detail, Some(PromptDetail::On));
-    assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
+    assert_eq!(defaults.minimum_task_duration_minutes, None);
     assert_eq!(
         defaults.only_forward_from_project_paths,
         vec!["/Users/tester/projects/agents-router".to_string()]
@@ -73,6 +82,48 @@ fn setup_defaults_preserve_existing_config_answers() {
         defaults.feishu_lark_secret.as_deref(),
         Some("signing-secret")
     );
+}
+
+#[test]
+fn setup_defaults_preserve_duration_filter_for_codex_desktop() {
+    let mut config = setup::build_ntfy_config(
+        setup::AgentSelection::CodexDesktop,
+        AnswerDetail::Preview,
+        PromptDetail::Off,
+        "agents-router-test",
+    );
+    setup::apply_agent_route_filters(
+        &mut config,
+        setup::AgentSelection::CodexDesktop,
+        Some(12),
+        Vec::new(),
+    );
+
+    let defaults = SetupDefaults::from_config(&config);
+
+    assert_eq!(defaults.agent, Some(setup::AgentSelection::CodexDesktop));
+    assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
+}
+
+#[test]
+fn setup_defaults_drop_duration_filter_for_agents_without_duration_support() {
+    let mut config = setup::build_ntfy_config(
+        setup::AgentSelection::ClaudeCode,
+        AnswerDetail::Preview,
+        PromptDetail::Off,
+        "agents-router-test",
+    );
+    setup::apply_agent_route_filters(
+        &mut config,
+        setup::AgentSelection::ClaudeCode,
+        Some(12),
+        Vec::new(),
+    );
+
+    let defaults = SetupDefaults::from_config(&config);
+
+    assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
+    assert_eq!(defaults.minimum_task_duration_minutes, None);
 }
 
 #[test]

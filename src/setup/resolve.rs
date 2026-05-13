@@ -21,18 +21,7 @@ pub fn resolve_ntfy_topic(input: &str, generated_topic: &str) -> anyhow::Result<
 }
 
 pub fn resolve_feishu_lark_webhook_url(input: &str) -> anyhow::Result<String> {
-    let url = input.trim();
-    if url.is_empty() {
-        anyhow::bail!("webhook URL is required");
-    }
-
-    if !url.starts_with(FEISHU_WEBHOOK_PREFIX) && !url.starts_with(LARK_WEBHOOK_PREFIX) {
-        anyhow::bail!(
-            "webhook URL must start with `https://open.feishu.cn/open-apis/bot/v2/hook/` or `https://open.larksuite.com/open-apis/bot/v2/hook/`"
-        );
-    }
-
-    Ok(url.to_string())
+    validate_feishu_lark_webhook_url(input)
 }
 
 pub fn resolve_feishu_lark_secret(input: &str) -> Option<String> {
