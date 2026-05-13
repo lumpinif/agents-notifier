@@ -112,7 +112,9 @@ irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 
 agents-notifier setup
 ```
 
-To upgrade later, rerun the same install method you used the first time.
+To upgrade later, rerun the same install method you used the first time. If the
+local service is already running, the installer restarts it after replacing the
+binary so the background service uses the new version too.
 
 From source:
 

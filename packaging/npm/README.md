@@ -10,6 +10,9 @@ The launcher supports `npx --yes --prefer-online agents-notifier@latest setup`
 by copying the native binary from the npx cache into a stable local install path
 before running setup.
 The service must never point at npm's temporary npx cache.
+The main package postinstall restarts an already running service for persistent
+npm installs only. It skips npx cache installs so the service is never pointed
+at a temporary npx path.
 
 Prepare package directories from release archives:
 

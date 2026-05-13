@@ -14,6 +14,13 @@ const LAUNCHER_SOURCE = path.join(
   "bin",
   "agents-notifier.js"
 );
+const POSTINSTALL_SOURCE = path.join(
+  REPO_ROOT,
+  "packaging",
+  "npm",
+  "bin",
+  "postinstall.js"
+);
 
 const PLATFORMS = [
   {
@@ -172,6 +179,9 @@ function mainPackageJson(version) {
     bin: {
       "agents-notifier": "bin/agents-notifier.js",
     },
+    scripts: {
+      postinstall: "node bin/postinstall.js",
+    },
     engines: {
       node: ">=16",
     },
@@ -232,6 +242,11 @@ function prepareMainPackage(outDir, version) {
   copyFile(
     LAUNCHER_SOURCE,
     path.join(packageDir, "bin", "agents-notifier.js"),
+    0o755
+  );
+  copyFile(
+    POSTINSTALL_SOURCE,
+    path.join(packageDir, "bin", "postinstall.js"),
     0o755
   );
 

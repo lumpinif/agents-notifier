@@ -113,7 +113,8 @@ irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 
 agents-notifier setup
 ```
 
-之后需要升级时，重新运行第一次使用的同一种安装方式即可。
+之后需要升级时，重新运行第一次使用的同一种安装方式即可。如果本机 service 已经在运行，
+安装器会在替换 binary 后重启它，让后台 service 也切到新版本。
 
 从源码安装：
 

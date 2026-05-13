@@ -77,6 +77,16 @@ function spawnNative(binaryPath, args, installMethod) {
   });
 }
 
+function captureNative(binaryPath, args, installMethod) {
+  return spawnSync(binaryPath, args, {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      AGENTS_NOTIFIER_INSTALL_METHOD: installMethod,
+    },
+  });
+}
+
 function exitFromResult(result, binaryPath) {
   if (result.error) {
     fail(`failed to start native binary at ${binaryPath}: ${result.error.message}`);
@@ -125,6 +135,30 @@ function stopExistingStableService(destinationPath) {
   }
 
   return true;
+}
+
+function stableServiceIsRunning(destinationPath, installMethod) {
+  if (!fs.existsSync(destinationPath)) {
+    return false;
+  }
+
+  const result = captureNative(destinationPath, ["status"], installMethod);
+  if (result.error || result.status !== 0) {
+    return false;
+  }
+
+  return /running:\s*yes/i.test(`${result.stdout || ""}\n${result.stderr || ""}`);
+}
+
+function stopStableServiceOrFail(destinationPath, installMethod) {
+  const result = spawnNative(destinationPath, ["stop"], installMethod);
+  if (result.error) {
+    fail(`failed to stop existing service before install: ${result.error.message}`);
+  }
+
+  if (result.status !== 0) {
+    fail(`existing service stop command exited with code ${result.status}`);
+  }
 }
 
 function installStableBinary(sourcePath, destinationPath) {
@@ -201,6 +235,10 @@ const installMethod = isNpxCachePath(binaryPath) ? "npx" : "npm";
 
 if (installMethod === "npx" && STABLE_INSTALL_COMMANDS.has(command)) {
   const stablePath = stableInstallPath(binaryName);
+  if (command === "start" && stableServiceIsRunning(stablePath, "npx")) {
+    stopStableServiceOrFail(stablePath, "npx");
+  }
+
   try {
     installStableBinary(binaryPath, stablePath);
     writeInstallMethodMarker(stablePath, "npx");

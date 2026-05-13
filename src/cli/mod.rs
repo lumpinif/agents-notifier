@@ -147,6 +147,11 @@ enum Command {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
     },
+    #[command(about = "Restart the local notification service")]
+    Restart {
+        #[arg(long, value_name = "PATH", help = "Path to the config file")]
+        config: Option<PathBuf>,
+    },
     #[command(about = "Stop the local notification service")]
     Stop,
     #[command(about = "Stop the service and remove Agents Notifier local files")]
@@ -194,7 +199,7 @@ pub async fn run() -> anyhow::Result<()> {
             let allow_setup = config_path.is_none();
             let config_path = resolve_config_path(config_path)?;
             let loaded = load_config(&config_path, allow_setup).await?;
-            run_start_service(&config_path, loaded, false).await
+            run_start_service(&config_path, loaded, false, true).await
         }
         Command::Setup {
             config: config_path,
@@ -204,7 +209,7 @@ pub async fn run() -> anyhow::Result<()> {
                 ProviderSetupOutcome::Loaded(loaded) => loaded,
                 ProviderSetupOutcome::Exit(code) => std::process::exit(code),
             };
-            run_start_service(&config_path, loaded, true).await
+            run_start_service(&config_path, loaded, true, true).await
         }
         Command::Watch {
             config: config_path,
@@ -213,6 +218,13 @@ pub async fn run() -> anyhow::Result<()> {
             let loaded = load_config(&config_path, false).await?;
             init_tracing(&loaded.config.log.level)?;
             run_watch(&config_path, loaded.config).await
+        }
+        Command::Restart {
+            config: config_path,
+        } => {
+            let config_path = resolve_restart_config_path(config_path)?;
+            let loaded = load_config(&config_path, false).await?;
+            run_start_service(&config_path, loaded, true, false).await
         }
         Command::Stop => run_stop(),
         Command::Uninstall => run_uninstall(),
@@ -237,10 +249,25 @@ fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     }
 }
 
+fn resolve_restart_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+    if let Some(path) = config {
+        return Ok(path);
+    }
+
+    let metadata_path = service_metadata_path()?;
+    if metadata_path.exists() {
+        let metadata = load_metadata(&metadata_path)?;
+        Ok(PathBuf::from(metadata.config_path))
+    } else {
+        default_config_file_path()
+    }
+}
+
 async fn run_start_service(
     config_path: &Path,
     loaded: LoadedConfig,
     force_restart: bool,
+    offer_test_after_start: bool,
 ) -> anyhow::Result<()> {
     let i18n = I18n::new(loaded.config.cli.language);
     ensure_sources_supported_on_current_platform(&loaded.config)?;
@@ -286,7 +313,9 @@ async fn run_start_service(
         finish_guided_setup(setup, i18n).await?;
     } else {
         print_notification_targets(&loaded.config, i18n);
-        offer_test_notification(&loaded.config, i18n).await?;
+        if offer_test_after_start {
+            offer_test_notification(&loaded.config, i18n).await?;
+        }
     }
 
     Ok(())
