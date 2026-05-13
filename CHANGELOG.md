@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/lumpinif/agents-router/compare/v0.8.1...v0.9.0) (2026-05-13)
+
+
+### Features
+
+* rename project to Agents Router ([71207c0](https://github.com/lumpinif/agents-router/commit/71207c06f92a9edf9162e97059cdf309f6ba187f))
+
 ## 0.8.1
 
 This release improves setup, agent hooks, and upgrades.
