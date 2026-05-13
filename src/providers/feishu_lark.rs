@@ -13,6 +13,7 @@ use crate::delivery::{
 };
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
+use crate::provider_urls::validate_feishu_lark_webhook_url;
 use crate::providers::formatting::format_duration_ms;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
@@ -292,14 +293,12 @@ fn resolve_url(config: &ProviderConfig) -> anyhow::Result<String> {
         }
     };
 
-    if url.trim().is_empty() {
-        return Err(anyhow!(
-            "feishu_lark provider `{}` webhook URL is empty",
+    validate_feishu_lark_webhook_url(&url).with_context(|| {
+        format!(
+            "feishu_lark provider `{}` webhook URL is invalid",
             config.id
-        ));
-    }
-
-    Ok(url)
+        )
+    })
 }
 
 fn resolve_secret(config: &ProviderConfig) -> anyhow::Result<Option<String>> {

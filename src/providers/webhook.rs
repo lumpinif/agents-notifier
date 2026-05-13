@@ -5,6 +5,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::provider_urls::validate_custom_webhook_url;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
@@ -40,9 +41,8 @@ impl WebhookProvider {
             }
         };
 
-        if url.trim().is_empty() {
-            return Err(anyhow!("webhook provider `{}` URL is empty", config.id));
-        }
+        let url = validate_custom_webhook_url(&url)
+            .with_context(|| format!("webhook provider `{}` URL is invalid", config.id))?;
 
         Ok(Self {
             id: config.id.clone(),
@@ -218,6 +218,18 @@ mod tests {
         assert!(err.to_string().contains("exactly one"));
     }
 
+    #[test]
+    fn rejects_invalid_url_from_env() {
+        let _guard = EnvVarGuard::set("AGENTS_ROUTER_TEST_WEBHOOK_URL", "http://example.com/hook");
+        let mut config = ProviderConfig::new("debug", ProviderType::Webhook);
+        config.url_env = Some("AGENTS_ROUTER_TEST_WEBHOOK_URL".to_string());
+
+        let err = WebhookProvider::from_config(&config)
+            .expect_err("invalid webhook URL env value should fail");
+
+        assert!(err.to_string().contains("URL is invalid"));
+    }
+
     #[tokio::test]
     async fn returns_error_for_non_success_status() {
         let simulator = ProviderHttpSimulator::start().await;
@@ -294,5 +306,24 @@ mod tests {
             timestamp,
             BTreeMap::new(),
         )
+    }
+
+    struct EnvVarGuard {
+        name: &'static str,
+    }
+
+    impl EnvVarGuard {
+        fn set(name: &'static str, value: &str) -> Self {
+            // SAFETY: this test uses a unique env var name scoped to this module.
+            unsafe { std::env::set_var(name, value) };
+            Self { name }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: this removes only the unique env var set by the test guard.
+            unsafe { std::env::remove_var(self.name) };
+        }
     }
 }

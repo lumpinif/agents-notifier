@@ -12,6 +12,20 @@ use crate::signal::{
     SignalLink, SignalWorkspace,
 };
 
+#[test]
+fn rejects_invalid_webhook_url_from_env() {
+    let _guard = EnvVarGuard::set(
+        "AGENTS_ROUTER_TEST_FEISHU_LARK_WEBHOOK_URL",
+        "https://example.com/hook",
+    );
+    let mut config = ProviderConfig::new("work_chat", ProviderType::FeishuLark);
+    config.url_env = Some("AGENTS_ROUTER_TEST_FEISHU_LARK_WEBHOOK_URL".to_string());
+
+    let err = resolve_url(&config).expect_err("invalid Feishu/Lark URL env value should fail");
+
+    assert!(err.to_string().contains("webhook URL is invalid"));
+}
+
 #[tokio::test]
 async fn sends_interactive_card_to_custom_bot_webhook() {
     let server = MockServer::start().await;
@@ -490,5 +504,24 @@ fn test_provider(url: String, secret: Option<String>) -> FeishuLarkProvider {
         secret,
         computer_name: "Test Mac".to_string(),
         client: reqwest::Client::new(),
+    }
+}
+
+struct EnvVarGuard {
+    name: &'static str,
+}
+
+impl EnvVarGuard {
+    fn set(name: &'static str, value: &str) -> Self {
+        // SAFETY: this test uses a unique env var name scoped to this module.
+        unsafe { std::env::set_var(name, value) };
+        Self { name }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        // SAFETY: this removes only the unique env var set by the test guard.
+        unsafe { std::env::remove_var(self.name) };
     }
 }

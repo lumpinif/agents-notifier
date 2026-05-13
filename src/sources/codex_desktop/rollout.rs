@@ -411,8 +411,17 @@ pub(super) fn load_session_titles(path: &Path) -> anyhow::Result<HashMap<String,
             continue;
         }
 
-        let record: SessionIndexRecord = serde_json::from_str(&line)
-            .with_context(|| format!("failed to parse Codex session index `{}`", path.display()))?;
+        let record: SessionIndexRecord = match serde_json::from_str(&line) {
+            Ok(record) => record,
+            Err(error) => {
+                warn!(
+                    error = %error,
+                    index.path = %path.display(),
+                    event = "session_index.line.ignored",
+                );
+                continue;
+            }
+        };
         if !record.id.trim().is_empty() && !record.thread_name.trim().is_empty() {
             titles.insert(record.id, record.thread_name);
         }

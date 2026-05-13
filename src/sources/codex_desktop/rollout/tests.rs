@@ -8,6 +8,35 @@ use crate::signal::{SignalAnswerKind, SignalEventKind, SignalLifecycleStatus};
 use super::*;
 
 #[test]
+fn load_session_titles_ignores_bad_json_lines() {
+    let mut file = NamedTempFile::new().expect("temp file should be created");
+    writeln!(
+        file,
+        r#"{{"id":"session-1","thread_name":"agents-router sync report"}}"#
+    )
+    .expect("valid index line should be written");
+    writeln!(file, r#"{{"id":"session-bad","thread_name":"#)
+        .expect("bad index line should be written");
+    writeln!(
+        file,
+        r#"{{"id":"session-2","thread_name":"release notes"}}"#
+    )
+    .expect("valid index line should be written");
+
+    let titles = load_session_titles(file.path()).expect("session titles should load");
+
+    assert_eq!(
+        titles.get("session-1").map(String::as_str),
+        Some("agents-router sync report")
+    );
+    assert_eq!(
+        titles.get("session-2").map(String::as_str),
+        Some("release notes")
+    );
+    assert!(!titles.contains_key("session-bad"));
+}
+
+#[test]
 fn creates_signal_from_task_complete_rollout_event() {
     let source = source_config();
     let session = SessionInfo {
