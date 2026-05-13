@@ -1,6 +1,6 @@
 # agents-router
 
-Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, WeChat, Microsoft Teams, email, Feishu/Lark, Pushover, or webhook.
+Set up in 1 minute and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, WeChat, Microsoft Teams, email, Feishu/Lark, Pushover, or webhook.
 
 ---
 
@@ -12,7 +12,7 @@ Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack
 >
 > _The moment the job finishes, you get a notification and know it is time to come back."_
 
-⚡ Local-first signal routing for AI coding agents.
+⚡ Fast, local-only AI agent updates across platforms, built in Rust. 10+ agents and 10+ platforms supported.
 
 Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex CLI](https://github.com/openai/codex), [Claude Code](https://claude.com/product/claude-code), GitHub Copilot CLI, Gemini CLI, Aider, Cursor CLI, OpenCode CLI, OpenClaw, and Hermes Agent CLI.
 

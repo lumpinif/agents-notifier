@@ -2,7 +2,7 @@
 
 English documentation: [feishu-lark-custom-bot.md](feishu-lark-custom-bot.md)
 
-两三分钟。一个群机器人。一个 webhook URL。然后你就能在飞书或 Lark 群里收到本地 coding agents 的消息。
+1 分钟。一个群机器人。一个 webhook URL。然后你就能在飞书或 Lark 群里收到本地 coding agents 的消息。
 
 ## 官方链接
 
@@ -96,4 +96,3 @@ Agents Router 会启动本地 service，并发送一条测试通知。
 ```bash
 agents-router status
 ```
-

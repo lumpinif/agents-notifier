@@ -2,7 +2,7 @@
 
 中文文档：[feishu-lark-custom-bot.zh-CN.md](feishu-lark-custom-bot.zh-CN.md)
 
-2-3 minutes. One group bot. One webhook URL. Then your local coding agent updates land in Feishu or Lark.
+1 minute. One group bot. One webhook URL. Then your local coding agent updates land in Feishu or Lark.
 
 ## Official Links
 
@@ -96,4 +96,3 @@ Check these first:
 ```bash
 agents-router status
 ```
-
