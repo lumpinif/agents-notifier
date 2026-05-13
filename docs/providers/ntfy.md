@@ -103,7 +103,7 @@ Agents Router supports a custom ntfy server in config:
 
 ```toml
 [[providers]]
-id = "phone"
+id = "ntfy"
 type = "ntfy"
 server = "https://ntfy.example.com"
 topic = "agents-router"

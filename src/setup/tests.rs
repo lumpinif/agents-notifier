@@ -35,7 +35,7 @@ fn writes_parseable_ntfy_config() {
     assert_eq!(parsed.notification.answer_detail, AnswerDetail::Preview);
     assert_eq!(
         parsed
-            .provider("phone")
+            .provider("ntfy")
             .and_then(|provider| provider.topic.as_deref()),
         Some("agents-router-test")
     );
@@ -199,13 +199,13 @@ fn writes_parseable_feishu_lark_config() {
     let parsed = Config::from_path(&path).expect("written config should parse");
     assert_eq!(
         parsed
-            .provider("work_chat")
+            .provider("feishu_lark")
             .and_then(|provider| provider.url.as_deref()),
         Some("https://open.larksuite.com/open-apis/bot/v2/hook/test")
     );
     assert_eq!(
         parsed
-            .provider("work_chat")
+            .provider("feishu_lark")
             .and_then(|provider| provider.secret.as_deref()),
         Some("secret")
     );
@@ -474,8 +474,8 @@ fn writes_parseable_email_smtp_config() {
 
     let parsed = Config::from_path(&path).expect("written config should parse");
     let provider = parsed
-        .provider("email")
-        .expect("email provider should be configured");
+        .provider("email_smtp")
+        .expect("email_smtp provider should be configured");
     assert_eq!(provider.host.as_deref(), Some("smtp.example.com"));
     assert_eq!(provider.port, Some(587));
     assert_eq!(provider.security, Some(EmailSmtpSecurity::Starttls));
@@ -691,7 +691,7 @@ fn extracts_ntfy_subscriptions_from_config() {
     assert_eq!(
         subscriptions,
         vec![NtfySubscription {
-            provider_id: "phone".to_string(),
+            provider_id: "ntfy".to_string(),
             server: "https://ntfy.sh".to_string(),
             topic: "agents-router-test".to_string(),
         }]
@@ -713,7 +713,7 @@ fn extracts_feishu_lark_targets_without_printing_webhook_token() {
     assert_eq!(
         targets,
         vec![FeishuLarkTarget {
-            provider_id: "work_chat".to_string(),
+            provider_id: "feishu_lark".to_string(),
             webhook_host: "open.larksuite.com".to_string(),
             signed: true,
         }]
@@ -874,7 +874,7 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
     assert_eq!(
         email_smtp_targets(&email_config),
         vec![EmailSmtpTarget {
-            provider_id: "email".to_string(),
+            provider_id: "email_smtp".to_string(),
             host: "smtp.example.com".to_string(),
             port: 587,
             from: "Agents Router <alerts@example.com>".to_string(),

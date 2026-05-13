@@ -85,6 +85,37 @@ Provider guides:
 - [Email SMTP](providers/email-smtp.md)
 - [Webhook](providers/webhook.md)
 
+## Provider IDs
+
+Setup uses the provider type as the default provider id. For example, the default
+Feishu/Lark provider is:
+
+```toml
+[[providers]]
+id = "feishu_lark"
+type = "feishu_lark"
+```
+
+Routes reference provider ids:
+
+```toml
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["feishu_lark"]
+```
+
+If you need two providers of the same type, give each provider a clear unique id:
+
+```toml
+[[providers]]
+id = "feishu_lark_engineering"
+type = "feishu_lark"
+
+[[providers]]
+id = "feishu_lark_personal"
+type = "feishu_lark"
+```
+
 ## Notification Preference
 
 Choose which completed tasks should send notifications:
@@ -110,12 +141,12 @@ Manual config:
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 minimum_task_duration_minutes = 5
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 ```
 
 The `agents_router` route is intentionally separate and unfiltered. Setup test notifications use
@@ -226,7 +257,7 @@ route:
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 only_forward_from_project_paths = [
   "/Users/felix/Desktop/felix-projects/agents-router",
   "/Users/felix/Desktop/felix-projects/another-project",
@@ -234,7 +265,7 @@ only_forward_from_project_paths = [
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 ```
 
 When this filter is set, Agents Router forwards a signal only when its `workspace.project_path`

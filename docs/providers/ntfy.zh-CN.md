@@ -103,7 +103,7 @@ Agents Router 支持在 config 里使用自定义 ntfy server：
 
 ```toml
 [[providers]]
-id = "phone"
+id = "ntfy"
 type = "ntfy"
 server = "https://ntfy.example.com"
 topic = "agents-router"

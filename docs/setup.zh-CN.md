@@ -84,6 +84,36 @@ Provider 教程：
 - [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
+## Provider ID
+
+Setup 默认使用 provider type 作为 provider id。例如默认的 Feishu/Lark provider 是：
+
+```toml
+[[providers]]
+id = "feishu_lark"
+type = "feishu_lark"
+```
+
+Route 引用的是 provider id：
+
+```toml
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["feishu_lark"]
+```
+
+如果需要两个同类型 provider，就给每个 provider 一个清晰且唯一的 id：
+
+```toml
+[[providers]]
+id = "feishu_lark_engineering"
+type = "feishu_lark"
+
+[[providers]]
+id = "feishu_lark_personal"
+type = "feishu_lark"
+```
+
 ## 通知偏好
 
 选择哪些完成的任务需要发送通知：
@@ -109,12 +139,12 @@ Provider 教程：
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 minimum_task_duration_minutes = 5
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 ```
 
 `agents_router` route 会故意保持独立且不加过滤。setup 测试通知使用这个内部 source，
@@ -219,7 +249,7 @@ agents-router start
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 only_forward_from_project_paths = [
   "/Users/felix/Desktop/felix-projects/agents-router",
   "/Users/felix/Desktop/felix-projects/another-project",
@@ -227,7 +257,7 @@ only_forward_from_project_paths = [
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["work_chat"]
+providers = ["feishu_lark"]
 ```
 
 设置这个过滤后，只有当 Signal 的 `workspace.project_path` 等于这些路径之一，或位于这些路径之下时，

@@ -6,7 +6,7 @@ pub fn build_ntfy_config(
     prompt_detail: PromptDetail,
     topic: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("phone", ProviderType::Ntfy);
+    let mut provider = ProviderConfig::new("ntfy", ProviderType::Ntfy);
     provider.server = Some(DEFAULT_NTFY_SERVER.to_string());
     provider.topic = Some(topic.to_string());
 
@@ -20,7 +20,7 @@ pub fn build_feishu_lark_config(
     webhook_url: &str,
     secret: Option<String>,
 ) -> Config {
-    let mut provider = ProviderConfig::new("work_chat", ProviderType::FeishuLark);
+    let mut provider = ProviderConfig::new("feishu_lark", ProviderType::FeishuLark);
     provider.url = Some(webhook_url.to_string());
     provider.secret = secret;
 
@@ -158,7 +158,7 @@ pub fn build_email_smtp_config(
     to: Vec<String>,
     reply_to: Option<String>,
 ) -> Config {
-    let mut provider = ProviderConfig::new("email", ProviderType::EmailSmtp);
+    let mut provider = ProviderConfig::new("email_smtp", ProviderType::EmailSmtp);
     provider.host = Some(host.to_string());
     provider.port = Some(port);
     provider.security = Some(security);

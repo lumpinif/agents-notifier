@@ -100,7 +100,7 @@ Simple authenticated config:
 
 ```toml
 [[providers]]
-id = "email"
+id = "email_smtp"
 type = "email_smtp"
 host = "smtp.example.com"
 port = 587
@@ -112,18 +112,18 @@ to = ["you@example.com"]
 
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["email"]
+providers = ["email_smtp"]
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["email"]
+providers = ["email_smtp"]
 ```
 
 Advanced: `username_env` and `password_env` are supported, but only use them when the environment variables are visible to the running local service.
 
 ```toml
 [[providers]]
-id = "email"
+id = "email_smtp"
 type = "email_smtp"
 host = "smtp.example.com"
 port = 587
@@ -139,7 +139,7 @@ No-auth relay config:
 
 ```toml
 [[providers]]
-id = "email"
+id = "email_smtp"
 type = "email_smtp"
 host = "smtp-relay.internal.example.com"
 port = 587

@@ -100,7 +100,7 @@ Email SMTP 配置在：
 
 ```toml
 [[providers]]
-id = "email"
+id = "email_smtp"
 type = "email_smtp"
 host = "smtp.example.com"
 port = 587
@@ -112,18 +112,18 @@ to = ["you@example.com"]
 
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["email"]
+providers = ["email_smtp"]
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["email"]
+providers = ["email_smtp"]
 ```
 
 进阶：支持 `username_env` 和 `password_env`，但只有当这些环境变量对正在运行的本地 service 可见时才使用它们。
 
 ```toml
 [[providers]]
-id = "email"
+id = "email_smtp"
 type = "email_smtp"
 host = "smtp.example.com"
 port = 587
@@ -139,7 +139,7 @@ reply_to = "reply@example.com"
 
 ```toml
 [[providers]]
-id = "email"
+id = "email_smtp"
 type = "email_smtp"
 host = "smtp-relay.internal.example.com"
 port = 587
