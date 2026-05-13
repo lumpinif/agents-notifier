@@ -18,6 +18,7 @@ use agents_router::config::{
     AnswerDetail, CliConfig, CliLanguage, Config, ConfigError, EmailSmtpSecurity, PromptDetail,
     ProviderConfig, ProviderType, RouteConfig, SourceType,
 };
+use agents_router::delivery_safety::DeliverySafetyGuard;
 use agents_router::i18n::{I18n, Text};
 use agents_router::legacy;
 use agents_router::local_ingress::{self, LocalSignalEvent};
@@ -164,6 +165,11 @@ enum Command {
     Uninstall,
     #[command(about = "Show the local notification service status")]
     Status,
+    #[command(about = "Manage delivery safety state")]
+    Safety {
+        #[command(subcommand)]
+        command: SafetyCommand,
+    },
     #[command(about = "Print the agents-router version")]
     Version,
     #[command(about = "Submit a hook event to the running local service")]
@@ -204,6 +210,12 @@ enum IngestFormat {
     GeminiCliHook,
     GithubCopilotCliNotification,
     OpencodeCliSession,
+}
+
+#[derive(Debug, Subcommand)]
+enum SafetyCommand {
+    #[command(about = "Clear the delivery safety pause state")]
+    Reset,
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -250,6 +262,7 @@ pub async fn run() -> anyhow::Result<()> {
         Command::Stop => run_stop(),
         Command::Uninstall => run_uninstall(),
         Command::Status => run_status(),
+        Command::Safety { command } => run_safety(command).await,
         Command::Version => {
             println!("agents-router {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -733,8 +746,46 @@ fn run_status() -> anyhow::Result<()> {
     print_path_field("config", config_path.display());
     print_path_field("log", log_file.display());
     print_status_notification_targets(&config_path);
+    print_delivery_safety_status();
 
     Ok(())
+}
+
+async fn run_safety(command: SafetyCommand) -> anyhow::Result<()> {
+    match command {
+        SafetyCommand::Reset => run_safety_reset().await,
+    }
+}
+
+async fn run_safety_reset() -> anyhow::Result<()> {
+    let endpoint = ingress_endpoint()?;
+    if local_ingress::is_ready(&endpoint).await {
+        local_ingress::reset_delivery_safety(&endpoint)
+            .await
+            .context("failed to reset delivery safety through the running service")?;
+    } else {
+        DeliverySafetyGuard::reset_default_file()
+            .context("failed to reset persisted delivery safety state")?;
+    }
+
+    println!("Delivery safety reset.");
+    Ok(())
+}
+
+fn print_delivery_safety_status() {
+    print_section("Delivery Safety");
+    match DeliverySafetyGuard::default_file_status() {
+        Ok(status) => {
+            print_bool_field("paused", status.paused);
+            if let Some(pause) = status.pause {
+                print_field("reason", pause.reason);
+                print_field("paused at", pause.paused_at);
+            }
+        }
+        Err(error) => {
+            print_field("status", style(error.to_string()).red());
+        }
+    }
 }
 
 fn local_ingress_ready_now(
@@ -1123,7 +1174,7 @@ async fn send_test_notification() -> anyhow::Result<()> {
     let endpoint = ingress_endpoint()?;
     wait_for_service(&endpoint).await?;
 
-    local_ingress::submit_event(
+    let report = local_ingress::submit_event_report(
         &endpoint,
         &LocalSignalEvent::new(
             "agents_router",
@@ -1132,7 +1183,15 @@ async fn send_test_notification() -> anyhow::Result<()> {
         ),
     )
     .await
-    .context("failed to send test notification through the local service")
+    .context("failed to send test notification through the local service")?;
+
+    if report.is_some_and(|report| report.suppressed > 0) {
+        anyhow::bail!(
+            "test notification was partially or fully suppressed by delivery safety; run `agents-router safety reset` and try again"
+        );
+    }
+
+    Ok(())
 }
 
 async fn wait_for_service(endpoint: &agents_router::paths::IngressEndpoint) -> anyhow::Result<()> {
@@ -1273,7 +1332,8 @@ fn cleanup_ingress_endpoint_if_exists() -> anyhow::Result<()> {
 
 async fn run_watch(config_path: &Path, config: Config) -> anyhow::Result<()> {
     local_integrations::ensure_local_source_integrations(&config)?;
-    let runtime = RuntimeState::new(config)?;
+    let runtime =
+        RuntimeState::new_with_delivery_safety(config, DeliverySafetyGuard::load_default()?)?;
     let endpoint = ingress_endpoint()?;
     run_service_tasks(config_path.to_path_buf(), runtime, endpoint).await
 }

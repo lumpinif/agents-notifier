@@ -71,6 +71,10 @@ pub fn codex_desktop_source_state_path() -> anyhow::Result<PathBuf> {
     Ok(codex_desktop_source_state_path_for_home(&home_dir()?))
 }
 
+pub fn delivery_safety_state_path() -> anyhow::Result<PathBuf> {
+    Ok(delivery_safety_state_path_for_home(&home_dir()?))
+}
+
 pub fn codex_sessions_dir_path() -> anyhow::Result<PathBuf> {
     Ok(codex_sessions_dir_path_for_home(&home_dir()?))
 }
@@ -156,6 +160,10 @@ pub fn service_metadata_path_for_home(home: &Path) -> PathBuf {
 
 pub fn codex_desktop_source_state_path_for_home(home: &Path) -> PathBuf {
     app_support_dir_path_for_home(home).join("codex-desktop-source-state.json")
+}
+
+pub fn delivery_safety_state_path_for_home(home: &Path) -> PathBuf {
+    app_support_dir_path_for_home(home).join("delivery-safety-state.json")
 }
 
 pub fn codex_sessions_dir_path_for_home(home: &Path) -> PathBuf {

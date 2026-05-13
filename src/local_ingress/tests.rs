@@ -16,7 +16,9 @@ use crate::config::{
     ProviderType, RouteConfig, SourceConfig, SourceType,
 };
 use crate::delivery::ProviderSendResult;
+use crate::delivery_safety::DeliverySafetyGuard;
 use crate::router::{Provider, ProviderFuture};
+use crate::runtime::RuntimeState;
 use crate::signal::{
     Signal, SignalAnswerKind, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus,
     SignalWorkspace,
@@ -523,6 +525,46 @@ async fn route_event_keeps_unknown_origin_codex_cli_stop_when_desktop_source_is_
         *calls.lock().expect("calls lock should not be poisoned"),
         vec!["codex_cli:Codex CLI finished a task.".to_string()]
     );
+}
+
+#[tokio::test]
+async fn delivery_safety_reset_request_clears_live_guard() {
+    let dir = TempDir::new().expect("tempdir should be created");
+    let state_path = dir.path().join("delivery-safety-state.json");
+    std::fs::write(
+        &state_path,
+        r#"{
+  "schema_version": 1,
+  "global_pause": {
+    "paused_at": "2026-05-14T00:00:00Z",
+    "reason": "multiple_duplicate_storms",
+    "message_fingerprint_count": 3,
+    "window_seconds": 120
+  }
+}"#,
+    )
+    .expect("safety state should be written");
+    let guard = DeliverySafetyGuard::load(state_path.clone()).expect("guard should load pause");
+    assert!(guard.status().expect("status should load").paused);
+    let runtime = RuntimeState::new_with_delivery_safety(
+        test_config("codex_cli", SourceType::CodexCli),
+        guard.clone(),
+    )
+    .expect("runtime should be created");
+    let state = LocalIngressState::default();
+
+    let response = handle_request_bytes(&runtime, &state, br#"{"kind":"delivery_safety_reset"}"#)
+        .await
+        .expect("reset request should be handled");
+
+    let response: serde_json::Value =
+        serde_json::from_slice(&response).expect("response should be JSON");
+    assert_eq!(response["ok"], true);
+    assert!(!guard.status().expect("status should load").paused);
+    let persisted: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(state_path).expect("state should be readable"))
+            .expect("state should be JSON");
+    assert_eq!(persisted["global_pause"], serde_json::Value::Null);
 }
 
 #[test]

@@ -200,6 +200,7 @@ npm uninstall -g agents-router
 agents-router setup    # set up or change agent/provider
 agents-router start    # start existing service
 agents-router status   # check service status
+agents-router safety reset # clear delivery safety pause state
 agents-router stop     # stop service
 agents-router uninstall # remove service, config, logs, and state
 agents-router watch    # foreground debug worker
@@ -215,6 +216,12 @@ agents-router ingest --source codex_cli --format codex_cli_stop
 Codex Desktop and Codex CLI may be enabled together. If the shared Codex Stop hook fires for a
 session that Agents Router can identify as Codex Desktop, the hook is ignored and the Desktop watcher
 handles that completion.
+
+Agents Router also has a delivery safety guard. If the same logical message is sent to the same
+provider 5 times within 10 seconds, that message line is suppressed. If 3 different message lines
+trigger suppression within 2 minutes, provider delivery pauses until you run
+`agents-router safety reset`. Suppressed notifications are intentionally dropped, not delayed for
+later replay.
 
 ```bash
 agents-router emit \

@@ -9,6 +9,7 @@ use crate::config::{
     SourceConfig, SourceType,
 };
 use crate::delivery::DeliveryErrorContext;
+use crate::delivery_safety::DeliverySafetyGuard;
 use crate::signal::{SignalLifecycle, SignalWorkspace};
 
 struct TestProvider {
@@ -167,6 +168,34 @@ async fn provider_failure_display_includes_actionable_context() {
     assert!(message.contains("test"));
     assert!(message.contains("provider_rejected"));
     assert!(message.contains("send failed"));
+}
+
+#[tokio::test]
+async fn duplicate_delivery_safety_suppresses_without_provider_failure() {
+    let config = test_config(vec![RouteConfig::new(
+        vec!["codex_cli".to_string()],
+        vec!["phone".to_string()],
+    )]);
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let phone = TestProvider::succeeding("phone", Arc::clone(&calls));
+    let safety = DeliverySafetyGuard::in_memory();
+    let signal = test_signal("codex_cli");
+    let mut last_report = None;
+
+    for _ in 0..5 {
+        last_report = Some(
+            Router::new(&config)
+                .route_with_safety(&signal, &[&phone], Some(&safety))
+                .await
+                .expect("suppressed delivery is not a provider failure"),
+        );
+    }
+
+    let report = last_report.expect("report should exist");
+    assert_eq!(report.attempted, 1);
+    assert_eq!(report.succeeded, 0);
+    assert_eq!(report.suppressed, 1);
+    assert_eq!(calls.lock().unwrap().len(), 4);
 }
 
 #[tokio::test]

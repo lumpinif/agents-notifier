@@ -1,5 +1,6 @@
 pub mod config;
 pub mod delivery;
+pub mod delivery_safety;
 pub mod i18n;
 pub mod legacy;
 pub mod local_ingress;

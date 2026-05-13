@@ -9,6 +9,9 @@ use tracing::{debug, info, warn};
 
 use crate::config::{Config, RouteConfig, is_clean_absolute_project_path};
 use crate::delivery::{DeliveryError, DeliveryErrorKind, ProviderSendResult};
+use crate::delivery_safety::{
+    DeliveryAttempt, DeliverySafetyDecision, DeliverySafetyGuard, DeliverySuppression,
+};
 use crate::signal::Signal;
 
 pub type ProviderFuture<'a> =
@@ -20,11 +23,12 @@ pub trait Provider: Send + Sync {
     fn send<'a>(&'a self, signal: &'a Signal) -> ProviderFuture<'a>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeliveryReport {
     pub matched_routes: usize,
     pub attempted: usize,
     pub succeeded: usize,
+    pub suppressed: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -102,6 +106,15 @@ impl<'a> Router<'a> {
         signal: &Signal,
         providers: &[&dyn Provider],
     ) -> Result<DeliveryReport, RouterError> {
+        self.route_with_safety(signal, providers, None).await
+    }
+
+    pub async fn route_with_safety(
+        &self,
+        signal: &Signal,
+        providers: &[&dyn Provider],
+        delivery_safety: Option<&DeliverySafetyGuard>,
+    ) -> Result<DeliveryReport, RouterError> {
         let providers_by_id: HashMap<&str, &dyn Provider> = providers
             .iter()
             .map(|provider| (provider.id(), *provider))
@@ -144,6 +157,7 @@ impl<'a> Router<'a> {
 
         let mut attempted = 0;
         let mut succeeded = 0;
+        let mut suppressed = 0;
         let mut failures = Vec::new();
 
         for route in &matching_routes {
@@ -153,6 +167,34 @@ impl<'a> Router<'a> {
                     failures.push(self.missing_provider_failure(signal, provider_id));
                     continue;
                 };
+
+                if let Some(delivery_safety) = delivery_safety {
+                    match delivery_safety.check(DeliveryAttempt {
+                        signal,
+                        provider_id: provider.id(),
+                    }) {
+                        Ok(DeliverySafetyDecision::Allow { .. }) => {}
+                        Ok(DeliverySafetyDecision::Suppress(suppression)) => {
+                            suppressed += 1;
+                            log_delivery_suppressed(signal, *provider, &suppression);
+                            continue;
+                        }
+                        Err(error) => {
+                            failures.push(ProviderFailure {
+                                signal_id: signal.id.clone(),
+                                source_id: signal.source_id().to_string(),
+                                provider_id: provider.id().to_string(),
+                                provider_type: provider.provider_type().to_string(),
+                                kind: DeliveryErrorKind::Internal,
+                                message: format!("delivery safety guard failed: {error}"),
+                                http_status: None,
+                                provider_code: None,
+                                retriable: false,
+                            });
+                            continue;
+                        }
+                    }
+                }
 
                 info!(
                     signal.id = %signal.id,
@@ -210,6 +252,7 @@ impl<'a> Router<'a> {
                 matched_routes: matching_routes.len(),
                 attempted,
                 succeeded,
+                suppressed,
             })
         } else {
             Err(RouterError::ProviderFailures(failures))
@@ -234,6 +277,39 @@ impl<'a> Router<'a> {
             provider_code: None,
             retriable: false,
         }
+    }
+}
+
+fn log_delivery_suppressed(
+    signal: &Signal,
+    provider: &dyn Provider,
+    suppression: &DeliverySuppression,
+) {
+    warn!(
+        signal.id = %signal.id,
+        source.id = %signal.source_id(),
+        provider.id = %provider.id(),
+        provider.type = %provider.provider_type(),
+        reason = %suppression.reason.as_str(),
+        message.fingerprint = %suppression.message_fingerprint_hash,
+        delivery.key = %suppression.delivery_key_hash,
+        window.seconds = suppression.window_seconds,
+        count = suppression.count,
+        global.paused = suppression.global_paused,
+        event = "delivery.suppressed",
+    );
+
+    if let Some(pause_started) = &suppression.pause_started {
+        warn!(
+            signal.id = %signal.id,
+            source.id = %signal.source_id(),
+            provider.id = %provider.id(),
+            provider.type = %provider.provider_type(),
+            message.fingerprint = %suppression.message_fingerprint_hash,
+            message.fingerprint_count = pause_started.message_fingerprint_count,
+            window.seconds = pause_started.window_seconds,
+            event = "delivery.pause.started",
+        );
     }
 }
 

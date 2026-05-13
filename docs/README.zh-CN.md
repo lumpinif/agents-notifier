@@ -200,6 +200,7 @@ npm uninstall -g agents-router
 agents-router setup    # 设置或修改 agent/provider
 agents-router start    # 启动已有 service
 agents-router status   # 查看 service 状态
+agents-router safety reset # 清除 delivery safety pause 状态
 agents-router stop     # 停止 service
 agents-router uninstall # 删除 service、配置、日志和状态
 agents-router watch    # 前台 debug worker
@@ -215,6 +216,11 @@ agents-router ingest --source codex_cli --format codex_cli_stop
 Codex Desktop 和 Codex CLI 可以同时启用。如果共享的 Codex Stop hook 为一个可识别的
 Codex Desktop session 触发，Agents Router 会忽略这次 hook，并由 Desktop watcher 处理
 这次完成通知。
+
+Agents Router 也有 delivery safety guard。如果同一条逻辑消息在 10 秒内发给同一个
+provider 5 次，这条消息线会被抑制。如果 2 分钟内有 3 条不同消息线触发抑制，
+provider delivery 会暂停，直到你运行 `agents-router safety reset`。被抑制的通知是主动丢弃，
+不是延迟到之后补发。
 
 ```bash
 agents-router emit \

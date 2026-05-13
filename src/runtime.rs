@@ -10,6 +10,7 @@ use tracing::{info, warn};
 use crate::config::Config;
 #[cfg(target_os = "linux")]
 use crate::config::SourceType;
+use crate::delivery_safety::DeliverySafetyGuard;
 use crate::local_integrations::{self, LocalSourceIntegrationPaths, LocalSourceIntegrationReport};
 use crate::providers::build_providers;
 use crate::router::Provider;
@@ -20,6 +21,7 @@ const CONFIG_RELOAD_SETTLE_DELAY: Duration = Duration::from_millis(200);
 #[derive(Clone)]
 pub struct RuntimeState {
     current: Arc<RwLock<Arc<RuntimeSnapshot>>>,
+    delivery_safety: DeliverySafetyGuard,
 }
 
 pub struct RuntimeSnapshot {
@@ -29,8 +31,16 @@ pub struct RuntimeSnapshot {
 
 impl RuntimeState {
     pub fn new(config: Config) -> anyhow::Result<Self> {
+        Self::new_with_delivery_safety(config, DeliverySafetyGuard::in_memory())
+    }
+
+    pub fn new_with_delivery_safety(
+        config: Config,
+        delivery_safety: DeliverySafetyGuard,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             current: Arc::new(RwLock::new(Arc::new(RuntimeSnapshot::new(config)?))),
+            delivery_safety,
         })
     }
 
@@ -39,6 +49,10 @@ impl RuntimeState {
             .read()
             .map(|current| Arc::clone(&current))
             .map_err(|_| anyhow::anyhow!("runtime state lock is poisoned"))
+    }
+
+    pub fn delivery_safety(&self) -> DeliverySafetyGuard {
+        self.delivery_safety.clone()
     }
 
     pub fn reload_from_path(&self, path: &Path) -> anyhow::Result<()> {

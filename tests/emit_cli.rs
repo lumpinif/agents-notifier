@@ -904,6 +904,46 @@ async fn emit_fails_when_local_service_is_not_running() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("run `agents-router start` first"));
 }
 
+#[tokio::test]
+async fn safety_reset_clears_persisted_pause_when_service_is_not_running() {
+    let home = short_home();
+    let state_path = delivery_safety_state_path_for_home(home.path());
+    create_parent(&state_path);
+    fs::write(
+        &state_path,
+        r#"{
+  "schema_version": 1,
+  "global_pause": {
+    "paused_at": "2026-05-14T00:00:00Z",
+    "reason": "multiple_duplicate_storms",
+    "message_fingerprint_count": 3,
+    "window_seconds": 120
+  }
+}"#,
+    )
+    .expect("safety state should be written");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-router"))
+        .env("HOME", home.path())
+        .args(["safety", "reset"])
+        .output()
+        .await
+        .expect("command should run");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let state: Value = serde_json::from_slice(
+        &fs::read(&state_path).expect("safety state should still exist after reset"),
+    )
+    .expect("safety state should be JSON");
+    assert_eq!(state["schema_version"], 1);
+    assert_eq!(state["global_pause"], Value::Null);
+}
+
 fn socket_path_for_home(home: &Path) -> PathBuf {
     #[cfg(target_os = "macos")]
     return home
@@ -942,6 +982,21 @@ fn service_metadata_path_for_home(home: &Path) -> PathBuf {
         .join("state")
         .join("agents-router")
         .join("service.json")
+}
+
+fn delivery_safety_state_path_for_home(home: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    return home
+        .join("Library")
+        .join("Application Support")
+        .join("agents-router")
+        .join("delivery-safety-state.json");
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    home.join(".local")
+        .join("state")
+        .join("agents-router")
+        .join("delivery-safety-state.json")
 }
 
 fn create_parent(path: &Path) {

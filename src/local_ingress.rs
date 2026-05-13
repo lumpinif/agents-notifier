@@ -18,8 +18,9 @@ use tokio::time::{Duration, timeout};
 use tracing::{info, warn};
 
 use crate::config::{AnswerDetail, Config, PromptDetail, SourceType};
+use crate::delivery_safety::DeliverySafetyGuard;
 use crate::paths::{IngressEndpoint, codex_sessions_dir_path};
-use crate::router::{Provider, Router};
+use crate::router::{DeliveryReport, Provider, Router};
 use crate::runtime::RuntimeState;
 use crate::signal::{
     Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalEventKind,
@@ -202,6 +203,8 @@ struct LocalSessionContext {
 struct LocalIngressResponse {
     ok: bool,
     error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    delivery: Option<LocalIngressDeliveryReport>,
 }
 
 impl LocalIngressResponse {
@@ -209,6 +212,24 @@ impl LocalIngressResponse {
         Self {
             ok: true,
             error: None,
+            delivery: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LocalIngressDeliveryReport {
+    pub attempted: usize,
+    pub succeeded: usize,
+    pub suppressed: usize,
+}
+
+impl From<DeliveryReport> for LocalIngressDeliveryReport {
+    fn from(report: DeliveryReport) -> Self {
+        Self {
+            attempted: report.attempted,
+            succeeded: report.succeeded,
+            suppressed: report.suppressed,
         }
     }
 }
@@ -217,23 +238,46 @@ pub async fn submit_event(
     endpoint: &IngressEndpoint,
     event: &LocalSignalEvent,
 ) -> anyhow::Result<()> {
+    submit_event_report(endpoint, event).await.map(|_| ())
+}
+
+pub async fn submit_event_report(
+    endpoint: &IngressEndpoint,
+    event: &LocalSignalEvent,
+) -> anyhow::Result<Option<LocalIngressDeliveryReport>> {
+    let request = serde_json::to_vec(event).context("failed to serialize local ingress event")?;
+    submit_raw_request(endpoint, &request).await
+}
+
+pub async fn reset_delivery_safety(endpoint: &IngressEndpoint) -> anyhow::Result<()> {
+    let request = serde_json::to_vec(&serde_json::json!({
+        "kind": "delivery_safety_reset"
+    }))
+    .context("failed to serialize delivery safety reset request")?;
+    submit_raw_request(endpoint, &request).await.map(|_| ())
+}
+
+async fn submit_raw_request(
+    endpoint: &IngressEndpoint,
+    request: &[u8],
+) -> anyhow::Result<Option<LocalIngressDeliveryReport>> {
     match endpoint {
         #[cfg(unix)]
         IngressEndpoint::UnixSocket(socket_path) => {
-            submit_event_to_unix_socket(socket_path, event).await
+            submit_raw_request_to_unix_socket(socket_path, request).await
         }
         #[cfg(windows)]
         IngressEndpoint::WindowsNamedPipe(pipe_name) => {
-            submit_event_to_windows_named_pipe(pipe_name, event).await
+            submit_raw_request_to_windows_named_pipe(pipe_name, request).await
         }
     }
 }
 
 #[cfg(unix)]
-async fn submit_event_to_unix_socket(
+async fn submit_raw_request_to_unix_socket(
     socket_path: &Path,
-    event: &LocalSignalEvent,
-) -> anyhow::Result<()> {
+    request: &[u8],
+) -> anyhow::Result<Option<LocalIngressDeliveryReport>> {
     let mut stream = UnixStream::connect(socket_path).await.with_context(|| {
         format!(
             "agents-router service is not running at `{}`; run `agents-router start` first",
@@ -241,9 +285,8 @@ async fn submit_event_to_unix_socket(
         )
     })?;
 
-    let request = serde_json::to_vec(event).context("failed to serialize local ingress event")?;
     stream
-        .write_all(&request)
+        .write_all(request)
         .await
         .context("failed to submit local ingress event")?;
     stream
@@ -260,7 +303,7 @@ async fn submit_event_to_unix_socket(
         serde_json::from_slice(&raw_response).context("failed to parse local ingress response")?;
 
     if response.ok {
-        Ok(())
+        Ok(response.delivery)
     } else {
         anyhow::bail!(
             "agents-router service rejected local ingress event: {}",
@@ -272,19 +315,18 @@ async fn submit_event_to_unix_socket(
 }
 
 #[cfg(windows)]
-async fn submit_event_to_windows_named_pipe(
+async fn submit_raw_request_to_windows_named_pipe(
     pipe_name: &str,
-    event: &LocalSignalEvent,
-) -> anyhow::Result<()> {
+    request: &[u8],
+) -> anyhow::Result<Option<LocalIngressDeliveryReport>> {
     let mut stream = ClientOptions::new().open(pipe_name).with_context(|| {
         format!(
             "agents-router service is not running at `{pipe_name}`; run `agents-router start` first"
         )
     })?;
 
-    let request = serde_json::to_vec(event).context("failed to serialize local ingress event")?;
     stream
-        .write_all(&request)
+        .write_all(request)
         .await
         .context("failed to submit local ingress event")?;
     stream
@@ -301,7 +343,7 @@ async fn submit_event_to_windows_named_pipe(
         serde_json::from_slice(&raw_response).context("failed to parse local ingress response")?;
 
     if response.ok {
-        Ok(())
+        Ok(response.delivery)
     } else {
         anyhow::bail!(
             "agents-router service rejected local ingress event: {}",
@@ -405,6 +447,7 @@ pub async fn route_event_with_state(
         codex_sessions_dir.as_deref(),
     )
     .await
+    .map(|_| ())
 }
 
 async fn route_event_with_state_and_codex_sessions_dir(
@@ -413,7 +456,26 @@ async fn route_event_with_state_and_codex_sessions_dir(
     state: &LocalIngressState,
     event: LocalSignalEvent,
     codex_sessions_dir: Option<&Path>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<DeliveryReport> {
+    route_event_with_state_and_codex_sessions_dir_and_safety(
+        config,
+        providers,
+        state,
+        event,
+        codex_sessions_dir,
+        None,
+    )
+    .await
+}
+
+async fn route_event_with_state_and_codex_sessions_dir_and_safety(
+    config: &Config,
+    providers: &[&dyn Provider],
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+    codex_sessions_dir: Option<&Path>,
+    delivery_safety: Option<&DeliverySafetyGuard>,
+) -> anyhow::Result<DeliveryReport> {
     info!(
         source.id = %event.source_id,
         action = ?event.action,
@@ -423,17 +485,17 @@ async fn route_event_with_state_and_codex_sessions_dir(
     match event.action {
         LocalSignalAction::StoreSessionContext => {
             store_session_context(config, state, event)?;
-            return Ok(());
+            return Ok(DeliveryReport::default());
         }
         LocalSignalAction::StoreTurnStart => {
             store_turn_start(config, state, event)?;
-            return Ok(());
+            return Ok(DeliveryReport::default());
         }
         LocalSignalAction::RouteSignal => {}
     }
 
     if codex_cli_stop_event_is_shadowed_by_codex_desktop(config, &event, codex_sessions_dir) {
-        return Ok(());
+        return Ok(DeliveryReport::default());
     }
 
     let mut signal = create_signal(config, event)?;
@@ -446,8 +508,29 @@ async fn route_event_with_state_and_codex_sessions_dir(
         event = "signal.created",
     );
 
-    Router::new(config).route(&signal, providers).await?;
-    Ok(())
+    Router::new(config)
+        .route_with_safety(&signal, providers, delivery_safety)
+        .await
+        .map_err(Into::into)
+}
+
+async fn route_event_with_state_and_safety(
+    config: &Config,
+    providers: &[&dyn Provider],
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+    delivery_safety: &DeliverySafetyGuard,
+) -> anyhow::Result<DeliveryReport> {
+    let codex_sessions_dir = codex_sessions_dir_path().ok();
+    route_event_with_state_and_codex_sessions_dir_and_safety(
+        config,
+        providers,
+        state,
+        event,
+        codex_sessions_dir.as_deref(),
+        Some(delivery_safety),
+    )
+    .await
 }
 
 fn codex_cli_stop_event_is_shadowed_by_codex_desktop(
@@ -488,10 +571,12 @@ pub async fn route_event_with_runtime(
     runtime: &RuntimeState,
     state: &LocalIngressState,
     event: LocalSignalEvent,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<DeliveryReport> {
     let snapshot = runtime.current()?;
     let providers = snapshot.provider_refs();
-    route_event_with_state(&snapshot.config, &providers, state, event).await
+    let delivery_safety = runtime.delivery_safety();
+    route_event_with_state_and_safety(&snapshot.config, &providers, state, event, &delivery_safety)
+        .await
 }
 
 fn store_session_context(
@@ -764,6 +849,21 @@ async fn handle_request_bytes(
         return serde_json::to_vec(&LocalIngressResponse::ok())
             .context("failed to serialize local ingress response");
     }
+    if is_delivery_safety_reset_request(raw_request) {
+        let result = runtime.delivery_safety().reset();
+        let response = match result {
+            Ok(()) => {
+                info!(event = "delivery.pause.reset");
+                LocalIngressResponse::ok()
+            }
+            Err(error) => LocalIngressResponse {
+                ok: false,
+                error: Some(error.to_string()),
+                delivery: None,
+            },
+        };
+        return serde_json::to_vec(&response).context("failed to serialize local ingress response");
+    }
 
     let result = async {
         let event: LocalSignalEvent = serde_json::from_slice(raw_request)
@@ -772,10 +872,11 @@ async fn handle_request_bytes(
     }
     .await;
 
-    let response = match &result {
-        Ok(()) => LocalIngressResponse {
+    let response = match result {
+        Ok(report) => LocalIngressResponse {
             ok: true,
             error: None,
+            delivery: Some(report.into()),
         },
         Err(error) => {
             warn!(
@@ -785,6 +886,7 @@ async fn handle_request_bytes(
             LocalIngressResponse {
                 ok: false,
                 error: Some(error.to_string()),
+                delivery: None,
             }
         }
     };
@@ -792,16 +894,27 @@ async fn handle_request_bytes(
     serde_json::to_vec(&response).context("failed to serialize local ingress response")
 }
 
+fn is_delivery_safety_reset_request(raw_request: &[u8]) -> bool {
+    request_kind(raw_request)
+        .map(|kind| kind == "delivery_safety_reset")
+        .unwrap_or(false)
+}
+
 fn is_ping_request(raw_request: &[u8]) -> bool {
+    request_kind(raw_request)
+        .map(|kind| kind == "ping")
+        .unwrap_or(false)
+}
+
+fn request_kind(raw_request: &[u8]) -> Option<String> {
     serde_json::from_slice::<serde_json::Value>(raw_request)
         .ok()
         .and_then(|value| {
             value
                 .get("kind")
                 .and_then(serde_json::Value::as_str)
-                .map(|kind| kind == "ping")
+                .map(ToOwned::to_owned)
         })
-        .unwrap_or(false)
 }
 
 #[cfg(unix)]

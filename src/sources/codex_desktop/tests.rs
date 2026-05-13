@@ -339,7 +339,7 @@ async fn provider_failure_does_not_reopen_codex_desktop_rollout_events() {
 
     let provider = FailingProvider;
     let providers: Vec<&dyn Provider> = vec![&provider];
-    route_and_checkpoint_batch(&mut watcher, &routing_config(), &providers, batch)
+    route_and_checkpoint_batch(&mut watcher, &routing_config(), &providers, batch, None)
         .await
         .expect("provider failure should not fail checkpointing");
 
