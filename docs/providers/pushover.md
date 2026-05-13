@@ -2,7 +2,7 @@
 
 中文文档：[pushover.zh-CN.md](pushover.zh-CN.md)
 
-Use Pushover when you want Agents Notifier updates on the Pushover mobile or desktop apps.
+Use Pushover when you want Agents Router updates on the Pushover mobile or desktop apps.
 
 ## Official Links
 
@@ -17,7 +17,7 @@ Use Pushover when you want Agents Notifier updates on the Pushover mobile or des
 - The Pushover app signed in on at least one device.
 - A Pushover application API token.
 - Your Pushover user key, or a group key.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Create a Pushover Application
 
@@ -29,16 +29,16 @@ Copy the application API token. It is a private 30-character value.
 
 Copy your user key from the Pushover dashboard.
 
-You can also use a Pushover group key. Agents Notifier treats user keys and group keys the same way because the Pushover API does.
+You can also use a Pushover group key. Agents Router treats user keys and group keys the same way because the Pushover API does.
 
 Keep both the application token and user key private.
 
-## 3. Connect Agents Notifier
+## 3. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -59,22 +59,22 @@ Optional fields:
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for Pushover.
+Agents Router fixes answer detail to `Preview` for Pushover.
 
-Pushover messages are limited to 1024 characters. Full answers can be long, so Agents Notifier keeps Pushover notifications short for reliable delivery.
+Pushover messages are limited to 1024 characters. Full answers can be long, so Agents Router keeps Pushover notifications short for reliable delivery.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for Pushover.
+Agents Router disables prompt detail for Pushover.
 
-Pushover messages are limited to 1024 characters. Prompts can be long, so Agents Notifier keeps prompts out of Pushover notifications to avoid unreliable delivery.
+Pushover messages are limited to 1024 characters. Prompts can be long, so Agents Router keeps prompts out of Pushover notifications to avoid unreliable delivery.
 
 ## Manual Config
 
 Pushover is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Simple config:
@@ -91,7 +91,7 @@ sources = ["codex_desktop"]
 providers = ["pushover"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["pushover"]
 ```
 
@@ -112,16 +112,16 @@ Advanced: `app_token_env` and `user_key_env` are supported, but only use them wh
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## Limits
 
 Pushover limits message titles to 250 characters and message bodies to 1024 characters.
 
-Agents Notifier fails the Pushover delivery before sending when a notification is too large. It does not silently cut your message.
+Agents Router fails the Pushover delivery before sending when a notification is too large. It does not silently cut your message.
 
-Agents Notifier always uses `Preview` answer detail for Pushover.
+Agents Router always uses `Preview` answer detail for Pushover.
 
 ## If It Does Not Show Up
 
@@ -135,5 +135,5 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```

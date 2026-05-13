@@ -4,13 +4,13 @@
 
 Use Aider integration when you want Aider to notify you after the LLM finishes generating a response and is waiting for input.
 
-Aider officially supports notifications and a custom `notifications_command`. Agents Notifier uses that command path and receives only the title and body you choose to send.
+Aider officially supports notifications and a custom `notifications_command`. Agents Router uses that command path and receives only the title and body you choose to send.
 
 Official Aider reference:
 
 - <https://aider.chat/docs/usage/notifications.html>
 
-## What Agents Notifier Needs
+## What Agents Router Needs
 
 Configure this source:
 
@@ -22,10 +22,10 @@ type = "agent_hook"
 
 Then route `aider` to your provider.
 
-Agents Notifier only needs Aider to run this command:
+Agents Router only needs Aider to run this command:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source aider \
   --title "Aider" \
   --body "Aider is ready for input."
@@ -40,7 +40,7 @@ If you wrap Aider with your own script and can capture structured fields such as
 Run Aider with a custom notification command:
 
 ```bash
-aider --notifications --notifications-command "agents-notifier emit --source aider --title \"Aider\" --body \"Aider is ready for input.\""
+aider --notifications --notifications-command "agents-router emit --source aider --title \"Aider\" --body \"Aider is ready for input.\""
 ```
 
 ## Config Example
@@ -49,7 +49,7 @@ Add this to your Aider configuration file:
 
 ```yaml
 notifications: true
-notifications_command: "agents-notifier emit --source aider --title \"Aider\" --body \"Aider is ready for input.\""
+notifications_command: "agents-router emit --source aider --title \"Aider\" --body \"Aider is ready for input.\""
 ```
 
 Keep this command in Aider notification configuration. Do not ask the agent model to run it manually.
@@ -57,20 +57,20 @@ Keep this command in Aider notification configuration. Do not ask the agent mode
 ## Test the Route
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source aider \
   --title "Aider" \
   --body "Test notification from Aider."
 ```
 
-If your provider receives this notification, the Agents Notifier side is working.
+If your provider receives this notification, the Agents Router side is working.
 
 ## If It Fails
 
 Check these first:
 
-- The local service is running with `agents-notifier status`.
+- The local service is running with `agents-router status`.
 - Your config includes the `aider` source with `type = "agent_hook"`.
 - Your route includes `aider`.
 - Aider notifications are enabled.
-- `agents-notifier` is available in the shell environment Aider uses for notification commands.
+- `agents-router` is available in the shell environment Aider uses for notification commands.

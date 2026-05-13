@@ -2,9 +2,9 @@
 
 中文文档：[telegram.zh-CN.md](telegram.zh-CN.md)
 
-Use Telegram when you want Agents Notifier updates in one Telegram chat, group, or channel.
+Use Telegram when you want Agents Router updates in one Telegram chat, group, or channel.
 
-Agents Notifier uses the Telegram Bot API `sendMessage` method. It sends plain text only.
+Agents Router uses the Telegram Bot API `sendMessage` method. It sends plain text only.
 
 ## Official Links
 
@@ -17,7 +17,7 @@ Agents Notifier uses the Telegram Bot API `sendMessage` method. It sends plain t
 - A Telegram account.
 - A Telegram bot token from BotFather.
 - One target chat id, group id, channel id, or public channel username.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Create a Telegram Bot
 
@@ -53,12 +53,12 @@ For a public channel, you can use the channel username:
 
 The bot must be able to post in the target chat or channel.
 
-## 3. Connect Agents Notifier
+## 3. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -69,26 +69,26 @@ Telegram
 
 Paste the bot token and chat id.
 
-Agents Notifier stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
+Agents Router stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for Telegram.
+Agents Router fixes answer detail to `Preview` for Telegram.
 
-Telegram Bot API text messages are limited to 4096 characters. Full answers can be long, so Agents Notifier keeps Telegram notifications short for reliable delivery.
+Telegram Bot API text messages are limited to 4096 characters. Full answers can be long, so Agents Router keeps Telegram notifications short for reliable delivery.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for Telegram.
+Agents Router disables prompt detail for Telegram.
 
-Prompts can be long and private. Telegram Bot API text messages are limited to 4096 characters, so Agents Notifier keeps prompts out of Telegram notifications.
+Prompts can be long and private. Telegram Bot API text messages are limited to 4096 characters, so Agents Router keeps prompts out of Telegram notifications.
 
 ## Manual Config
 
 Telegram is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Simple config:
@@ -105,7 +105,7 @@ sources = ["codex_desktop"]
 providers = ["telegram"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["telegram"]
 ```
 
@@ -114,16 +114,16 @@ Advanced: `bot_token_env` is supported, but only use it when the environment var
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## Limits
 
-Agents Notifier sends Telegram messages through `sendMessage` with `chat_id` and `text`.
+Agents Router sends Telegram messages through `sendMessage` with `chat_id` and `text`.
 
-If a formatted Telegram notification is too long, Agents Notifier fails the Telegram delivery before sending. It does not silently cut your message.
+If a formatted Telegram notification is too long, Agents Router fails the Telegram delivery before sending. It does not silently cut your message.
 
-Agents Notifier always uses `Preview` answer detail for Telegram.
+Agents Router always uses `Preview` answer detail for Telegram.
 
 ## If It Does Not Show Up
 
@@ -138,5 +138,5 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```

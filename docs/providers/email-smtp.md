@@ -2,9 +2,9 @@
 
 中文文档：[email-smtp.zh-CN.md](email-smtp.zh-CN.md)
 
-Use Email SMTP when you want Agents Notifier updates sent as plain text email through your own SMTP server or email provider.
+Use Email SMTP when you want Agents Router updates sent as plain text email through your own SMTP server or email provider.
 
-Agents Notifier submits email to an SMTP server. It does not receive email, read inboxes, manage OAuth, or send attachments.
+Agents Router submits email to an SMTP server. It does not receive email, read inboxes, manage OAuth, or send attachments.
 
 ## Official Links
 
@@ -23,7 +23,7 @@ Agents Notifier submits email to an SMTP server. It does not receive email, read
 - A sender email address.
 - One or more recipient email addresses.
 - SMTP username and password, unless your SMTP relay explicitly allows no authentication.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Choose TLS Mode
 
@@ -44,7 +44,7 @@ security = "starttls"
 
 Use `implicit_tls` only when your provider explicitly gives you port 465.
 
-Agents Notifier V1 does not support remote cleartext SMTP.
+Agents Router V1 does not support remote cleartext SMTP.
 
 ## 2. Prepare Credentials
 
@@ -58,12 +58,12 @@ Common examples:
 - SendGrid: username is often `apikey`, and password is the API key.
 - Mailgun: SMTP credentials from the sending domain settings.
 
-## 3. Connect Agents Notifier
+## 3. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -74,17 +74,17 @@ Email SMTP
 
 Enter the SMTP host, security mode, port, username/password if needed, sender, recipients, and optional Reply-To.
 
-Agents Notifier stores the provider, starts the local service, and sends a test email through the same service route used by real agent events.
+Agents Router stores the provider, starts the local service, and sends a test email through the same service route used by real agent events.
 
 ## Answer Detail
 
 Email SMTP does not have the same small message limit as phone/chat providers.
 
-Agents Notifier allows `Preview` or `Full Answer` for Email SMTP.
+Agents Router allows `Preview` or `Full Answer` for Email SMTP.
 
 ## Prompt Detail
 
-Agents Notifier allows prompt detail for Email SMTP, but keep privacy in mind. Email may pass through your provider's mail servers and recipient inbox storage.
+Agents Router allows prompt detail for Email SMTP, but keep privacy in mind. Email may pass through your provider's mail servers and recipient inbox storage.
 
 Prompt detail stays off by default.
 
@@ -93,7 +93,7 @@ Prompt detail stays off by default.
 Email SMTP is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Simple authenticated config:
@@ -107,7 +107,7 @@ port = 587
 security = "starttls"
 username = "alerts@example.com"
 password = "<your SMTP password or API key>"
-from = "Agents Notifier <alerts@example.com>"
+from = "Agents Router <alerts@example.com>"
 to = ["you@example.com"]
 
 [[routes]]
@@ -115,7 +115,7 @@ sources = ["codex_desktop"]
 providers = ["email"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["email"]
 ```
 
@@ -128,9 +128,9 @@ type = "email_smtp"
 host = "smtp.example.com"
 port = 587
 security = "starttls"
-username_env = "AGENTS_NOTIFIER_EMAIL_SMTP_USERNAME"
-password_env = "AGENTS_NOTIFIER_EMAIL_SMTP_PASSWORD"
-from = "Agents Notifier <alerts@example.com>"
+username_env = "AGENTS_ROUTER_EMAIL_SMTP_USERNAME"
+password_env = "AGENTS_ROUTER_EMAIL_SMTP_PASSWORD"
+from = "Agents Router <alerts@example.com>"
 to = ["you@example.com", "team@example.com"]
 reply_to = "reply@example.com"
 ```
@@ -144,21 +144,21 @@ type = "email_smtp"
 host = "smtp-relay.internal.example.com"
 port = 587
 security = "starttls"
-from = "Agents Notifier <alerts@example.com>"
+from = "Agents Router <alerts@example.com>"
 to = ["you@example.com"]
 ```
 
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## Delivery Semantics
 
 SMTP success means the SMTP server accepted the message for delivery. It does not guarantee the message reached the final inbox.
 
-Agents Notifier maps SMTP status classes like this:
+Agents Router maps SMTP status classes like this:
 
 - 2xx: sent.
 - 4xx: temporary provider failure, retriable.
@@ -178,5 +178,5 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```

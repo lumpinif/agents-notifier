@@ -129,7 +129,7 @@ mod tests {
         let event = local_event_from_stop_hook(
             "codex_cli",
             CodexCliStopHookInput {
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "Stop".to_string(),
                 last_assistant_message: Some("Ready for review.".to_string()),
                 model: Some("gpt-5.2-codex".to_string()),
@@ -145,7 +145,7 @@ mod tests {
                 .workspace
                 .as_ref()
                 .and_then(|workspace| workspace.project_name.as_deref()),
-            Some("agents-notifier")
+            Some("agents-router")
         );
         assert_eq!(
             event
@@ -175,7 +175,7 @@ mod tests {
         let event = local_event_from_stop_hook(
             "codex_cli",
             CodexCliStopHookInput {
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "Stop".to_string(),
                 last_assistant_message: Some("Ready for review.".to_string()),
                 model: None,

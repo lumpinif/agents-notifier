@@ -6,10 +6,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const PACKAGE_BY_PLATFORM = {
-  "darwin arm64": "agents-notifier-darwin-arm64",
-  "darwin x64": "agents-notifier-darwin-x64",
-  "linux x64": "agents-notifier-linux-x64-gnu",
-  "win32 x64": "agents-notifier-win32-x64-msvc",
+  "darwin arm64": "agents-router-darwin-arm64",
+  "darwin x64": "agents-router-darwin-x64",
+  "linux x64": "agents-router-linux-x64-gnu",
+  "win32 x64": "agents-router-win32-x64-msvc",
 };
 
 function pathParts(filePath) {
@@ -45,7 +45,7 @@ function nativeBinaryPath() {
   }
 
   const binaryName =
-    process.platform === "win32" ? "agents-notifier.exe" : "agents-notifier";
+    process.platform === "win32" ? "agents-router.exe" : "agents-router";
   const binaryPath = path.join(path.dirname(packageJsonPath), "bin", binaryName);
   return fs.existsSync(binaryPath) ? binaryPath : null;
 }
@@ -56,7 +56,7 @@ function runNative(binaryPath, args, stdio) {
     stdio,
     env: {
       ...process.env,
-      AGENTS_NOTIFIER_INSTALL_METHOD: "npm",
+      AGENTS_ROUTER_INSTALL_METHOD: "npm",
     },
   });
 }
@@ -75,10 +75,10 @@ if (!binaryPath || isNpxCachePath(binaryPath) || !serviceIsRunning(binaryPath)) 
   process.exit(0);
 }
 
-console.error("agents-notifier: restarting existing service after npm install...");
+console.error("agents-router: restarting existing service after npm install...");
 const result = runNative(binaryPath, ["restart"], "inherit");
 if (result.error) {
-  console.error(`agents-notifier: failed to restart service: ${result.error.message}`);
+  console.error(`agents-router: failed to restart service: ${result.error.message}`);
   process.exit(1);
 }
 

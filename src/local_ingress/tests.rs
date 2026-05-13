@@ -91,18 +91,18 @@ async fn route_event_creates_codex_cli_signal_and_uses_service_router() {
 }
 
 #[tokio::test]
-async fn route_event_creates_agents_notifier_signal_for_service_tests() {
+async fn route_event_creates_agents_router_signal_for_service_tests() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let provider = TestProvider {
         calls: Arc::clone(&calls),
     };
 
     route_event(
-        &test_config("agents_notifier", SourceType::AgentsNotifier),
+        &test_config("agents_router", SourceType::AgentsRouter),
         &[&provider],
         LocalSignalEvent::new(
-            "agents_notifier",
-            "Agents Notifier",
+            "agents_router",
+            "Agents Router",
             "Test notification from your computer.",
         ),
     )
@@ -111,7 +111,7 @@ async fn route_event_creates_agents_notifier_signal_for_service_tests() {
 
     assert_eq!(
         *calls.lock().expect("calls lock should not be poisoned"),
-        vec!["agents_notifier:Test notification from your computer.".to_string()]
+        vec!["agents_router:Test notification from your computer.".to_string()]
     );
 }
 
@@ -261,9 +261,9 @@ fn create_signal_applies_structured_fields_with_notification_policy() {
         raw_name: Some("Stop".to_string()),
     });
     event.workspace = Some(SignalWorkspace {
-        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
-        project_name: Some("agents-notifier".to_string()),
-        project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
+        project_name: Some("agents-router".to_string()),
+        project_path: Some("/Users/tester/projects/agents-router".to_string()),
         branch: None,
         worktree: None,
     });
@@ -300,7 +300,7 @@ fn create_signal_applies_structured_fields_with_notification_policy() {
             .workspace
             .as_ref()
             .and_then(|workspace| workspace.project_name.as_deref()),
-        Some("agents-notifier")
+        Some("agents-router")
     );
     assert_eq!(conversation.prompt, None);
     assert_eq!(conversation.model.as_deref(), Some("gpt-5.2-codex"));

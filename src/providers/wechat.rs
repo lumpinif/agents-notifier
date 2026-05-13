@@ -15,7 +15,7 @@ use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
-const WECHAT_CHANNEL_VERSION: &str = "agents-notifier-wechat/1.0";
+const WECHAT_CHANNEL_VERSION: &str = "agents-router-wechat/1.0";
 const WECHAT_TEXT_LIMIT: usize = 3800;
 
 #[derive(Debug)]
@@ -394,7 +394,7 @@ fn truncate_for_error(value: &str, max: usize) -> String {
 
 fn random_client_id() -> String {
     let id = Uuid::new_v4().simple().to_string();
-    format!("agents-notifier-{}", &id[..12])
+    format!("agents-router-{}", &id[..12])
 }
 
 fn random_wechat_uin() -> String {

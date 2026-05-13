@@ -180,7 +180,7 @@ mod tests {
             server: None,
             topic: None,
             url: Some("https://example.com/hook".to_string()),
-            url_env: Some("AGENTS_NOTIFIER_WEBHOOK_URL".to_string()),
+            url_env: Some("AGENTS_ROUTER_WEBHOOK_URL".to_string()),
             secret: None,
             secret_env: None,
             app_token: None,

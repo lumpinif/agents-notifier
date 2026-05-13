@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "agents-notifier"
+name = "agents-router"
 version = "0.8.1"
 dependencies = [
  "anyhow",

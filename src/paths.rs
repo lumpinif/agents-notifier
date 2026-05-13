@@ -84,7 +84,7 @@ pub fn default_config_file_path() -> anyhow::Result<PathBuf> {
 }
 
 pub fn pid_file_path_for_home(home: &Path) -> PathBuf {
-    app_support_dir_path_for_home(home).join("agents-notifier.pid")
+    app_support_dir_path_for_home(home).join("agents-router.pid")
 }
 
 pub fn app_support_dir_path_for_home(home: &Path) -> PathBuf {
@@ -92,13 +92,13 @@ pub fn app_support_dir_path_for_home(home: &Path) -> PathBuf {
     return home
         .join("Library")
         .join("Application Support")
-        .join("agents-notifier");
+        .join("agents-router");
 
     #[cfg(all(unix, not(target_os = "macos")))]
-    return home.join(".local").join("state").join("agents-notifier");
+    return home.join(".local").join("state").join("agents-router");
 
     #[cfg(windows)]
-    return home.join("AppData").join("Local").join("agents-notifier");
+    return home.join("AppData").join("Local").join("agents-router");
 }
 
 pub fn service_file_path_for_home(home: &Path) -> Option<PathBuf> {
@@ -106,7 +106,7 @@ pub fn service_file_path_for_home(home: &Path) -> Option<PathBuf> {
     return Some(
         home.join("Library")
             .join("LaunchAgents")
-            .join("com.agents-notifier.service.plist"),
+            .join("com.agents-router.service.plist"),
     );
 
     #[cfg(target_os = "linux")]
@@ -114,7 +114,7 @@ pub fn service_file_path_for_home(home: &Path) -> Option<PathBuf> {
         home.join(".config")
             .join("systemd")
             .join("user")
-            .join("agents-notifier.service"),
+            .join("agents-router.service"),
     );
 
     #[cfg(windows)]
@@ -126,20 +126,20 @@ pub fn log_file_path_for_home(home: &Path) -> PathBuf {
     return home
         .join("Library")
         .join("Logs")
-        .join("agents-notifier")
-        .join("agents-notifier.log");
+        .join("agents-router")
+        .join("agents-router.log");
 
     #[cfg(all(unix, not(target_os = "macos")))]
-    return app_support_dir_path_for_home(home).join("agents-notifier.log");
+    return app_support_dir_path_for_home(home).join("agents-router.log");
 
     #[cfg(windows)]
     return app_support_dir_path_for_home(home)
         .join("logs")
-        .join("agents-notifier.log");
+        .join("agents-router.log");
 }
 
 pub fn socket_file_path_for_home(home: &Path) -> PathBuf {
-    app_support_dir_path_for_home(home).join("agents-notifier.sock")
+    app_support_dir_path_for_home(home).join("agents-router.sock")
 }
 
 pub fn service_metadata_path_for_home(home: &Path) -> PathBuf {
@@ -163,12 +163,12 @@ pub fn default_config_file_path_for_home(home: &Path) -> PathBuf {
     return home
         .join("AppData")
         .join("Roaming")
-        .join("agents-notifier")
+        .join("agents-router")
         .join("config.toml");
 
     #[cfg(not(windows))]
     home.join(".config")
-        .join("agents-notifier")
+        .join("agents-router")
         .join("config.toml")
 }
 
@@ -199,7 +199,7 @@ fn platform_state_dir_path() -> anyhow::Result<PathBuf> {
         if let Some(state_home) = std::env::var_os("XDG_STATE_HOME")
             && !state_home.is_empty()
         {
-            return Ok(PathBuf::from(state_home).join("agents-notifier"));
+            return Ok(PathBuf::from(state_home).join("agents-router"));
         }
 
         return Ok(app_support_dir_path_for_home(&home_dir()?));
@@ -211,7 +211,7 @@ fn platform_state_dir_path() -> anyhow::Result<PathBuf> {
         if local_app_data.is_empty() {
             anyhow::bail!("LOCALAPPDATA is empty");
         }
-        return Ok(PathBuf::from(local_app_data).join("agents-notifier"));
+        return Ok(PathBuf::from(local_app_data).join("agents-router"));
     }
 }
 
@@ -224,18 +224,18 @@ fn platform_log_file_path() -> anyhow::Result<PathBuf> {
     return Ok(log_file_path_for_home(&home_dir()?));
 
     #[cfg(target_os = "linux")]
-    return Ok(platform_state_dir_path()?.join("agents-notifier.log"));
+    return Ok(platform_state_dir_path()?.join("agents-router.log"));
 
     #[cfg(windows)]
     return Ok(platform_state_dir_path()?
         .join("logs")
-        .join("agents-notifier.log"));
+        .join("agents-router.log"));
 }
 
 fn platform_ingress_endpoint() -> anyhow::Result<IngressEndpoint> {
     #[cfg(unix)]
     return Ok(IngressEndpoint::UnixSocket(
-        app_support_dir_path()?.join("agents-notifier.sock"),
+        app_support_dir_path()?.join("agents-router.sock"),
     ));
 
     #[cfg(windows)]
@@ -243,7 +243,7 @@ fn platform_ingress_endpoint() -> anyhow::Result<IngressEndpoint> {
         let home = home_dir()?;
         let suffix = short_hash(&home.to_string_lossy());
         return Ok(IngressEndpoint::WindowsNamedPipe(format!(
-            r"\\.\pipe\agents-notifier-{suffix}"
+            r"\\.\pipe\agents-router-{suffix}"
         )));
     }
 }
@@ -266,7 +266,7 @@ mod tests {
         let home = test_home();
         let path = pid_file_path_for_home(&home);
 
-        assert_eq!(path, expected_state_dir(&home).join("agents-notifier.pid"));
+        assert_eq!(path, expected_state_dir(&home).join("agents-router.pid"));
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
         let home = test_home();
         let path = socket_file_path_for_home(&home);
 
-        assert_eq!(path, expected_state_dir(&home).join("agents-notifier.sock"));
+        assert_eq!(path, expected_state_dir(&home).join("agents-router.sock"));
     }
 
     #[test]
@@ -357,13 +357,13 @@ mod tests {
         return home
             .join("Library")
             .join("Application Support")
-            .join("agents-notifier");
+            .join("agents-router");
 
         #[cfg(all(unix, not(target_os = "macos")))]
-        return home.join(".local").join("state").join("agents-notifier");
+        return home.join(".local").join("state").join("agents-router");
 
         #[cfg(windows)]
-        return home.join("AppData").join("Local").join("agents-notifier");
+        return home.join("AppData").join("Local").join("agents-router");
     }
 
     fn expected_service_file(home: &Path) -> Option<PathBuf> {
@@ -371,7 +371,7 @@ mod tests {
         return Some(
             home.join("Library")
                 .join("LaunchAgents")
-                .join("com.agents-notifier.service.plist"),
+                .join("com.agents-router.service.plist"),
         );
 
         #[cfg(target_os = "linux")]
@@ -379,7 +379,7 @@ mod tests {
             home.join(".config")
                 .join("systemd")
                 .join("user")
-                .join("agents-notifier.service"),
+                .join("agents-router.service"),
         );
 
         #[cfg(windows)]
@@ -391,16 +391,16 @@ mod tests {
         return home
             .join("Library")
             .join("Logs")
-            .join("agents-notifier")
-            .join("agents-notifier.log");
+            .join("agents-router")
+            .join("agents-router.log");
 
         #[cfg(all(unix, not(target_os = "macos")))]
-        return expected_state_dir(home).join("agents-notifier.log");
+        return expected_state_dir(home).join("agents-router.log");
 
         #[cfg(windows)]
         return expected_state_dir(home)
             .join("logs")
-            .join("agents-notifier.log");
+            .join("agents-router.log");
     }
 
     fn expected_config_file(home: &Path) -> PathBuf {
@@ -408,13 +408,13 @@ mod tests {
         return home
             .join("AppData")
             .join("Roaming")
-            .join("agents-notifier")
+            .join("agents-router")
             .join("config.toml");
 
         #[cfg(not(windows))]
         return home
             .join(".config")
-            .join("agents-notifier")
+            .join("agents-router")
             .join("config.toml");
     }
 }

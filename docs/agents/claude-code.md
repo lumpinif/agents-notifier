@@ -2,26 +2,26 @@
 
 中文文档：[claude-code.zh-CN.md](claude-code.zh-CN.md)
 
-Use Claude Code integration when you want Claude Code lifecycle hooks to submit completion or attention events to the running Agents Notifier service.
+Use Claude Code integration when you want Claude Code lifecycle hooks to submit completion or attention events to the running Agents Router service.
 
-Claude Code hooks are user-defined commands that run at lifecycle points such as `SessionStart`, `Stop`, and `Notification`. Agents Notifier uses that official hook path and reads the hook JSON Claude Code sends on stdin.
+Claude Code hooks are user-defined commands that run at lifecycle points such as `SessionStart`, `Stop`, and `Notification`. Agents Router uses that official hook path and reads the hook JSON Claude Code sends on stdin.
 
 Official Claude Code hook reference: <https://code.claude.com/docs/en/hooks>
 
-## What Agents Notifier Needs
+## What Agents Router Needs
 
 For structured notifications, configure Claude Code to run:
 
 ```bash
-agents-notifier ingest --source claude_code --format claude_code_hook
+agents-router ingest --source claude_code --format claude_code_hook
 ```
 
-`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, model, and the last assistant message. Claude Code exposes `model` on `SessionStart`, so Agents Notifier records that session context and merges it into the later `Stop` signal for the same session. Agents Notifier validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
+`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, model, and the last assistant message. Claude Code exposes `model` on `SessionStart`, so Agents Router records that session context and merges it into the later `Stop` signal for the same session. Agents Router validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
 
 If you only need a simple custom message, Claude Code can run this command instead:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source claude_code \
   --title "Claude Code" \
   --body "Claude Code finished a task."
@@ -34,7 +34,7 @@ agents-notifier emit \
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -71,7 +71,7 @@ Example:
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
+            "command": "agents-router ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -81,7 +81,7 @@ Example:
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
+            "command": "agents-router ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -92,7 +92,7 @@ Example:
         "hooks": [
           {
             "type": "command",
-            "command": "agents-notifier ingest --source claude_code --format claude_code_hook"
+            "command": "agents-router ingest --source claude_code --format claude_code_hook"
           }
         ]
       }
@@ -110,15 +110,15 @@ When structured hook stdin is not available, use the simple `emit` command shown
 After the service is running, test the same ingress path:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source claude_code \
   --title "Claude Code" \
   --body "Test notification from Claude Code."
 ```
 
-If the provider receives this notification, the Agents Notifier side is working.
+If the provider receives this notification, the Agents Router side is working.
 
-If Claude Code itself cannot run on your machine, this manual `emit` test is still the right local validation for Agents Notifier. It verifies the same local ingress, source adapter, router, and provider path that a Claude Code hook uses.
+If Claude Code itself cannot run on your machine, this manual `emit` test is still the right local validation for Agents Router. It verifies the same local ingress, source adapter, router, and provider path that a Claude Code hook uses.
 
 ## If It Fails
 
@@ -127,11 +127,11 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```
 
 - Your config includes the `claude_code` source.
 - The route includes `claude_code`.
 - The hook command uses `--source claude_code`.
-- Structured hooks use `agents-notifier ingest --source claude_code --format claude_code_hook`.
-- `agents-notifier` is available in the shell environment Claude Code uses for hooks.
+- Structured hooks use `agents-router ingest --source claude_code --format claude_code_hook`.
+- `agents-router` is available in the shell environment Claude Code uses for hooks.

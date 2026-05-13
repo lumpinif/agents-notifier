@@ -27,7 +27,7 @@ pub const DEFAULT_WECHAT_BASE_URL: &str = "https://ilinkai.weixin.qq.com";
 pub const DEFAULT_WECHAT_BOT_TYPE: &str = "3";
 pub const DEFAULT_WECHAT_QR_TIMEOUT: Duration = Duration::from_secs(480);
 pub const DEFAULT_WECHAT_LINK_TIMEOUT: Duration = Duration::from_secs(180);
-const WECHAT_SETUP_CHANNEL_VERSION: &str = "agents-notifier-wechat-setup/1.0";
+const WECHAT_SETUP_CHANNEL_VERSION: &str = "agents-router-wechat-setup/1.0";
 pub const TEST_NOTIFICATION_SKIPPED_MESSAGE: &str =
     "Service is running. No test notification was sent.";
 
@@ -168,9 +168,9 @@ fn temporary_config_path(path: &Path) -> anyhow::Result<std::path::PathBuf> {
 
 pub fn missing_config_message(path: &str) -> String {
     format!(
-        r#"No agents-notifier config found at `{path}`.
+        r#"No agents-router config found at `{path}`.
 
-Run `agents-notifier setup` in an interactive terminal to choose an agent and a notification provider.
+Run `agents-router setup` in an interactive terminal to choose an agent and a notification provider.
 
 If you are running non-interactively, create the config file first or pass `--config <PATH>`."#
     )

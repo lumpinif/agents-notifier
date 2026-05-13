@@ -54,7 +54,7 @@ if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; t
 fi
 
 package_version="$(cargo metadata --no-deps --format-version 1 \
-  | sed -n 's/.*"name":"agents-notifier","version":"\([^"]*\)".*/\1/p')"
+  | sed -n 's/.*"name":"agents-router","version":"\([^"]*\)".*/\1/p')"
 
 if [[ "$package_version" != "$version" ]]; then
   if [[ "$local_main" != "$remote_main" ]]; then
@@ -94,7 +94,7 @@ if [[ "$package_version" != "$version" ]]; then
   cargo check
 
   package_version="$(cargo metadata --no-deps --format-version 1 \
-    | sed -n 's/.*"name":"agents-notifier","version":"\([^"]*\)".*/\1/p')"
+    | sed -n 's/.*"name":"agents-router","version":"\([^"]*\)".*/\1/p')"
 
   if [[ "$package_version" != "$version" ]]; then
     echo "Cargo.toml version is ${package_version}, expected ${version}."

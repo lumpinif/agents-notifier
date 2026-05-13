@@ -1,11 +1,11 @@
 # Structured Agent Hook
 
-Use this format when an agent does not expose a native Agents Notifier integration, but your wrapper or plugin can write JSON safely.
+Use this format when an agent does not expose a native Agents Router integration, but your wrapper or plugin can write JSON safely.
 
 Command:
 
 ```bash
-agents-notifier ingest --source <source_id> --format agent_hook_event
+agents-router ingest --source <source_id> --format agent_hook_event
 ```
 
 The command reads one JSON object from stdin:

@@ -2,13 +2,13 @@
 
 中文文档：[webhook.zh-CN.md](webhook.zh-CN.md)
 
-Use webhook when you want Agents Notifier to POST every `Signal` to your own endpoint.
+Use webhook when you want Agents Router to POST every `Signal` to your own endpoint.
 
 This is the clean integration path for internal tools, automations, dashboards, and custom notification bridges.
 
 ## Payload
 
-Agents Notifier sends the full `Signal` as JSON:
+Agents Router sends the full `Signal` as JSON:
 
 ```json
 {
@@ -39,7 +39,7 @@ Anything else is treated as a failed delivery.
 
 - An HTTPS endpoint that accepts `POST`.
 - A stable URL.
-- Agents Notifier installed.
+- Agents Router installed.
 
 Local test URLs such as `http://127.0.0.1:8080/hook` are accepted during setup. Remote HTTP URLs are rejected.
 
@@ -54,12 +54,12 @@ Content-Type: application/json
 
 Start simple. Log the request body first. Add processing after you see the first signal.
 
-## 2. Connect Agents Notifier
+## 2. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -70,14 +70,14 @@ Webhook
 
 Paste the HTTPS endpoint URL.
 
-Agents Notifier stores the provider, starts the local service, and sends a test JSON payload through the same service route used by real agent events.
+Agents Router stores the provider, starts the local service, and sends a test JSON payload through the same service route used by real agent events.
 
 ## Manual Config
 
 Webhook is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Use `url` for the local service:
@@ -86,7 +86,7 @@ Use `url` for the local service:
 [[providers]]
 id = "debug_webhook"
 type = "webhook"
-url = "https://example.com/agents-notifier"
+url = "https://example.com/agents-router"
 
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
@@ -96,7 +96,7 @@ providers = ["debug_webhook"]
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 Advanced: `url_env` is supported, but only use it when the environment variable is visible to the running service. For normal setup, `url` is simpler and more predictable.
@@ -118,7 +118,7 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```
 
 ## Security

@@ -2,9 +2,9 @@
 
 中文文档：[whatsapp.zh-CN.md](whatsapp.zh-CN.md)
 
-Use WhatsApp when you want Agents Notifier updates sent to one WhatsApp user through the WhatsApp Business Platform Cloud API.
+Use WhatsApp when you want Agents Router updates sent to one WhatsApp user through the WhatsApp Business Platform Cloud API.
 
-Agents Notifier sends non-template text messages with the Cloud API. This is a notification sender, not a two-way WhatsApp chat bot.
+Agents Router sends non-template text messages with the Cloud API. This is a notification sender, not a two-way WhatsApp chat bot.
 
 ## Official Links
 
@@ -18,7 +18,7 @@ Agents Notifier sends non-template text messages with the Cloud API. This is a n
 - A WhatsApp Business phone number ID.
 - A system user access token that can send WhatsApp messages.
 - One recipient phone number with country code and digits only.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Prepare WhatsApp Cloud API Access
 
@@ -38,7 +38,7 @@ Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 ```
 
-Agents Notifier sends:
+Agents Router sends:
 
 ```json
 {
@@ -47,7 +47,7 @@ Agents Notifier sends:
   "to": "15551234567",
   "type": "text",
   "text": {
-    "body": "Agents Notifier message"
+    "body": "Agents Router message"
   }
 }
 ```
@@ -56,14 +56,14 @@ Agents Notifier sends:
 
 WhatsApp non-template messages are for the customer service window. In practice, this means the recipient normally needs to have messaged your WhatsApp Business account within the allowed window.
 
-Agents Notifier does not send WhatsApp template messages in this provider. It only sends plain notification text.
+Agents Router does not send WhatsApp template messages in this provider. It only sends plain notification text.
 
-## 3. Connect Agents Notifier
+## 3. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -74,26 +74,26 @@ WhatsApp
 
 Paste the access token, phone number ID, and recipient phone number.
 
-Agents Notifier stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
+Agents Router stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for WhatsApp.
+Agents Router fixes answer detail to `Preview` for WhatsApp.
 
-WhatsApp notifications should stay short. Agents Notifier uses a 4096-character local guard for WhatsApp text bodies and fails before sending if a formatted notification is too long.
+WhatsApp notifications should stay short. Agents Router uses a 4096-character local guard for WhatsApp text bodies and fails before sending if a formatted notification is too long.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for WhatsApp.
+Agents Router disables prompt detail for WhatsApp.
 
-Prompts can be long and private, so Agents Notifier keeps prompts out of WhatsApp notifications.
+Prompts can be long and private, so Agents Router keeps prompts out of WhatsApp notifications.
 
 ## Manual Config
 
 WhatsApp is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Simple config:
@@ -111,7 +111,7 @@ sources = ["codex_desktop"]
 providers = ["whatsapp"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["whatsapp"]
 ```
 
@@ -120,16 +120,16 @@ Advanced: `access_token_env` is supported, but only use it when the environment 
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## Limits
 
-Agents Notifier uses Graph API version `v23.0`.
+Agents Router uses Graph API version `v23.0`.
 
 `phone_number_id` must be digits only. `recipient_phone_number` must be 7 to 15 digits with no `+`, spaces, or punctuation.
 
-If a formatted WhatsApp notification is too long, Agents Notifier fails the WhatsApp delivery before sending. It does not silently cut your message.
+If a formatted WhatsApp notification is too long, Agents Router fails the WhatsApp delivery before sending. It does not silently cut your message.
 
 ## If It Does Not Show Up
 
@@ -144,5 +144,5 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```

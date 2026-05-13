@@ -1,9 +1,9 @@
 mod support;
 
-use agents_notifier::config::SourceType;
-use agents_notifier::local_ingress::{LocalIngressState, route_event_with_state};
-use agents_notifier::signal::{SignalAnswerKind, SignalEventKind};
-use agents_notifier::sources::{claude_code, codex_cli, gemini_cli, github_copilot_cli};
+use agents_router::config::SourceType;
+use agents_router::local_ingress::{LocalIngressState, route_event_with_state};
+use agents_router::signal::{SignalAnswerKind, SignalEventKind};
+use agents_router::sources::{claude_code, codex_cli, gemini_cli, github_copilot_cli};
 use support::{SignalCaptureProvider, source_contract_config};
 
 #[tokio::test]
@@ -130,7 +130,7 @@ async fn gemini_cli_after_agent_fixture_routes_turn_completed_signal() {
             .workspace
             .as_ref()
             .and_then(|workspace| workspace.project_name.as_deref()),
-        Some("agents-notifier")
+        Some("agents-router")
     );
     let conversation = signal
         .conversation

@@ -212,14 +212,14 @@ fn build_config(
         sources: vec![
             agent_source,
             SourceConfig {
-                id: "agents_notifier".to_string(),
-                source_type: SourceType::AgentsNotifier,
+                id: "agents_router".to_string(),
+                source_type: SourceType::AgentsRouter,
             },
         ],
         providers,
         routes: vec![
             RouteConfig::new(vec![agent_source_id], provider_ids.clone()),
-            RouteConfig::new(vec!["agents_notifier".to_string()], provider_ids),
+            RouteConfig::new(vec!["agents_router".to_string()], provider_ids),
         ],
     }
 }

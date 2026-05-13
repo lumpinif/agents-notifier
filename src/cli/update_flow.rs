@@ -10,14 +10,14 @@ use std::process::Command;
 use anyhow::Context;
 use console::style;
 
-use agents_notifier::config::CliLanguage;
-use agents_notifier::i18n::I18n;
-use agents_notifier::update::{self, AppVersion, SKIP_UPDATE_CHECK_ENV, UpdateInstallMethod};
+use agents_router::config::CliLanguage;
+use agents_router::i18n::I18n;
+use agents_router::update::{self, AppVersion, SKIP_UPDATE_CHECK_ENV, UpdateInstallMethod};
 
 use super::setup_flow::prompt_confirm;
 
-const NPM_PACKAGE_NAME: &str = "agents-notifier";
-const OFFICIAL_REPO: &str = "lumpinif/agents-notifier";
+const NPM_PACKAGE_NAME: &str = "agents-router";
+const OFFICIAL_REPO: &str = "lumpinif/agents-router";
 
 pub(super) enum SetupUpdateOutcome {
     Continue,
@@ -98,7 +98,7 @@ pub(super) async fn maybe_update_before_setup(
 
     let current_exe = std::env::current_exe().context("failed to locate current executable")?;
     let current_version = AppVersion::parse(env!("CARGO_PKG_VERSION"))
-        .context("failed to parse current agents-notifier version")?;
+        .context("failed to parse current agents-router version")?;
     let platform = current_update_runtime_platform();
     let context = current_update_command_context(&current_exe);
     let install_method_marker = match update::read_install_method_marker(&current_exe) {
@@ -158,11 +158,11 @@ fn print_update_check_failure(i18n: I18n, current_version: AppVersion, error: &a
                 style("Could not check for updates:").yellow(),
                 error
             );
-            println!("Continuing with agents-notifier {current_version}.");
+            println!("Continuing with agents-router {current_version}.");
         }
         CliLanguage::SimplifiedChinese => {
             println!("{} {}", style("检查更新失败：").yellow(), error);
-            println!("继续使用 agents-notifier {current_version}。");
+            println!("继续使用 agents-router {current_version}。");
         }
     }
     println!();
@@ -195,8 +195,8 @@ fn update_before_setup_prompt(i18n: I18n) -> &'static str {
 
 fn update_starting_message(i18n: I18n) -> &'static str {
     match i18n.language() {
-        CliLanguage::English => "Updating Agents Notifier...",
-        CliLanguage::SimplifiedChinese => "正在更新 Agents Notifier...",
+        CliLanguage::English => "Updating Agents Router...",
+        CliLanguage::SimplifiedChinese => "正在更新 Agents Router...",
     }
 }
 
@@ -210,7 +210,7 @@ fn current_update_runtime_platform() -> UpdateRuntimePlatform {
 
 fn current_update_command_context(current_exe: &Path) -> UpdateCommandContext {
     UpdateCommandContext {
-        install_dir: non_empty_env_path("AGENTS_NOTIFIER_INSTALL_DIR"),
+        install_dir: non_empty_env_path("AGENTS_ROUTER_INSTALL_DIR"),
         current_exe: Some(current_exe.to_path_buf()),
         home: non_empty_env_path("HOME"),
         local_app_data: non_empty_env_path("LOCALAPPDATA"),
@@ -241,14 +241,14 @@ fn build_setup_update_commands(
                 .arg(config_path.as_os_str())
                 .skip_update_check();
             if let Some(install_dir) = current_binary_install_dir(context) {
-                command = command.env_var("AGENTS_NOTIFIER_INSTALL_DIR", install_dir.as_os_str());
+                command = command.env_var("AGENTS_ROUTER_INSTALL_DIR", install_dir.as_os_str());
             }
             Ok(vec![command])
         }
         UpdateInstallMethod::Npm => {
             let mut commands = Vec::new();
             if platform == UpdateRuntimePlatform::Windows {
-                commands.push(UpdateCommand::new("agents-notifier").arg("stop"));
+                commands.push(UpdateCommand::new("agents-router").arg("stop"));
             }
             commands.push(
                 UpdateCommand::new("npm")
@@ -257,7 +257,7 @@ fn build_setup_update_commands(
                     .arg(format!("{NPM_PACKAGE_NAME}@{latest_version}")),
             );
             commands.push(
-                UpdateCommand::new("agents-notifier")
+                UpdateCommand::new("agents-router")
                     .arg("setup")
                     .arg("--config")
                     .arg(config_path.as_os_str())
@@ -280,9 +280,9 @@ fn build_setup_update_commands(
                     .arg("-Command")
                     .arg(install_ps1_command(&release_tag)),
             }
-            .env_var("AGENTS_NOTIFIER_REPO", OFFICIAL_REPO)
-            .env_var("AGENTS_NOTIFIER_VERSION", release_tag)
-            .env_var("AGENTS_NOTIFIER_INSTALL_DIR", install_dir.as_os_str());
+            .env_var("AGENTS_ROUTER_REPO", OFFICIAL_REPO)
+            .env_var("AGENTS_ROUTER_VERSION", release_tag)
+            .env_var("AGENTS_ROUTER_INSTALL_DIR", install_dir.as_os_str());
 
             Ok(vec![
                 install_command,
@@ -313,15 +313,15 @@ fn stable_script_install_dir(
     match platform {
         UpdateRuntimePlatform::Unix => {
             let home = context.home.as_ref().context(
-                "HOME is not set; set AGENTS_NOTIFIER_INSTALL_DIR to choose an install directory",
+                "HOME is not set; set AGENTS_ROUTER_INSTALL_DIR to choose an install directory",
             )?;
             Ok(home.join(".local").join("bin"))
         }
         UpdateRuntimePlatform::Windows => {
             let local_app_data = context.local_app_data.as_ref().context(
-                "LOCALAPPDATA is not set; set AGENTS_NOTIFIER_INSTALL_DIR to choose an install directory",
+                "LOCALAPPDATA is not set; set AGENTS_ROUTER_INSTALL_DIR to choose an install directory",
             )?;
-            Ok(local_app_data.join("Programs").join("agents-notifier"))
+            Ok(local_app_data.join("Programs").join("agents-router"))
         }
     }
 }
@@ -352,7 +352,7 @@ fn known_script_binary_path(
         UpdateRuntimePlatform::Windows => context.local_app_data.as_ref().map(|local_app_data| {
             local_app_data
                 .join("Programs")
-                .join("agents-notifier")
+                .join("agents-router")
                 .join(binary_name(platform))
         }),
     }
@@ -360,8 +360,8 @@ fn known_script_binary_path(
 
 fn binary_name(platform: UpdateRuntimePlatform) -> &'static str {
     match platform {
-        UpdateRuntimePlatform::Unix => "agents-notifier",
-        UpdateRuntimePlatform::Windows => "agents-notifier.exe",
+        UpdateRuntimePlatform::Unix => "agents-router",
+        UpdateRuntimePlatform::Windows => "agents-router.exe",
     }
 }
 
@@ -442,7 +442,7 @@ fn windows_update_helper_path() -> anyhow::Result<PathBuf> {
         .context("system clock is before UNIX_EPOCH")?
         .as_millis();
     Ok(std::env::temp_dir().join(format!(
-        "agents-notifier-update-{}-{now}.ps1",
+        "agents-router-update-{}-{now}.ps1",
         std::process::id()
     )))
 }
@@ -494,14 +494,14 @@ fn powershell_quote(value: &OsStr) -> String {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use agents_notifier::update::AppVersion;
+    use agents_router::update::AppVersion;
 
     use super::*;
 
     #[test]
     fn npx_update_command_runs_latest_setup_with_config() {
         let context = UpdateCommandContext {
-            current_exe: Some(PathBuf::from("/Users/tester/.local/bin/agents-notifier")),
+            current_exe: Some(PathBuf::from("/Users/tester/.local/bin/agents-router")),
             ..UpdateCommandContext::default()
         };
 
@@ -521,7 +521,7 @@ mod tests {
             vec![
                 OsString::from("--yes"),
                 OsString::from("--prefer-online"),
-                OsString::from("agents-notifier@0.8.0"),
+                OsString::from("agents-router@0.8.0"),
                 OsString::from("setup"),
                 OsString::from("--config"),
                 OsString::from("/tmp/config.toml"),
@@ -531,7 +531,7 @@ mod tests {
             key == &OsString::from(SKIP_UPDATE_CHECK_ENV) && value == &OsString::from("1")
         }));
         assert!(commands[0].env.iter().any(|(key, value)| {
-            key == &OsString::from("AGENTS_NOTIFIER_INSTALL_DIR")
+            key == &OsString::from("AGENTS_ROUTER_INSTALL_DIR")
                 && value == &OsString::from("/Users/tester/.local/bin")
         }));
     }
@@ -551,8 +551,8 @@ mod tests {
         assert_eq!(commands[0].program, OsString::from("npm"));
         assert_eq!(commands[0].args[0], OsString::from("install"));
         assert_eq!(commands[0].args[1], OsString::from("-g"));
-        assert_eq!(commands[0].args[2], OsString::from("agents-notifier@0.8.0"));
-        assert_eq!(commands[1].program, OsString::from("agents-notifier"));
+        assert_eq!(commands[0].args[2], OsString::from("agents-router@0.8.0"));
+        assert_eq!(commands[1].program, OsString::from("agents-router"));
         assert_eq!(commands[1].args[0], OsString::from("setup"));
         assert_eq!(commands[1].args[1], OsString::from("--config"));
         assert_eq!(commands[1].args[2], OsString::from("/tmp/config.toml"));
@@ -570,10 +570,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(commands.len(), 3);
-        assert_eq!(commands[0].program, OsString::from("agents-notifier"));
+        assert_eq!(commands[0].program, OsString::from("agents-router"));
         assert_eq!(commands[0].args, vec![OsString::from("stop")]);
         assert_eq!(commands[1].program, OsString::from("npm"));
-        assert_eq!(commands[2].program, OsString::from("agents-notifier"));
+        assert_eq!(commands[2].program, OsString::from("agents-router"));
         assert_eq!(commands[2].args[0], OsString::from("setup"));
     }
 
@@ -599,19 +599,19 @@ mod tests {
         assert_eq!(
             commands[0].args[1],
             OsString::from(
-                "curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/v0.8.0/install.sh | sh"
+                "curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-router/v0.8.0/install.sh | sh"
             )
         );
         assert!(commands[0].env.iter().any(|(key, value)| {
-            key == &OsString::from("AGENTS_NOTIFIER_VERSION") && value == &OsString::from("v0.8.0")
+            key == &OsString::from("AGENTS_ROUTER_VERSION") && value == &OsString::from("v0.8.0")
         }));
         assert!(commands[0].env.iter().any(|(key, value)| {
-            key == &OsString::from("AGENTS_NOTIFIER_INSTALL_DIR")
+            key == &OsString::from("AGENTS_ROUTER_INSTALL_DIR")
                 && value == &OsString::from("/Users/tester/.local/bin")
         }));
         assert_eq!(
             commands[1].program,
-            OsString::from("/Users/tester/.local/bin/agents-notifier")
+            OsString::from("/Users/tester/.local/bin/agents-router")
         );
         assert_eq!(commands[1].args[0], OsString::from("setup"));
         assert_eq!(commands[1].args[1], OsString::from("--config"));
@@ -641,12 +641,12 @@ mod tests {
                 .args
                 .iter()
                 .any(|arg| arg
-                    == "irm https://raw.githubusercontent.com/lumpinif/agents-notifier/v0.8.0/install.ps1 | iex")
+                    == "irm https://raw.githubusercontent.com/lumpinif/agents-router/v0.8.0/install.ps1 | iex")
         );
         assert_eq!(
             commands[1].program,
             OsString::from(
-                r"C:\Users\tester\AppData\Local/Programs/agents-notifier/agents-notifier.exe"
+                r"C:\Users\tester\AppData\Local/Programs/agents-router/agents-router.exe"
             )
         );
         assert_eq!(commands[1].args[0], OsString::from("setup"));

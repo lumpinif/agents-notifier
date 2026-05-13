@@ -13,7 +13,7 @@ English documentation: [feishu-lark-custom-bot.md](feishu-lark-custom-bot.md)
 
 - 一个飞书或 Lark 群。
 - 你有权限给这个群添加机器人。
-- 已经安装 Agents Notifier。
+- 已经安装 Agents Router。
 
 ## 1. 添加机器人
 
@@ -28,7 +28,7 @@ English documentation: [feishu-lark-custom-bot.md](feishu-lark-custom-bot.md)
 名字建议直接写：
 
 ```text
-Agents Notifier
+Agents Router
 ```
 
 完成机器人创建。
@@ -56,14 +56,14 @@ https://open.larksuite.com/open-apis/bot/v2/hook/...
 
 如果你开启了签名校验，把 signing secret 也复制下来。
 
-不建议给 Agents Notifier 使用关键词安全策略。关键词规则可能会拦截正常通知，因为每条消息都必须包含那个关键词。
+不建议给 Agents Router 使用关键词安全策略。关键词规则可能会拦截正常通知，因为每条消息都必须包含那个关键词。
 
-## 4. 连接 Agents Notifier
+## 4. 连接 Agents Router
 
 运行：
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 选择：
@@ -79,7 +79,7 @@ Feishu/Lark custom bot
 
 ## 5. 确认成功
 
-Agents Notifier 会启动本地 service，并发送一条测试通知。
+Agents Router 会启动本地 service，并发送一条测试通知。
 
 你应该能在群里看到一张卡片。
 
@@ -94,6 +94,6 @@ Agents Notifier 会启动本地 service，并发送一条测试通知。
 - 本地 service 是否正在运行：
 
 ```bash
-agents-notifier status
+agents-router status
 ```
 

@@ -41,8 +41,8 @@ impl LaunchctlRunner for FakeLaunchctl {
         if args == ["print", "user/501"] {
             return Ok("domain = user/501".to_string());
         }
-        if args == ["print", "gui/501/com.agents-notifier.service"]
-            || args == ["print", "user/501/com.agents-notifier.service"]
+        if args == ["print", "gui/501/com.agents-router.service"]
+            || args == ["print", "user/501/com.agents-router.service"]
         {
             return self
                 .target_print
@@ -59,14 +59,14 @@ fn plist_contains_launch_agent_worker_command() {
 
     let plist = build_plist(&definition);
 
-    assert!(plist.contains("<string>com.agents-notifier.service</string>"));
-    assert!(plist.contains("<string>/bin/agents-notifier</string>"));
+    assert!(plist.contains("<string>com.agents-router.service</string>"));
+    assert!(plist.contains("<string>/bin/agents-router</string>"));
     assert!(plist.contains("<string>watch</string>"));
     assert!(plist.contains("<string>--config</string>"));
     assert!(plist.contains("<string>/tmp/config.toml</string>"));
     assert!(plist.contains("<key>RunAtLoad</key>"));
     assert!(plist.contains("<key>KeepAlive</key>"));
-    assert!(plist.contains("<string>/tmp/agents-notifier.log</string>"));
+    assert!(plist.contains("<string>/tmp/agents-router.log</string>"));
     assert!(plist.contains("<string>/Users/tester</string>"));
     assert!(plist.contains("<string>/usr/local/bin:/usr/bin</string>"));
 }
@@ -74,7 +74,7 @@ fn plist_contains_launch_agent_worker_command() {
 #[test]
 fn plist_escapes_xml_values() {
     let definition = ServiceDefinition {
-        binary_path: PathBuf::from("/tmp/a&b/agents-notifier"),
+        binary_path: PathBuf::from("/tmp/a&b/agents-router"),
         config_path: PathBuf::from("/tmp/config<test>.toml"),
         working_dir: PathBuf::from("/tmp/work\"dir"),
         log_file: PathBuf::from("/tmp/log'file.log"),
@@ -84,7 +84,7 @@ fn plist_escapes_xml_values() {
 
     let plist = build_plist(&definition);
 
-    assert!(plist.contains("/tmp/a&amp;b/agents-notifier"));
+    assert!(plist.contains("/tmp/a&amp;b/agents-router"));
     assert!(plist.contains("/tmp/config&lt;test&gt;.toml"));
     assert!(plist.contains("/tmp/work&quot;dir"));
     assert!(plist.contains("/tmp/log&apos;file.log"));
@@ -100,9 +100,9 @@ fn saves_and_loads_metadata() {
     save_metadata(&path, &test_definition()).expect("metadata should be saved");
     let metadata = load_metadata(&path).expect("metadata should load");
 
-    assert_eq!(metadata.binary_path, "/bin/agents-notifier");
+    assert_eq!(metadata.binary_path, "/bin/agents-router");
     assert_eq!(metadata.config_path, "/tmp/config.toml");
-    assert_eq!(metadata.log_file, "/tmp/agents-notifier.log");
+    assert_eq!(metadata.log_file, "/tmp/agents-router.log");
     assert!(!metadata.installed_at.is_empty());
 }
 
@@ -135,7 +135,7 @@ fn install_writes_plist_and_bootstraps_preferred_domain() {
     assert!(commands.contains(&vec![
         "kickstart".to_string(),
         "-kp".to_string(),
-        "gui/501/com.agents-notifier.service".to_string()
+        "gui/501/com.agents-router.service".to_string()
     ]));
 }
 
@@ -187,20 +187,20 @@ fn stop_boots_out_loaded_targets() {
     let commands = manager.runner.commands.borrow();
     assert!(commands.contains(&vec![
         "bootout".to_string(),
-        "gui/501/com.agents-notifier.service".to_string()
+        "gui/501/com.agents-router.service".to_string()
     ]));
     assert!(commands.contains(&vec![
         "bootout".to_string(),
-        "user/501/com.agents-notifier.service".to_string()
+        "user/501/com.agents-router.service".to_string()
     ]));
 }
 
 fn test_definition() -> ServiceDefinition {
     ServiceDefinition {
-        binary_path: PathBuf::from("/bin/agents-notifier"),
+        binary_path: PathBuf::from("/bin/agents-router"),
         config_path: PathBuf::from("/tmp/config.toml"),
         working_dir: PathBuf::from("/tmp"),
-        log_file: PathBuf::from("/tmp/agents-notifier.log"),
+        log_file: PathBuf::from("/tmp/agents-router.log"),
         home: "/Users/tester".to_string(),
         env_path: "/usr/local/bin:/usr/bin".to_string(),
     }

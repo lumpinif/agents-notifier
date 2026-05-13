@@ -146,7 +146,7 @@ mod tests {
                         }),
                     },
                 },
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 worktree: Some("main".to_string()),
                 timestamp: Some("2026-05-12T10:15:30Z".to_string()),
                 model: Some("opencode-model".to_string()),
@@ -164,7 +164,7 @@ mod tests {
                 .workspace
                 .as_ref()
                 .and_then(|workspace| workspace.project_name.as_deref()),
-            Some("agents-notifier")
+            Some("agents-router")
         );
         assert_eq!(
             event
@@ -207,7 +207,7 @@ mod tests {
                         }),
                     },
                 },
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 worktree: None,
                 timestamp: None,
                 model: None,

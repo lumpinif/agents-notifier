@@ -11,9 +11,9 @@ async fn sends_plain_text_email_message() {
     let client = Arc::new(RecordingEmailSmtpClient::success());
     let provider = EmailSmtpProvider::new_for_test(
         "email",
-        "Agents Notifier <alerts@example.com>",
+        "Agents Router <alerts@example.com>",
         &["Felix <felix@example.com>"],
-        Some("Agents Notifier <reply@example.com>"),
+        Some("Agents Router <reply@example.com>"),
         client.clone(),
     );
 
@@ -97,7 +97,7 @@ fn validates_email_smtp_config_values() {
         username_env: None,
         password: Some("smtp-password".to_string()),
         password_env: None,
-        from: Some("Agents Notifier <alerts@example.com>".to_string()),
+        from: Some("Agents Router <alerts@example.com>".to_string()),
         to: Some(vec!["Felix <felix@example.com>".to_string()]),
         reply_to: Some("reply@example.com".to_string()),
         token: None,

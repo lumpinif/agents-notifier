@@ -175,9 +175,9 @@ mod tests {
     #[test]
     fn accepts_https_and_local_custom_webhook_urls() {
         assert_eq!(
-            validate_custom_webhook_url("https://example.com/agents-notifier")
+            validate_custom_webhook_url("https://example.com/agents-router")
                 .expect("HTTPS webhook should be valid"),
-            "https://example.com/agents-notifier"
+            "https://example.com/agents-router"
         );
         assert_eq!(
             validate_custom_webhook_url("http://127.0.0.1:8080/hook")

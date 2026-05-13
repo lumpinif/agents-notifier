@@ -14,7 +14,7 @@ fn creates_signal_from_task_complete_rollout_event() {
         id: Some("session-1".to_string()),
         originator: Some("Codex Desktop".to_string()),
         source: Some("vscode".to_string()),
-        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
         cli_version: Some("0.130.0-alpha.5".to_string()),
         model: Some("gpt-5.2-codex".to_string()),
         branch: Some("main".to_string()),
@@ -35,7 +35,7 @@ fn creates_signal_from_task_complete_rollout_event() {
     let signal = signal_from_task_complete(
         &source,
         &session,
-        Some("agents-notifier sync report"),
+        Some("agents-router sync report"),
         task,
         AnswerDetail::Preview,
         None,
@@ -49,10 +49,10 @@ fn creates_signal_from_task_complete_rollout_event() {
     assert_eq!(signal.title(), "Codex Desktop");
 
     let workspace = signal.workspace.expect("workspace should be set");
-    assert_eq!(workspace.project_name.as_deref(), Some("agents-notifier"));
+    assert_eq!(workspace.project_name.as_deref(), Some("agents-router"));
     assert_eq!(
         workspace.project_path.as_deref(),
-        Some("/Users/tester/projects/agents-notifier")
+        Some("/Users/tester/projects/agents-router")
     );
     assert_eq!(workspace.branch.as_deref(), Some("main"));
 
@@ -60,7 +60,7 @@ fn creates_signal_from_task_complete_rollout_event() {
     assert_eq!(conversation.session_id.as_deref(), Some("session-1"));
     assert_eq!(
         conversation.session_title.as_deref(),
-        Some("agents-notifier sync report")
+        Some("agents-router sync report")
     );
     assert_eq!(conversation.turn_id.as_deref(), Some("turn-1"));
     assert_eq!(conversation.model.as_deref(), Some("gpt-5.2-codex"));
@@ -95,7 +95,7 @@ fn creates_signal_with_full_answer_detail() {
     let session = SessionInfo {
         id: Some("session-1".to_string()),
         originator: Some("Codex Desktop".to_string()),
-        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
         branch: Some("main".to_string()),
         ..SessionInfo::default()
     };
@@ -125,7 +125,7 @@ fn creates_signal_with_prompt_before_answer() {
     let session = SessionInfo {
         id: Some("session-1".to_string()),
         originator: Some("Codex Desktop".to_string()),
-        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
         branch: Some("main".to_string()),
         ..SessionInfo::default()
     };
@@ -164,7 +164,7 @@ fn full_answer_detail_omits_codex_app_directives() {
     let session = SessionInfo {
         id: Some("session-1".to_string()),
         originator: Some("Codex Desktop".to_string()),
-        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
         branch: Some("main".to_string()),
         ..SessionInfo::default()
     };
@@ -280,7 +280,7 @@ fn parses_rollout_line_without_reading_unneeded_content() {
 
 #[test]
 fn parses_session_metadata_with_structured_optional_fields() {
-    let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{"id":"session-1","originator":"Codex Desktop","source":{"kind":"desktop"},"cwd":"/Users/tester/projects/agents-notifier","cli_version":"0.130.0-alpha.5","model":"gpt-5.2-codex","model_provider":"openai","git":{"branch":"main"}}}"#;
+    let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{"id":"session-1","originator":"Codex Desktop","source":{"kind":"desktop"},"cwd":"/Users/tester/projects/agents-router","cli_version":"0.130.0-alpha.5","model":"gpt-5.2-codex","model_provider":"openai","git":{"branch":"main"}}}"#;
 
     let Some(RolloutItem::SessionMeta(session)) =
         parse_rollout_line(line, true).expect("line should parse")
@@ -328,7 +328,7 @@ fn read_session_info_merges_turn_context_model() {
     let mut rollout = NamedTempFile::new().expect("tempfile should be created");
     writeln!(
         rollout,
-        r#"{{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{{"id":"session-1","originator":"Codex Desktop","cwd":"/Users/tester/projects/agents-notifier","model_provider":"openai","git":{{"branch":"main"}}}}}}"#
+        r#"{{"timestamp":"2026-05-09T17:35:42.000Z","type":"session_meta","payload":{{"id":"session-1","originator":"Codex Desktop","cwd":"/Users/tester/projects/agents-router","model_provider":"openai","git":{{"branch":"main"}}}}}}"#
     )
     .expect("session_meta should be written");
     writeln!(

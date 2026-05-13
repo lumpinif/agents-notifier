@@ -105,10 +105,10 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
-          archive="agents-notifier-${{ matrix.target }}.tar.gz"
+          archive="agents-router-${{ matrix.target }}.tar.gz"
           mkdir -p dist package
-          cp "target/${{ matrix.target }}/release/agents-notifier" package/
-          tar -C package -czf "dist/${archive}" agents-notifier
+          cp "target/${{ matrix.target }}/release/agents-router" package/
+          tar -C package -czf "dist/${archive}" agents-router
           if command -v shasum >/dev/null 2>&1; then
             (cd dist && shasum -a 256 "${archive}" > "${archive}.sha256")
           else
@@ -118,7 +118,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: agents-notifier-${{ matrix.target }}
+          name: agents-router-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
@@ -149,17 +149,17 @@ jobs:
         shell: pwsh
         run: |
           $target = "x86_64-pc-windows-msvc"
-          $archive = "agents-notifier-$target.zip"
+          $archive = "agents-router-$target.zip"
           New-Item -ItemType Directory -Path dist, package | Out-Null
-          Copy-Item "target\$target\release\agents-notifier.exe" "package\agents-notifier.exe"
-          Compress-Archive -Path "package\agents-notifier.exe" -DestinationPath "dist\$archive" -Force
+          Copy-Item "target\$target\release\agents-router.exe" "package\agents-router.exe"
+          Compress-Archive -Path "package\agents-router.exe" -DestinationPath "dist\$archive" -Force
           $hash = (Get-FileHash -Algorithm SHA256 "dist\$archive").Hash.ToLowerInvariant()
           Set-Content -Path "dist\$archive.sha256" -Value "$hash  $archive"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: agents-notifier-x86_64-pc-windows-msvc
+          name: agents-router-x86_64-pc-windows-msvc
           path: dist/*
           if-no-files-found: error
 
@@ -220,6 +220,6 @@ jobs:
       - name: Upload npm package tarballs
         uses: actions/upload-artifact@v7
         with:
-          name: agents-notifier-npm-packages
+          name: agents-router-npm-packages
           path: npm-tarballs/*.tgz
           if-no-files-found: error

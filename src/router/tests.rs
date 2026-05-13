@@ -188,14 +188,14 @@ async fn duration_filter_rejects_short_or_missing_duration() {
 async fn project_path_filter_matches_exact_or_descendant_paths() {
     let mut route = RouteConfig::new(vec!["codex_cli".to_string()], vec!["phone".to_string()]);
     route.only_forward_from_project_paths =
-        vec!["/Users/tester/projects/agents-notifier".to_string()];
+        vec!["/Users/tester/projects/agents-router".to_string()];
     let config = test_config(vec![route]);
     let calls = Arc::new(Mutex::new(Vec::new()));
     let phone = TestProvider::succeeding("phone", Arc::clone(&calls));
 
     let exact_report = Router::new(&config)
         .route(
-            &test_signal_with_project_path("codex_cli", "/Users/tester/projects/agents-notifier"),
+            &test_signal_with_project_path("codex_cli", "/Users/tester/projects/agents-router"),
             &[&phone],
         )
         .await
@@ -204,7 +204,7 @@ async fn project_path_filter_matches_exact_or_descendant_paths() {
         .route(
             &test_signal_with_project_path(
                 "codex_cli",
-                "/Users/tester/projects/agents-notifier/crate",
+                "/Users/tester/projects/agents-router/crate",
             ),
             &[&phone],
         )
@@ -246,7 +246,7 @@ async fn route_filters_are_combined_with_and_semantics() {
     let mut route = RouteConfig::new(vec!["codex_cli".to_string()], vec!["phone".to_string()]);
     route.minimum_task_duration_minutes = Some(5);
     route.only_forward_from_project_paths =
-        vec!["/Users/tester/projects/agents-notifier".to_string()];
+        vec!["/Users/tester/projects/agents-router".to_string()];
     let config = test_config(vec![route]);
     let calls = Arc::new(Mutex::new(Vec::new()));
     let phone = TestProvider::succeeding("phone", Arc::clone(&calls));
@@ -267,7 +267,7 @@ async fn route_filters_are_combined_with_and_semantics() {
             &test_signal_with_duration_and_project_path(
                 "codex_cli",
                 299_999,
-                "/Users/tester/projects/agents-notifier",
+                "/Users/tester/projects/agents-router",
             ),
             &[&phone],
         )
@@ -278,7 +278,7 @@ async fn route_filters_are_combined_with_and_semantics() {
             &test_signal_with_duration_and_project_path(
                 "codex_cli",
                 300_000,
-                "/Users/tester/projects/agents-notifier",
+                "/Users/tester/projects/agents-router",
             ),
             &[&phone],
         )

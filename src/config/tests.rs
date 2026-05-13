@@ -20,40 +20,40 @@ topic = "my-codex-alerts"
 [[providers]]
 id = "debug_webhook"
 type = "webhook"
-url_env = "AGENTS_NOTIFIER_WEBHOOK_URL"
+url_env = "AGENTS_ROUTER_WEBHOOK_URL"
 
 [[providers]]
 id = "work_chat"
 type = "feishu_lark"
-url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
-secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
+url_env = "AGENTS_ROUTER_FEISHU_LARK_WEBHOOK_URL"
+secret_env = "AGENTS_ROUTER_FEISHU_LARK_SECRET"
 
 [[providers]]
 id = "pushover"
 type = "pushover"
-app_token_env = "AGENTS_NOTIFIER_PUSHOVER_APP_TOKEN"
-user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
+app_token_env = "AGENTS_ROUTER_PUSHOVER_APP_TOKEN"
+user_key_env = "AGENTS_ROUTER_PUSHOVER_USER_KEY"
 
 [[providers]]
 id = "slack"
 type = "slack"
-url_env = "AGENTS_NOTIFIER_SLACK_WEBHOOK_URL"
+url_env = "AGENTS_ROUTER_SLACK_WEBHOOK_URL"
 
 [[providers]]
 id = "discord"
 type = "discord"
-url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
+url_env = "AGENTS_ROUTER_DISCORD_WEBHOOK_URL"
 
 [[providers]]
 id = "telegram"
 type = "telegram"
-bot_token_env = "AGENTS_NOTIFIER_TELEGRAM_BOT_TOKEN"
+bot_token_env = "AGENTS_ROUTER_TELEGRAM_BOT_TOKEN"
 chat_id = "123456789"
 
 [[providers]]
 id = "whatsapp"
 type = "whatsapp"
-access_token_env = "AGENTS_NOTIFIER_WHATSAPP_ACCESS_TOKEN"
+access_token_env = "AGENTS_ROUTER_WHATSAPP_ACCESS_TOKEN"
 phone_number_id = "123456789"
 recipient_phone_number = "15551234567"
 
@@ -61,14 +61,14 @@ recipient_phone_number = "15551234567"
 id = "wechat"
 type = "wechat"
 base_url = "https://ilinkai.weixin.qq.com"
-token_env = "AGENTS_NOTIFIER_WECHAT_TOKEN"
+token_env = "AGENTS_ROUTER_WECHAT_TOKEN"
 recipient_user_id = "user@im.wechat"
-context_token_env = "AGENTS_NOTIFIER_WECHAT_CONTEXT_TOKEN"
+context_token_env = "AGENTS_ROUTER_WECHAT_CONTEXT_TOKEN"
 
 [[providers]]
 id = "microsoft_teams"
 type = "microsoft_teams"
-url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
+url_env = "AGENTS_ROUTER_MICROSOFT_TEAMS_WEBHOOK_URL"
 
 [[providers]]
 id = "email"
@@ -76,9 +76,9 @@ type = "email_smtp"
 host = "smtp.example.com"
 port = 587
 security = "starttls"
-username_env = "AGENTS_NOTIFIER_EMAIL_SMTP_USERNAME"
-password_env = "AGENTS_NOTIFIER_EMAIL_SMTP_PASSWORD"
-from = "Agents Notifier <alerts@example.com>"
+username_env = "AGENTS_ROUTER_EMAIL_SMTP_USERNAME"
+password_env = "AGENTS_ROUTER_EMAIL_SMTP_PASSWORD"
+from = "Agents Router <alerts@example.com>"
 to = ["felix@example.com"]
 
 [[routes]]
@@ -119,7 +119,7 @@ sources = ["codex_desktop"]
 providers = ["debug_webhook"]
 minimum_task_duration_minutes = 5
 only_forward_from_project_paths = [
-  "/Users/tester/projects/agents-notifier",
+  "/Users/tester/projects/agents-router",
   "/Users/tester/projects/other",
 ]
 "#;
@@ -130,7 +130,7 @@ only_forward_from_project_paths = [
     assert_eq!(
         config.routes[0].only_forward_from_project_paths,
         vec![
-            "/Users/tester/projects/agents-notifier".to_string(),
+            "/Users/tester/projects/agents-router".to_string(),
             "/Users/tester/projects/other".to_string(),
         ]
     );
@@ -834,8 +834,8 @@ fn rejects_unknown_route_provider() {
 #[test]
 fn rejects_webhook_with_both_url_sources() {
     let raw = VALID_CONFIG.replace(
-        "url_env = \"AGENTS_NOTIFIER_WEBHOOK_URL\"",
-        "url = \"https://example.com/hook\"\nurl_env = \"AGENTS_NOTIFIER_WEBHOOK_URL\"",
+        "url_env = \"AGENTS_ROUTER_WEBHOOK_URL\"",
+        "url = \"https://example.com/hook\"\nurl_env = \"AGENTS_ROUTER_WEBHOOK_URL\"",
     );
 
     let err = Config::from_toml_str(&raw).expect_err("ambiguous webhook url should fail");
@@ -875,8 +875,8 @@ providers = ["work_chat"]
 #[test]
 fn rejects_feishu_lark_with_both_secret_sources() {
     let raw = VALID_CONFIG.replace(
-        "secret_env = \"AGENTS_NOTIFIER_FEISHU_LARK_SECRET\"",
-        "secret = \"inline-secret\"\nsecret_env = \"AGENTS_NOTIFIER_FEISHU_LARK_SECRET\"",
+        "secret_env = \"AGENTS_ROUTER_FEISHU_LARK_SECRET\"",
+        "secret = \"inline-secret\"\nsecret_env = \"AGENTS_ROUTER_FEISHU_LARK_SECRET\"",
     );
 
     let err = Config::from_toml_str(&raw).expect_err("ambiguous secret source should fail");
@@ -928,7 +928,7 @@ id = "pushover"
 type = "pushover"
 app_token = "123456789012345678901234567890"
 user_key = "ABCDEFGHIJABCDEFGHIJABCDEFGHIJ"
-user_key_env = "AGENTS_NOTIFIER_PUSHOVER_USER_KEY"
+user_key_env = "AGENTS_ROUTER_PUSHOVER_USER_KEY"
 
 [[routes]]
 sources = ["codex_cli"]
@@ -982,7 +982,7 @@ type = "codex_cli"
 id = "discord"
 type = "discord"
 url = "https://discord.com/api/webhooks/123456789012345678/token"
-url_env = "AGENTS_NOTIFIER_DISCORD_WEBHOOK_URL"
+url_env = "AGENTS_ROUTER_DISCORD_WEBHOOK_URL"
 
 [[routes]]
 sources = ["codex_cli"]
@@ -1123,7 +1123,7 @@ type = "codex_cli"
 id = "microsoft_teams"
 type = "microsoft_teams"
 url = "https://example.com/workflow"
-url_env = "AGENTS_NOTIFIER_MICROSOFT_TEAMS_WEBHOOK_URL"
+url_env = "AGENTS_ROUTER_MICROSOFT_TEAMS_WEBHOOK_URL"
 
 [[routes]]
 sources = ["codex_cli"]

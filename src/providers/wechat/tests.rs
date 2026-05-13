@@ -51,7 +51,7 @@ async fn sends_text_message_to_wechat_ilink() {
     assert!(
         body["msg"]["client_id"]
             .as_str()
-            .is_some_and(|value| value.starts_with("agents-notifier-"))
+            .is_some_and(|value| value.starts_with("agents-router-"))
     );
     assert_eq!(
         body["msg"]["item_list"][0]["text_item"]["text"],

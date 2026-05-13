@@ -3,7 +3,7 @@
 English documentation: [../../README.md](../../README.md)
 中文文档：[README.zh-CN.md](README.zh-CN.md)
 
-Set up the agent after Agents Notifier is installed.
+Set up the agent after Agents Router is installed.
 
 ## Guides
 

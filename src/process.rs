@@ -15,14 +15,14 @@ pub enum StopOutcome {
 pub enum PidFileState {
     Missing,
     Stale { pid: u32 },
-    AgentsNotifier { pid: u32 },
+    AgentsRouter { pid: u32 },
     OtherProcess { pid: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessState {
     Missing,
-    AgentsNotifier,
+    AgentsRouter,
     Other,
 }
 
@@ -50,8 +50,8 @@ impl ProcessManager for SystemProcessManager {
             .and_then(|name| name.to_str())
             .unwrap_or_default();
 
-        if name == "agents-notifier" {
-            Ok(ProcessState::AgentsNotifier)
+        if name == "agents-router" {
+            Ok(ProcessState::AgentsRouter)
         } else {
             Ok(ProcessState::Other)
         }
@@ -83,10 +83,10 @@ pub fn stop_with_manager(
             })?;
             return Ok(StopOutcome::RemovedStalePidFile { pid });
         }
-        PidFileState::AgentsNotifier { pid } => pid,
+        PidFileState::AgentsRouter { pid } => pid,
         PidFileState::OtherProcess { pid } => {
             return Err(anyhow!(
-                "pid file points to `{pid}`, but it is not an agents-notifier process"
+                "pid file points to `{pid}`, but it is not an agents-router process"
             ));
         }
     };
@@ -115,7 +115,7 @@ pub fn inspect_pid_file(
 
     match manager.process_state(pid)? {
         ProcessState::Missing => Ok(PidFileState::Stale { pid }),
-        ProcessState::AgentsNotifier => Ok(PidFileState::AgentsNotifier { pid }),
+        ProcessState::AgentsRouter => Ok(PidFileState::AgentsRouter { pid }),
         ProcessState::Other => Ok(PidFileState::OtherProcess { pid }),
     }
 }
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn missing_pid_file_is_success() {
         let dir = tempdir().expect("tempdir should be created");
-        let manager = FakeProcessManager::new(ProcessState::AgentsNotifier);
+        let manager = FakeProcessManager::new(ProcessState::AgentsRouter);
 
         let outcome = stop_with_manager(&dir.path().join("missing.pid"), &manager)
             .expect("missing pid file should be successful");
@@ -166,21 +166,21 @@ mod tests {
     }
 
     #[test]
-    fn inspects_agents_notifier_pid_file() {
+    fn inspects_agents_router_pid_file() {
         let dir = tempdir().expect("tempdir should be created");
-        let pid_file = dir.path().join("agents-notifier.pid");
+        let pid_file = dir.path().join("agents-router.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
-        let manager = FakeProcessManager::new(ProcessState::AgentsNotifier);
+        let manager = FakeProcessManager::new(ProcessState::AgentsRouter);
 
         let state = inspect_pid_file(&pid_file, &manager).expect("pid file should be inspected");
 
-        assert_eq!(state, PidFileState::AgentsNotifier { pid: 123 });
+        assert_eq!(state, PidFileState::AgentsRouter { pid: 123 });
     }
 
     #[test]
     fn inspects_stale_pid_file() {
         let dir = tempdir().expect("tempdir should be created");
-        let pid_file = dir.path().join("agents-notifier.pid");
+        let pid_file = dir.path().join("agents-router.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
         let manager = FakeProcessManager::new(ProcessState::Missing);
 
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn inspects_other_process_pid_file() {
         let dir = tempdir().expect("tempdir should be created");
-        let pid_file = dir.path().join("agents-notifier.pid");
+        let pid_file = dir.path().join("agents-router.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
         let manager = FakeProcessManager::new(ProcessState::Other);
 
@@ -202,14 +202,14 @@ mod tests {
     }
 
     #[test]
-    fn stops_agents_notifier_process_and_removes_pid_file() {
+    fn stops_agents_router_process_and_removes_pid_file() {
         let dir = tempdir().expect("tempdir should be created");
-        let pid_file = dir.path().join("agents-notifier.pid");
+        let pid_file = dir.path().join("agents-router.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
-        let manager = FakeProcessManager::new(ProcessState::AgentsNotifier);
+        let manager = FakeProcessManager::new(ProcessState::AgentsRouter);
 
         let outcome =
-            stop_with_manager(&pid_file, &manager).expect("agents-notifier process should stop");
+            stop_with_manager(&pid_file, &manager).expect("agents-router process should stop");
 
         assert_eq!(outcome, StopOutcome::Stopped { pid: 123 });
         assert_eq!(*manager.terminated.borrow(), vec![123]);
@@ -219,12 +219,12 @@ mod tests {
     #[test]
     fn removes_stale_pid_file() {
         let dir = tempdir().expect("tempdir should be created");
-        let pid_file = dir.path().join("agents-notifier.pid");
+        let pid_file = dir.path().join("agents-router.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
         let manager = FakeProcessManager::new(ProcessState::Missing);
 
         let outcome = stop_with_manager(&pid_file, &manager)
-            .expect("stale agents-notifier pid file should be removed");
+            .expect("stale agents-router pid file should be removed");
 
         assert_eq!(outcome, StopOutcome::RemovedStalePidFile { pid: 123 });
         assert!(!pid_file.exists());
@@ -232,16 +232,16 @@ mod tests {
     }
 
     #[test]
-    fn refuses_to_stop_non_agents_notifier_process() {
+    fn refuses_to_stop_non_agents_router_process() {
         let dir = tempdir().expect("tempdir should be created");
-        let pid_file = dir.path().join("agents-notifier.pid");
+        let pid_file = dir.path().join("agents-router.pid");
         fs::write(&pid_file, "123").expect("pid file should be written");
         let manager = FakeProcessManager::new(ProcessState::Other);
 
         let err = stop_with_manager(&pid_file, &manager)
-            .expect_err("non agents-notifier process should not be stopped");
+            .expect_err("non agents-router process should not be stopped");
 
-        assert!(err.to_string().contains("not an agents-notifier process"));
+        assert!(err.to_string().contains("not an agents-router process"));
         assert!(manager.terminated.borrow().is_empty());
         assert!(pid_file.exists());
     }

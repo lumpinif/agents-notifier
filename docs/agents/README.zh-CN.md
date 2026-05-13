@@ -2,7 +2,7 @@
 
 English documentation: [README.md](README.md)
 
-安装好 Agents Notifier 之后，再设置你使用的 agent。
+安装好 Agents Router 之后，再设置你使用的 agent。
 
 ## 教程
 

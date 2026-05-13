@@ -2,9 +2,9 @@
 
 中文文档：[github-copilot-cli.zh-CN.md](github-copilot-cli.zh-CN.md)
 
-Use GitHub Copilot CLI integration when you want Copilot CLI system notifications to submit events to the running Agents Notifier service.
+Use GitHub Copilot CLI integration when you want Copilot CLI system notifications to submit events to the running Agents Router service.
 
-GitHub Copilot CLI supports hooks loaded from `.github/hooks/*.json` in the current working directory. Agents Notifier uses the official `notification` hook path and reads the hook JSON Copilot CLI sends on stdin.
+GitHub Copilot CLI supports hooks loaded from `.github/hooks/*.json` in the current working directory. Agents Router uses the official `notification` hook path and reads the hook JSON Copilot CLI sends on stdin.
 
 Official GitHub Copilot CLI references:
 
@@ -12,7 +12,7 @@ Official GitHub Copilot CLI references:
 - <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference>
 - <https://docs.github.com/copilot/reference/cli-command-reference>
 
-## What Agents Notifier Needs
+## What Agents Router Needs
 
 Configure this source:
 
@@ -27,7 +27,7 @@ Then route `github_copilot_cli` to your provider.
 For structured notifications, configure Copilot CLI to run:
 
 ```bash
-agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification
+agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification
 ```
 
 `ingest` reads the notification hook payload from stdin and preserves fields Copilot CLI exposes, including project path, session id, notification type, timestamp, title, and message.
@@ -35,7 +35,7 @@ agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_n
 If you only need a simple custom message, Copilot CLI can run this command instead:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source github_copilot_cli \
   --title "GitHub Copilot CLI" \
   --body "GitHub Copilot CLI emitted a notification."
@@ -45,7 +45,7 @@ agents-notifier emit \
 
 ## Hook Example
 
-Create `.github/hooks/agents-notifier.json`:
+Create `.github/hooks/agents-router.json`:
 
 ```json
 {
@@ -54,8 +54,8 @@ Create `.github/hooks/agents-notifier.json`:
     "notification": [
       {
         "type": "command",
-        "bash": "agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification",
-        "powershell": "agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification",
+        "bash": "agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification",
+        "powershell": "agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification",
         "timeoutSec": 10
       }
     ]
@@ -72,21 +72,21 @@ When structured hook stdin is not available, use the simple `emit` command shown
 ## Test the Route
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source github_copilot_cli \
   --title "GitHub Copilot CLI" \
   --body "Test notification from GitHub Copilot CLI."
 ```
 
-If your provider receives this notification, the Agents Notifier side is working.
+If your provider receives this notification, the Agents Router side is working.
 
 ## If It Fails
 
 Check these first:
 
-- The local service is running with `agents-notifier status`.
+- The local service is running with `agents-router status`.
 - Your config includes the `github_copilot_cli` source with `type = "agent_hook"`.
 - Your route includes `github_copilot_cli`.
 - The hook file is valid JSON and is under `.github/hooks/`.
-- Structured hooks use `agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification`.
-- `agents-notifier` is available in the shell environment GitHub Copilot CLI uses for hooks.
+- Structured hooks use `agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification`.
+- `agents-router` is available in the shell environment GitHub Copilot CLI uses for hooks.

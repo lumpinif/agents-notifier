@@ -1,12 +1,12 @@
 # npm Packaging
 
-This directory contains the npm launcher source for Agents Notifier.
+This directory contains the npm launcher source for Agents Router.
 
 The npm package does not rebuild the Rust project. It publishes a small Node.js
 launcher plus platform-specific packages that contain the release binaries built
 by GitHub Actions.
 
-The launcher supports `npx --yes --prefer-online agents-notifier@latest setup`
+The launcher supports `npx --yes --prefer-online agents-router@latest setup`
 by copying the native binary from the npx cache into a stable local install path
 before running setup.
 The service must never point at npm's temporary npx cache.

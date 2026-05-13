@@ -378,10 +378,10 @@ pub(super) fn prompt_for_language(default: Option<CliLanguage>) -> anyhow::Resul
 }
 
 pub(super) fn language_default(default: Option<CliLanguage>) -> anyhow::Result<CliLanguage> {
-    if let Ok(value) = std::env::var("AGENTS_NOTIFIER_LANGUAGE") {
+    if let Ok(value) = std::env::var("AGENTS_ROUTER_LANGUAGE") {
         let Some(language) = CliLanguage::parse(&value) else {
             anyhow::bail!(
-                "AGENTS_NOTIFIER_LANGUAGE must be `en` or `zh-CN`; got `{}`",
+                "AGENTS_ROUTER_LANGUAGE must be `en` or `zh-CN`; got `{}`",
                 value
             );
         };
@@ -440,10 +440,10 @@ pub(super) async fn run_first_start_setup(path: &Path) -> anyhow::Result<LoadedC
 
     match language {
         CliLanguage::English => {
-            println!("No Agents Notifier config found at `{}`.", path.display())
+            println!("No Agents Router config found at `{}`.", path.display())
         }
         CliLanguage::SimplifiedChinese => {
-            println!("没有找到 Agents Notifier config：`{}`。", path.display())
+            println!("没有找到 Agents Router config：`{}`。", path.display())
         }
     }
     println!();
@@ -624,8 +624,8 @@ pub(super) fn answer_detail_for_provider(
                 fixed_answer_detail_message(
                     i18n,
                     "WhatsApp",
-                    "Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies",
-                    "Agents Notifier 对 WhatsApp 文本使用 4096 字符发送保护线"
+                    "Agents Router uses a 4096-character delivery guard for WhatsApp text bodies",
+                    "Agents Router 对 WhatsApp 文本使用 4096 字符发送保护线"
                 )
             );
             Ok(AnswerDetail::Preview)
@@ -637,8 +637,8 @@ pub(super) fn answer_detail_for_provider(
                 fixed_answer_detail_message(
                     i18n,
                     localized(i18n, "WeChat", "微信"),
-                    "Agents Notifier uses a 3800-character delivery guard for WeChat iLink text messages",
-                    "Agents Notifier 对微信 iLink 文本消息使用 3800 字符发送保护线"
+                    "Agents Router uses a 3800-character delivery guard for WeChat iLink text messages",
+                    "Agents Router 对微信 iLink 文本消息使用 3800 字符发送保护线"
                 )
             );
             Ok(AnswerDetail::Preview)
@@ -740,8 +740,8 @@ pub(super) fn prompt_detail_for_provider(
                 fixed_prompt_detail_message(
                     i18n,
                     "WhatsApp",
-                    "Agents Notifier uses a 4096-character delivery guard for WhatsApp text bodies",
-                    "Agents Notifier 对 WhatsApp 文本使用 4096 字符发送保护线"
+                    "Agents Router uses a 4096-character delivery guard for WhatsApp text bodies",
+                    "Agents Router 对 WhatsApp 文本使用 4096 字符发送保护线"
                 )
             );
             Ok(PromptDetail::Off)
@@ -753,8 +753,8 @@ pub(super) fn prompt_detail_for_provider(
                 fixed_prompt_detail_message(
                     i18n,
                     localized(i18n, "WeChat", "微信"),
-                    "Agents Notifier uses a 3800-character delivery guard for WeChat iLink text messages",
-                    "Agents Notifier 对微信 iLink 文本消息使用 3800 字符发送保护线"
+                    "Agents Router uses a 3800-character delivery guard for WeChat iLink text messages",
+                    "Agents Router 对微信 iLink 文本消息使用 3800 字符发送保护线"
                 )
             );
             Ok(PromptDetail::Off)
@@ -786,10 +786,10 @@ pub(super) fn fixed_answer_detail_message(
 ) -> String {
     match i18n.language() {
         CliLanguage::English => format!(
-            "Answer detail is fixed to Preview for {provider} because {english_reason}. Agents Notifier will keep {provider} notifications short enough for reliable delivery."
+            "Answer detail is fixed to Preview for {provider} because {english_reason}. Agents Router will keep {provider} notifications short enough for reliable delivery."
         ),
         CliLanguage::SimplifiedChinese => format!(
-            "{provider} 的回答内容固定为 Preview，因为{chinese_reason}。Agents Notifier 会保持通知短小，确保可靠送达。"
+            "{provider} 的回答内容固定为 Preview，因为{chinese_reason}。Agents Router 会保持通知短小，确保可靠送达。"
         ),
     }
 }
@@ -802,10 +802,10 @@ pub(super) fn fixed_prompt_detail_message(
 ) -> String {
     match i18n.language() {
         CliLanguage::English => format!(
-            "Prompt detail is disabled for {provider} because {english_reason}. Agents Notifier will keep prompts out of {provider} notifications for reliable delivery."
+            "Prompt detail is disabled for {provider} because {english_reason}. Agents Router will keep prompts out of {provider} notifications for reliable delivery."
         ),
         CliLanguage::SimplifiedChinese => format!(
-            "{provider} 已关闭 prompt 内容，因为{chinese_reason}。Agents Notifier 不会把 prompt 放进 {provider} 通知里。"
+            "{provider} 已关闭 prompt 内容，因为{chinese_reason}。Agents Router 不会把 prompt 放进 {provider} 通知里。"
         ),
     }
 }

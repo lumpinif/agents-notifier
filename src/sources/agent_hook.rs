@@ -161,9 +161,9 @@ mod tests {
                     raw_name: Some("wrapper.completed".to_string()),
                 },
                 workspace: Some(SignalWorkspace {
-                    cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
-                    project_name: Some("agents-notifier".to_string()),
-                    project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+                    cwd: Some("/Users/tester/projects/agents-router".to_string()),
+                    project_name: Some("agents-router".to_string()),
+                    project_path: Some("/Users/tester/projects/agents-router".to_string()),
                     branch: None,
                     worktree: None,
                 }),

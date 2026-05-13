@@ -2,9 +2,9 @@
 
 English documentation: [slack.md](slack.md)
 
-当你想把 Agents Notifier 通知发到一个 Slack channel 时，就用 Slack。
+当你想把 Agents Router 通知发到一个 Slack channel 时，就用 Slack。
 
-Agents Notifier 使用 Slack Incoming Webhooks。一个 webhook 会发到创建 webhook 时选择的一个 channel。
+Agents Router 使用 Slack Incoming Webhooks。一个 webhook 会发到创建 webhook 时选择的一个 channel。
 
 消息会以 plain text 发送。
 
@@ -19,7 +19,7 @@ Agents Notifier 使用 Slack Incoming Webhooks。一个 webhook 会发到创建 
 - 一个 Slack workspace。
 - 创建或安装启用了 Incoming Webhooks 的 Slack app 的权限。
 - 一个目标 channel。
-- 已安装 Agents Notifier。
+- 已安装 Agents Router。
 
 ## 1. 创建 Slack Incoming Webhook
 
@@ -35,12 +35,12 @@ https://hooks.slack.com/services/...
 
 这个 URL 是 secret，不要公开。
 
-## 2. 连接 Agents Notifier
+## 2. 连接 Agents Router
 
 运行：
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 选择：
@@ -51,26 +51,26 @@ Slack
 
 粘贴 Slack webhook URL。
 
-Agents Notifier 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试消息。
+Agents Router 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试消息。
 
 ## Answer Detail
 
-Agents Notifier 会对 Slack 固定使用 `Preview` answer detail。
+Agents Router 会对 Slack 固定使用 `Preview` answer detail。
 
-Slack 官方文档记录了消息长度和截断限制。完整回答可能很长，所以 Agents Notifier 会让 Slack 通知保持短小，保证投递更可靠。
+Slack 官方文档记录了消息长度和截断限制。完整回答可能很长，所以 Agents Router 会让 Slack 通知保持短小，保证投递更可靠。
 
 ## Prompt Detail
 
-Agents Notifier 会对 Slack 禁用 prompt detail。
+Agents Router 会对 Slack 禁用 prompt detail。
 
-Prompt 可能很长，也可能包含私人信息。Slack message 有官方文档记录的长度限制，所以 Agents Notifier 不会把 prompt 放进 Slack 通知里。
+Prompt 可能很长，也可能包含私人信息。Slack message 有官方文档记录的长度限制，所以 Agents Router 不会把 prompt 放进 Slack 通知里。
 
 ## 手动配置
 
 Slack 配置在：
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 简单配置：
@@ -86,7 +86,7 @@ sources = ["codex_desktop"]
 providers = ["slack"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["slack"]
 ```
 
@@ -95,16 +95,16 @@ providers = ["slack"]
 手动修改后，正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## 限制
 
-Slack 建议 posted message text 控制在 4000 个字符以内，并对很长的 posted message 记录了截断行为。Agents Notifier 会把 4000 字符作为 Slack 投递保护线。
+Slack 建议 posted message text 控制在 4000 个字符以内，并对很长的 posted message 记录了截断行为。Agents Router 会把 4000 字符作为 Slack 投递保护线。
 
-如果某条格式化后的 Slack 通知太长，Agents Notifier 会在发送前让这次 Slack 投递失败。它不会偷偷截断你的消息。
+如果某条格式化后的 Slack 通知太长，Agents Router 会在发送前让这次 Slack 投递失败。它不会偷偷截断你的消息。
 
-Agents Notifier 会对 Slack 始终使用 `Preview` answer detail。
+Agents Router 会对 Slack 始终使用 `Preview` answer detail。
 
 ## 如果没有收到
 
@@ -117,5 +117,5 @@ Agents Notifier 会对 Slack 始终使用 `Preview` answer detail。
 - 本地 service 是否正在运行：
 
 ```bash
-agents-notifier status
+agents-router status
 ```

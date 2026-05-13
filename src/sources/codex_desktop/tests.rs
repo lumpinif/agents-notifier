@@ -26,7 +26,7 @@ fn first_run_skips_existing_rollout_events_then_emits_new_events() {
     );
     write_lines(
             &index_path,
-            &[r#"{"id":"session-1","thread_name":"agents-notifier sync report","updated_at":"2026-05-09T17:00:00Z"}"#.to_string()],
+            &[r#"{"id":"session-1","thread_name":"agents-router sync report","updated_at":"2026-05-09T17:00:00Z"}"#.to_string()],
         );
 
     let mut watcher = CodexDesktopSessionWatcher::new(
@@ -87,7 +87,7 @@ fn prompt_detail_on_attaches_prompt_without_persisting_it() {
     write_lines(&rollout_path, &[session_meta_line("session-1")]);
     write_lines(
             &index_path,
-            &[r#"{"id":"session-1","thread_name":"agents-notifier sync report","updated_at":"2026-05-09T17:00:00Z"}"#.to_string()],
+            &[r#"{"id":"session-1","thread_name":"agents-router sync report","updated_at":"2026-05-09T17:00:00Z"}"#.to_string()],
         );
 
     let mut watcher = CodexDesktopSessionWatcher::new(
@@ -139,7 +139,7 @@ fn source_config() -> SourceConfig {
 
 fn session_meta_line(session_id: &str) -> String {
     format!(
-        r#"{{"timestamp":"2026-05-09T16:59:00.000Z","type":"session_meta","payload":{{"id":"{session_id}","timestamp":"2026-05-09T16:59:00.000Z","cwd":"/Users/tester/projects/agents-notifier","originator":"Codex Desktop","cli_version":"0.130.0-alpha.5","source":"vscode","model_provider":"openai","git":{{"branch":"main","commit_hash":"abc123","repository_url":"https://example.com/repo.git"}}}}}}"#
+        r#"{{"timestamp":"2026-05-09T16:59:00.000Z","type":"session_meta","payload":{{"id":"{session_id}","timestamp":"2026-05-09T16:59:00.000Z","cwd":"/Users/tester/projects/agents-router","originator":"Codex Desktop","cli_version":"0.130.0-alpha.5","source":"vscode","model_provider":"openai","git":{{"branch":"main","commit_hash":"abc123","repository_url":"https://example.com/repo.git"}}}}}}"#
     )
 }
 

@@ -177,15 +177,15 @@ mod tests {
             BTreeMap::new(),
         );
         signal.workspace = Some(SignalWorkspace {
-            cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
-            project_name: Some("agents-notifier".to_string()),
-            project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+            cwd: Some("/Users/tester/projects/agents-router".to_string()),
+            project_name: Some("agents-router".to_string()),
+            project_path: Some("/Users/tester/projects/agents-router".to_string()),
             branch: Some("main".to_string()),
             worktree: None,
         });
         signal.conversation = Some(SignalConversation {
             session_id: Some("session-1".to_string()),
-            session_title: Some("agents-notifier sync report".to_string()),
+            session_title: Some("agents-router sync report".to_string()),
             turn_id: Some("turn-1".to_string()),
             prompt: Some("Please fix the route.".to_string()),
             answer: Some(SignalAnswer {
@@ -207,7 +207,7 @@ mod tests {
 
         assert_eq!(
             format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
-            "Project: agents-notifier\nProject Path: /Users/tester/projects/agents-notifier\nSession: agents-notifier sync report\nModel: gpt-5.2-codex\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPrompt: Please fix the route.\n\nPreview: Fixed the route."
+            "Project: agents-router\nProject Path: /Users/tester/projects/agents-router\nSession: agents-router sync report\nModel: gpt-5.2-codex\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPrompt: Please fix the route.\n\nPreview: Fixed the route."
         );
     }
 

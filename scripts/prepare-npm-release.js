@@ -12,7 +12,7 @@ const LAUNCHER_SOURCE = path.join(
   "packaging",
   "npm",
   "bin",
-  "agents-notifier.js"
+  "agents-router.js"
 );
 const POSTINSTALL_SOURCE = path.join(
   REPO_ROOT,
@@ -24,38 +24,38 @@ const POSTINSTALL_SOURCE = path.join(
 
 const PLATFORMS = [
   {
-    packageName: "agents-notifier-darwin-arm64",
+    packageName: "agents-router-darwin-arm64",
     target: "aarch64-apple-darwin",
-    archive: "agents-notifier-aarch64-apple-darwin.tar.gz",
-    binaryName: "agents-notifier",
+    archive: "agents-router-aarch64-apple-darwin.tar.gz",
+    binaryName: "agents-router",
     os: ["darwin"],
     cpu: ["arm64"],
     label: "macOS arm64",
   },
   {
-    packageName: "agents-notifier-darwin-x64",
+    packageName: "agents-router-darwin-x64",
     target: "x86_64-apple-darwin",
-    archive: "agents-notifier-x86_64-apple-darwin.tar.gz",
-    binaryName: "agents-notifier",
+    archive: "agents-router-x86_64-apple-darwin.tar.gz",
+    binaryName: "agents-router",
     os: ["darwin"],
     cpu: ["x64"],
     label: "macOS x64",
   },
   {
-    packageName: "agents-notifier-linux-x64-gnu",
+    packageName: "agents-router-linux-x64-gnu",
     target: "x86_64-unknown-linux-gnu",
-    archive: "agents-notifier-x86_64-unknown-linux-gnu.tar.gz",
-    binaryName: "agents-notifier",
+    archive: "agents-router-x86_64-unknown-linux-gnu.tar.gz",
+    binaryName: "agents-router",
     os: ["linux"],
     cpu: ["x64"],
     libc: ["glibc"],
     label: "Linux x64 GNU",
   },
   {
-    packageName: "agents-notifier-win32-x64-msvc",
+    packageName: "agents-router-win32-x64-msvc",
     target: "x86_64-pc-windows-msvc",
-    archive: "agents-notifier-x86_64-pc-windows-msvc.zip",
-    binaryName: "agents-notifier.exe",
+    archive: "agents-router-x86_64-pc-windows-msvc.zip",
+    binaryName: "agents-router.exe",
     os: ["win32"],
     cpu: ["x64"],
     label: "Windows x64 MSVC",
@@ -157,16 +157,16 @@ function copyFile(source, destination, mode) {
 
 function mainPackageJson(version) {
   return {
-    name: "agents-notifier",
+    name: "agents-router",
     version,
-    description: "Local-only notifications for AI coding agents",
-    homepage: "https://github.com/lumpinif/agents-notifier",
+    description: "Local-first signal routing for AI coding agents",
+    homepage: "https://github.com/lumpinif/agents-router",
     repository: {
       type: "git",
-      url: "git+https://github.com/lumpinif/agents-notifier.git",
+      url: "git+https://github.com/lumpinif/agents-router.git",
     },
     bugs: {
-      url: "https://github.com/lumpinif/agents-notifier/issues",
+      url: "https://github.com/lumpinif/agents-router/issues",
     },
     keywords: [
       "agents",
@@ -177,7 +177,7 @@ function mainPackageJson(version) {
       "local-first",
     ],
     bin: {
-      "agents-notifier": "bin/agents-notifier.js",
+      "agents-router": "bin/agents-router.js",
     },
     scripts: {
       postinstall: "node bin/postinstall.js",
@@ -196,14 +196,14 @@ function nativePackageJson(platform, version) {
   return {
     name: platform.packageName,
     version,
-    description: `Native agents-notifier binary for ${platform.label}`,
-    homepage: "https://github.com/lumpinif/agents-notifier",
+    description: `Native agents-router binary for ${platform.label}`,
+    homepage: "https://github.com/lumpinif/agents-router",
     repository: {
       type: "git",
-      url: "git+https://github.com/lumpinif/agents-notifier.git",
+      url: "git+https://github.com/lumpinif/agents-router.git",
     },
     bugs: {
-      url: "https://github.com/lumpinif/agents-notifier/issues",
+      url: "https://github.com/lumpinif/agents-router/issues",
     },
     os: platform.os,
     cpu: platform.cpu,
@@ -213,7 +213,7 @@ function nativePackageJson(platform, version) {
 }
 
 function extractArchive(archivePath, platform, destination) {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "agents-notifier-npm-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "agents-router-npm-"));
   try {
     if (archivePath.endsWith(".tar.gz")) {
       run("tar", ["-xzf", archivePath, "-C", tempDir]);
@@ -236,12 +236,12 @@ function extractArchive(archivePath, platform, destination) {
 }
 
 function prepareMainPackage(outDir, version) {
-  const packageDir = path.join(outDir, "agents-notifier");
+  const packageDir = path.join(outDir, "agents-router");
   fs.mkdirSync(packageDir, { recursive: true });
   writeJson(path.join(packageDir, "package.json"), mainPackageJson(version));
   copyFile(
     LAUNCHER_SOURCE,
-    path.join(packageDir, "bin", "agents-notifier.js"),
+    path.join(packageDir, "bin", "agents-router.js"),
     0o755
   );
   copyFile(

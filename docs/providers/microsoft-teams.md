@@ -2,9 +2,9 @@
 
 中文文档：[microsoft-teams.zh-CN.md](microsoft-teams.zh-CN.md)
 
-Use Microsoft Teams when you want Agents Notifier updates in one Teams channel or chat.
+Use Microsoft Teams when you want Agents Router updates in one Teams channel or chat.
 
-Agents Notifier sends an Adaptive Card JSON payload to a Teams webhook URL. This is a webhook notification sender, not a full Microsoft Teams bot app.
+Agents Router sends an Adaptive Card JSON payload to a Teams webhook URL. This is a webhook notification sender, not a full Microsoft Teams bot app.
 
 ## Official Links
 
@@ -17,7 +17,7 @@ Agents Notifier sends an Adaptive Card JSON payload to a Teams webhook URL. This
 - A Microsoft Teams workspace.
 - Permission to create a Workflows webhook or incoming webhook for the target channel or chat.
 - One Teams webhook URL.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Create a Teams Webhook
 
@@ -33,12 +33,12 @@ Incoming Webhook connector URLs also work if your Teams tenant still allows them
 
 Treat the webhook URL like a secret.
 
-## 2. Connect Agents Notifier
+## 2. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -49,26 +49,26 @@ Microsoft Teams
 
 Paste the Teams webhook URL.
 
-Agents Notifier stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
+Agents Router stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for Microsoft Teams.
+Agents Router fixes answer detail to `Preview` for Microsoft Teams.
 
-Teams incoming webhook messages have a documented 28 KB message size limit. Full answers can be long, so Agents Notifier keeps Teams notifications short for reliable delivery.
+Teams incoming webhook messages have a documented 28 KB message size limit. Full answers can be long, so Agents Router keeps Teams notifications short for reliable delivery.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for Microsoft Teams.
+Agents Router disables prompt detail for Microsoft Teams.
 
-Prompts can be long and private. Teams webhook messages have a documented 28 KB size limit, so Agents Notifier keeps prompts out of Teams notifications.
+Prompts can be long and private. Teams webhook messages have a documented 28 KB size limit, so Agents Router keeps prompts out of Teams notifications.
 
 ## Manual Config
 
 Microsoft Teams is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Simple config:
@@ -84,7 +84,7 @@ sources = ["codex_desktop"]
 providers = ["microsoft_teams"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["microsoft_teams"]
 ```
 
@@ -93,21 +93,21 @@ Advanced: `url_env` is supported, but only use it when the environment variable 
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## Limits
 
-Agents Notifier sends an Adaptive Card payload with:
+Agents Router sends an Adaptive Card payload with:
 
 ```text
 type = "message"
 contentType = "application/vnd.microsoft.card.adaptive"
 ```
 
-If the serialized Teams webhook payload exceeds 28 KB, Agents Notifier fails the Teams delivery before sending. It does not silently cut your message.
+If the serialized Teams webhook payload exceeds 28 KB, Agents Router fails the Teams delivery before sending. It does not silently cut your message.
 
-Agents Notifier always uses `Preview` answer detail for Microsoft Teams.
+Agents Router always uses `Preview` answer detail for Microsoft Teams.
 
 ## If It Does Not Show Up
 
@@ -121,5 +121,5 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```

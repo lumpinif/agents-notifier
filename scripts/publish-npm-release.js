@@ -7,11 +7,11 @@ const path = require("node:path");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const PACKAGE_ORDER = [
-  "agents-notifier-darwin-arm64",
-  "agents-notifier-darwin-x64",
-  "agents-notifier-linux-x64-gnu",
-  "agents-notifier-win32-x64-msvc",
-  "agents-notifier",
+  "agents-router-darwin-arm64",
+  "agents-router-darwin-x64",
+  "agents-router-linux-x64-gnu",
+  "agents-router-win32-x64-msvc",
+  "agents-router",
 ];
 
 function parseArgs(argv) {

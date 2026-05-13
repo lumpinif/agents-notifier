@@ -7,18 +7,18 @@ const os = require("node:os");
 const path = require("node:path");
 
 const PACKAGE_BY_PLATFORM = {
-  "darwin arm64": "agents-notifier-darwin-arm64",
-  "darwin x64": "agents-notifier-darwin-x64",
-  "linux x64": "agents-notifier-linux-x64-gnu",
-  "win32 x64": "agents-notifier-win32-x64-msvc",
+  "darwin arm64": "agents-router-darwin-arm64",
+  "darwin x64": "agents-router-darwin-x64",
+  "linux x64": "agents-router-linux-x64-gnu",
+  "win32 x64": "agents-router-win32-x64-msvc",
 };
 
 const STABLE_INSTALL_COMMANDS = new Set(["setup", "start", "watch"]);
 const STABLE_FORWARD_COMMANDS = new Set(["status", "stop", "uninstall"]);
-const INSTALL_METHOD_MARKER_FILE = ".agents-notifier-install-method";
+const INSTALL_METHOD_MARKER_FILE = ".agents-router-install-method";
 
 function fail(message) {
-  console.error(`agents-notifier: ${message}`);
+  console.error(`agents-router: ${message}`);
   process.exit(1);
 }
 
@@ -41,7 +41,7 @@ function isNpxCachePath(filePath) {
 }
 
 function stableInstallPath(binaryName) {
-  const configuredInstallDir = process.env.AGENTS_NOTIFIER_INSTALL_DIR;
+  const configuredInstallDir = process.env.AGENTS_ROUTER_INSTALL_DIR;
   if (configuredInstallDir && configuredInstallDir.trim() !== "") {
     return path.join(configuredInstallDir, binaryName);
   }
@@ -49,15 +49,15 @@ function stableInstallPath(binaryName) {
   if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA;
     if (!localAppData) {
-      fail("LOCALAPPDATA is not set. Set AGENTS_NOTIFIER_INSTALL_DIR to choose an install directory.");
+      fail("LOCALAPPDATA is not set. Set AGENTS_ROUTER_INSTALL_DIR to choose an install directory.");
     }
 
-    return path.join(localAppData, "Programs", "agents-notifier", binaryName);
+    return path.join(localAppData, "Programs", "agents-router", binaryName);
   }
 
   const home = os.homedir();
   if (!home) {
-    fail("home directory is not available. Set AGENTS_NOTIFIER_INSTALL_DIR to choose an install directory.");
+    fail("home directory is not available. Set AGENTS_ROUTER_INSTALL_DIR to choose an install directory.");
   }
 
   return path.join(home, ".local", "bin", binaryName);
@@ -72,7 +72,7 @@ function spawnNative(binaryPath, args, installMethod) {
     stdio: "inherit",
     env: {
       ...process.env,
-      AGENTS_NOTIFIER_INSTALL_METHOD: installMethod,
+      AGENTS_ROUTER_INSTALL_METHOD: installMethod,
     },
   });
 }
@@ -82,7 +82,7 @@ function captureNative(binaryPath, args, installMethod) {
     encoding: "utf8",
     env: {
       ...process.env,
-      AGENTS_NOTIFIER_INSTALL_METHOD: installMethod,
+      AGENTS_ROUTER_INSTALL_METHOD: installMethod,
     },
   });
 }
@@ -200,8 +200,8 @@ function printPathHint(destinationPath) {
     return;
   }
 
-  console.error(`Installed stable agents-notifier binary: ${destinationPath}`);
-  console.error(`Add this directory to PATH if you want to run agents-notifier directly: ${installDir}`);
+  console.error(`Installed stable agents-router binary: ${destinationPath}`);
+  console.error(`Add this directory to PATH if you want to run agents-router directly: ${installDir}`);
   console.error("");
 }
 
@@ -217,12 +217,12 @@ try {
   packageJsonPath = require.resolve(`${packageName}/package.json`);
 } catch (error) {
   fail(
-    `missing native package ${packageName}. Reinstall with "npm install -g agents-notifier".`
+    `missing native package ${packageName}. Reinstall with "npm install -g agents-router".`
   );
 }
 
 const binaryName =
-  process.platform === "win32" ? "agents-notifier.exe" : "agents-notifier";
+  process.platform === "win32" ? "agents-router.exe" : "agents-router";
 const binaryPath = path.join(path.dirname(packageJsonPath), "bin", binaryName);
 
 if (!fs.existsSync(binaryPath)) {

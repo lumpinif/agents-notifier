@@ -2,9 +2,9 @@
 
 English documentation: [whatsapp.md](whatsapp.md)
 
-当你想通过 WhatsApp Business Platform Cloud API，把 Agents Notifier 通知发给一个 WhatsApp 用户时，就用 WhatsApp。
+当你想通过 WhatsApp Business Platform Cloud API，把 Agents Router 通知发给一个 WhatsApp 用户时，就用 WhatsApp。
 
-Agents Notifier 发送的是非模板 text message。它是通知发送器，不是双向 WhatsApp chat bot。
+Agents Router 发送的是非模板 text message。它是通知发送器，不是双向 WhatsApp chat bot。
 
 ## 官方链接
 
@@ -18,7 +18,7 @@ Agents Notifier 发送的是非模板 text message。它是通知发送器，不
 - 一个 WhatsApp Business phone number ID。
 - 一个可以发送 WhatsApp messages 的 system user access token。
 - 一个带国家区号、只包含数字的接收方手机号。
-- 已安装 Agents Notifier。
+- 已安装 Agents Router。
 
 ## 1. 准备 WhatsApp Cloud API Access
 
@@ -38,7 +38,7 @@ Authorization: Bearer <ACCESS_TOKEN>
 Content-Type: application/json
 ```
 
-Agents Notifier 发送：
+Agents Router 发送：
 
 ```json
 {
@@ -47,7 +47,7 @@ Agents Notifier 发送：
   "to": "15551234567",
   "type": "text",
   "text": {
-    "body": "Agents Notifier message"
+    "body": "Agents Router message"
   }
 }
 ```
@@ -56,14 +56,14 @@ Agents Notifier 发送：
 
 WhatsApp 的非模板消息用于 customer service window。大白话说，接收方通常需要先给你的 WhatsApp Business account 发过消息，并且还在允许回复的窗口内。
 
-Agents Notifier 这个 provider 不发送 WhatsApp template message，只发送普通通知文本。
+Agents Router 这个 provider 不发送 WhatsApp template message，只发送普通通知文本。
 
-## 3. 连接 Agents Notifier
+## 3. 连接 Agents Router
 
 运行：
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 选择：
@@ -74,26 +74,26 @@ WhatsApp
 
 粘贴 access token、phone number ID 和 recipient phone number。
 
-Agents Notifier 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试消息。
+Agents Router 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试消息。
 
 ## Answer Detail
 
-Agents Notifier 会对 WhatsApp 固定使用 `Preview` answer detail。
+Agents Router 会对 WhatsApp 固定使用 `Preview` answer detail。
 
-WhatsApp 通知应该保持短小。Agents Notifier 对 WhatsApp text body 使用 4096 字符的本地保护线；如果格式化后的通知太长，会在发送前失败。
+WhatsApp 通知应该保持短小。Agents Router 对 WhatsApp text body 使用 4096 字符的本地保护线；如果格式化后的通知太长，会在发送前失败。
 
 ## Prompt Detail
 
-Agents Notifier 会对 WhatsApp 禁用 prompt detail。
+Agents Router 会对 WhatsApp 禁用 prompt detail。
 
-Prompt 可能很长，也可能包含私人信息，所以 Agents Notifier 不会把 prompt 放进 WhatsApp 通知里。
+Prompt 可能很长，也可能包含私人信息，所以 Agents Router 不会把 prompt 放进 WhatsApp 通知里。
 
 ## 手动配置
 
 WhatsApp 配置在：
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 简单配置：
@@ -111,7 +111,7 @@ sources = ["codex_desktop"]
 providers = ["whatsapp"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["whatsapp"]
 ```
 
@@ -120,16 +120,16 @@ providers = ["whatsapp"]
 正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## 限制
 
-Agents Notifier 使用 Graph API version `v23.0`。
+Agents Router 使用 Graph API version `v23.0`。
 
 `phone_number_id` 必须只包含数字。`recipient_phone_number` 必须是 7 到 15 位数字，不能包含 `+`、空格或标点。
 
-如果某条格式化后的 WhatsApp 通知太长，Agents Notifier 会在发送前让这次 WhatsApp 投递失败。它不会偷偷截断你的消息。
+如果某条格式化后的 WhatsApp 通知太长，Agents Router 会在发送前让这次 WhatsApp 投递失败。它不会偷偷截断你的消息。
 
 ## 如果收不到
 
@@ -144,5 +144,5 @@ Agents Notifier 使用 Graph API version `v23.0`。
 - 本地 service 是否在运行：
 
 ```bash
-agents-notifier status
+agents-router status
 ```

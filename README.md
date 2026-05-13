@@ -1,4 +1,4 @@
-# agents-notifier
+# agents-router
 
 Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, WeChat, Microsoft Teams, email, Feishu/Lark, Pushover, or webhook.
 
@@ -12,14 +12,14 @@ Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack
 >
 > _The moment the job finishes, you get a notification and know it is time to come back."_
 
-⚡ Local-only notifications for AI coding agents.
+⚡ Local-first signal routing for AI coding agents.
 
 Built for local agents like [Codex Desktop](https://openai.com/codex/), [Codex CLI](https://github.com/openai/codex), [Claude Code](https://claude.com/product/claude-code), GitHub Copilot CLI, Gemini CLI, Aider, Cursor CLI, OpenCode CLI, OpenClaw, and Hermes Agent CLI.
 
 Built in Rust 🦀. Fast, small, and quiet in the background.
 
 ```text
-Agent on your computer -> Agents Notifier -> Your provider
+Agent on your computer -> Agents Router -> Your provider
 ```
 
 No cloud account. No hosted backend. No extra dashboard.
@@ -55,9 +55,9 @@ Providers (Where do you want to get the notification?):
 
 ## 🔒 Privacy
 
-Agents Notifier runs locally.
+Agents Router runs locally.
 
-Your data does not go to an Agents Notifier cloud.
+Your data does not go to an Agents Router cloud.
 
 Notifications go directly from your computer to your provider.
 
@@ -88,28 +88,28 @@ Recommended:
 Copy this into your Terminal:
 
 ```bash
-npx --yes --prefer-online agents-notifier@latest setup
+npx --yes --prefer-online agents-router@latest setup
 ```
 
 Prefer a persistent npm install:
 
 ```bash
-npm install -g agents-notifier
-agents-notifier setup
+npm install -g agents-router
+agents-router setup
 ```
 
 Without Node.js/npm:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
-agents-notifier setup
+curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-router/main/install.sh | sh
+agents-router setup
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 | iex
-agents-notifier setup
+irm https://raw.githubusercontent.com/lumpinif/agents-router/main/install.ps1 | iex
+agents-router setup
 ```
 
 To upgrade later, rerun the same install method you used the first time. If the
@@ -119,16 +119,16 @@ binary so the background service uses the new version too.
 From source:
 
 ```bash
-git clone https://github.com/lumpinif/agents-notifier.git
-cd agents-notifier
+git clone https://github.com/lumpinif/agents-router.git
+cd agents-router
 cargo install --path .
-agents-notifier setup
+agents-router setup
 ```
 
 ## 🚀 Setup - Step 2
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 First choose the CLI language. English is the default, and Simplified Chinese is available.
@@ -151,7 +151,7 @@ The service runs locally:
 - Linux: systemd user service
 - Windows: Task Scheduler
 
-To stop using the service, run `agents-notifier stop`.
+To stop using the service, run `agents-router stop`.
 
 Provider setup guides:
 
@@ -181,55 +181,55 @@ Agent setup guides:
 
 ## 🧹 Uninstall
 
-Remove Agents Notifier cleanly:
+Remove Agents Router cleanly:
 
 ```bash
-npx --yes agents-notifier uninstall
+npx --yes agents-router uninstall
 ```
 
 If you installed it globally with npm, remove the npm package after local cleanup:
 
 ```bash
-agents-notifier uninstall
-npm uninstall -g agents-notifier
+agents-router uninstall
+npm uninstall -g agents-router
 ```
 
 ## 🧭 Commands
 
 ```bash
-agents-notifier setup    # set up or change agent/provider
-agents-notifier start    # start existing service
-agents-notifier status   # check service status
-agents-notifier stop     # stop service
-agents-notifier uninstall # remove service, config, logs, and state
-agents-notifier watch    # foreground debug worker
+agents-router setup    # set up or change agent/provider
+agents-router start    # start existing service
+agents-router status   # check service status
+agents-router stop     # stop service
+agents-router uninstall # remove service, config, logs, and state
+agents-router watch    # foreground debug worker
 ```
 
 CLI agent hooks can submit events with:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source codex_cli \
   --title "Codex" \
   --body "Ready for review."
 ```
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source claude_code \
   --title "Claude Code" \
   --body "Claude Code finished a task."
 ```
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source opencode_cli \
   --title "OpenCode CLI" \
   --body "OpenCode CLI finished a task."
 ```
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source gemini_cli \
   --title "Gemini CLI" \
   --body "Gemini CLI finished a task."
@@ -243,16 +243,16 @@ Codex Desktop + Lark integration, including Apple Watch push notifications.
 
 | Original source: Codex Desktop | Lark desktop notification |
 | --- | --- |
-| <img src="docs/assets/examples/codex-desktop-source.png" alt="Codex Desktop source task that Agents Notifier watches" width="520"> | <img src="docs/assets/examples/lark-desktop-notification.png" alt="Lark desktop notification sent by Agents Notifier" width="520"> |
+| <img src="docs/assets/examples/codex-desktop-source.png" alt="Codex Desktop source task that Agents Router watches" width="520"> | <img src="docs/assets/examples/lark-desktop-notification.png" alt="Lark desktop notification sent by Agents Router" width="520"> |
 
 | Lark push preview | Apple Watch notification |
 | --- | --- |
-| <img src="docs/assets/examples/codex-lark-watch-cover.png" alt="Agents Notifier Apple Watch push preview with Lark" width="260"> | <img src="docs/assets/examples/codex-lark-watch-notification.png" alt="Agents Notifier Apple Watch notification sent through Lark" width="260"> |
+| <img src="docs/assets/examples/codex-lark-watch-cover.png" alt="Agents Router Apple Watch push preview with Lark" width="260"> | <img src="docs/assets/examples/codex-lark-watch-notification.png" alt="Agents Router Apple Watch notification sent through Lark" width="260"> |
 
 ```text
 Codex Desktop
 
-Project: agents-notifier
+Project: agents-router
 Session: README polish
 Open in Codex: codex://threads/019e1049-2d6d-7de2-bcdf-f47346930b71
 Duration: 1m 32s
@@ -265,10 +265,10 @@ Preview: Updated the README with a clearer setup flow...
 ## 📝 Config
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
-Most users should use `agents-notifier setup`.
+Most users should use `agents-router setup`.
 The running service automatically reloads valid config changes.
 
 ## 🧩 Core

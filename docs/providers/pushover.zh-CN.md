@@ -2,7 +2,7 @@
 
 English documentation: [pushover.md](pushover.md)
 
-当你想在 Pushover 手机或桌面 app 里收到 Agents Notifier 通知时，就用 Pushover。
+当你想在 Pushover 手机或桌面 app 里收到 Agents Router 通知时，就用 Pushover。
 
 ## 官方链接
 
@@ -17,7 +17,7 @@ English documentation: [pushover.md](pushover.md)
 - 至少一台已经登录 Pushover app 的设备。
 - 一个 Pushover application API token。
 - 你的 Pushover user key，或者 group key。
-- 已安装 Agents Notifier。
+- 已安装 Agents Router。
 
 ## 1. 创建 Pushover Application
 
@@ -29,16 +29,16 @@ English documentation: [pushover.md](pushover.md)
 
 从 Pushover dashboard 复制你的 user key。
 
-你也可以使用 Pushover group key。Agents Notifier 不区分 user key 和 group key，因为 Pushover API 本身也是这样处理的。
+你也可以使用 Pushover group key。Agents Router 不区分 user key 和 group key，因为 Pushover API 本身也是这样处理的。
 
 application token 和 user key 都要保密。
 
-## 3. 连接 Agents Notifier
+## 3. 连接 Agents Router
 
 运行：
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 选择：
@@ -59,22 +59,22 @@ Pushover
 
 ## Answer Detail
 
-Agents Notifier 会对 Pushover 固定使用 `Preview` answer detail。
+Agents Router 会对 Pushover 固定使用 `Preview` answer detail。
 
-Pushover message 最多 1024 个字符。完整回答可能很长，所以 Agents Notifier 会让 Pushover 通知保持短小，保证投递更可靠。
+Pushover message 最多 1024 个字符。完整回答可能很长，所以 Agents Router 会让 Pushover 通知保持短小，保证投递更可靠。
 
 ## Prompt Detail
 
-Agents Notifier 会对 Pushover 禁用 prompt detail。
+Agents Router 会对 Pushover 禁用 prompt detail。
 
-Pushover message 最多 1024 个字符。Prompt 可能很长，所以 Agents Notifier 不会把 prompt 放进 Pushover 通知里，避免投递变得不可靠。
+Pushover message 最多 1024 个字符。Prompt 可能很长，所以 Agents Router 不会把 prompt 放进 Pushover 通知里，避免投递变得不可靠。
 
 ## 手动配置
 
 Pushover 配置在：
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 最简单配置：
@@ -91,7 +91,7 @@ sources = ["codex_desktop"]
 providers = ["pushover"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["pushover"]
 ```
 
@@ -112,16 +112,16 @@ sound = "pushover"
 手动修改后，正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## 限制
 
 Pushover 限制 title 最多 250 个字符，message body 最多 1024 个字符。
 
-如果某条通知太长，Agents Notifier 会在发送前让这次 Pushover 投递失败。它不会偷偷截断你的消息。
+如果某条通知太长，Agents Router 会在发送前让这次 Pushover 投递失败。它不会偷偷截断你的消息。
 
-Agents Notifier 会对 Pushover 始终使用 `Preview` answer detail。
+Agents Router 会对 Pushover 始终使用 `Preview` answer detail。
 
 ## 如果没有收到
 
@@ -135,5 +135,5 @@ Agents Notifier 会对 Pushover 始终使用 `Preview` answer detail。
 - 本地 service 是否正在运行：
 
 ```bash
-agents-notifier status
+agents-router status
 ```

@@ -254,7 +254,7 @@ mod tests {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.claude/projects/project/session-1.jsonl"
                     .to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "Stop".to_string(),
                 permission_mode: Some("default".to_string()),
                 source: None,
@@ -278,7 +278,7 @@ mod tests {
                 .workspace
                 .as_ref()
                 .and_then(|workspace| workspace.project_name.as_deref()),
-            Some("agents-notifier")
+            Some("agents-router")
         );
         assert_eq!(
             event
@@ -319,7 +319,7 @@ mod tests {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.claude/projects/project/session-1.jsonl"
                     .to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "SessionStart".to_string(),
                 permission_mode: None,
                 source: Some("startup".to_string()),
@@ -373,7 +373,7 @@ mod tests {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.claude/projects/project/session-1.jsonl"
                     .to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "Notification".to_string(),
                 permission_mode: Some("default".to_string()),
                 source: None,
@@ -407,7 +407,7 @@ mod tests {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.claude/projects/project/session-1.jsonl"
                     .to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "PreToolUse".to_string(),
                 permission_mode: Some("default".to_string()),
                 source: None,

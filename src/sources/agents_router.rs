@@ -15,9 +15,9 @@ pub fn create_signal(
         .source(source_id)
         .with_context(|| format!("source `{source_id}` is not configured"))?;
 
-    if source.source_type != SourceType::AgentsNotifier {
+    if source.source_type != SourceType::AgentsRouter {
         return Err(anyhow!(
-            "source `{}` has type `{}`; expected `agents_notifier`",
+            "source `{}` has type `{}`; expected `agents_router`",
             source.id,
             source.source_type.as_str()
         ));
@@ -42,19 +42,19 @@ mod tests {
 
     #[test]
     fn creates_signal_from_service_test_event() {
-        let config = test_config(SourceType::AgentsNotifier);
+        let config = test_config(SourceType::AgentsRouter);
 
         let signal = create_signal(
             &config,
-            "agents_notifier",
-            "Agents Notifier",
+            "agents_router",
+            "Agents Router",
             "Test notification from your computer.",
         )
-        .expect("agents_notifier source should create signal");
+        .expect("agents_router source should create signal");
 
-        assert_eq!(signal.source_id(), "agents_notifier");
-        assert_eq!(signal.source_type(), "agents_notifier");
-        assert_eq!(signal.title(), "Agents Notifier");
+        assert_eq!(signal.source_id(), "agents_router");
+        assert_eq!(signal.source_type(), "agents_router");
+        assert_eq!(signal.title(), "Agents Router");
         assert_eq!(signal.summary(), "Test notification from your computer.");
     }
 
@@ -62,10 +62,10 @@ mod tests {
     fn rejects_non_service_source() {
         let config = test_config(SourceType::CodexCli);
 
-        let err = create_signal(&config, "agents_notifier", "Agents Notifier", "Body")
+        let err = create_signal(&config, "agents_router", "Agents Router", "Body")
             .expect_err("wrong source type should fail");
 
-        assert!(err.to_string().contains("expected `agents_notifier`"));
+        assert!(err.to_string().contains("expected `agents_router`"));
     }
 
     fn test_config(source_type: SourceType) -> Config {
@@ -75,7 +75,7 @@ mod tests {
             log: LogConfig::default(),
             notification: NotificationConfig::default(),
             sources: vec![SourceConfig {
-                id: "agents_notifier".to_string(),
+                id: "agents_router".to_string(),
                 source_type,
             }],
             providers: vec![ProviderConfig {
@@ -119,7 +119,7 @@ mod tests {
                 route_tag: None,
             }],
             routes: vec![RouteConfig::new(
-                vec!["agents_notifier".to_string()],
+                vec!["agents_router".to_string()],
                 vec!["debug".to_string()],
             )],
         }

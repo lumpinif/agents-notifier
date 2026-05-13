@@ -6,14 +6,14 @@ use anyhow::Context;
 use reqwest::header::USER_AGENT;
 use serde::Deserialize;
 
-pub const INSTALL_METHOD_ENV: &str = "AGENTS_NOTIFIER_INSTALL_METHOD";
-pub const INSTALL_METHOD_MARKER_FILE: &str = ".agents-notifier-install-method";
-pub const SKIP_UPDATE_CHECK_ENV: &str = "AGENTS_NOTIFIER_SKIP_UPDATE_CHECK";
+pub const INSTALL_METHOD_ENV: &str = "AGENTS_ROUTER_INSTALL_METHOD";
+pub const INSTALL_METHOD_MARKER_FILE: &str = ".agents-router-install-method";
+pub const SKIP_UPDATE_CHECK_ENV: &str = "AGENTS_ROUTER_SKIP_UPDATE_CHECK";
 
-const NPM_PACKAGE_URL: &str = "https://registry.npmjs.org/agents-notifier";
+const NPM_PACKAGE_URL: &str = "https://registry.npmjs.org/agents-router";
 const GITHUB_LATEST_RELEASE_URL: &str =
-    "https://api.github.com/repos/lumpinif/agents-notifier/releases/latest";
-const UPDATE_CHECK_USER_AGENT: &str = concat!("agents-notifier/", env!("CARGO_PKG_VERSION"));
+    "https://api.github.com/repos/lumpinif/agents-router/releases/latest";
+const UPDATE_CHECK_USER_AGENT: &str = concat!("agents-router/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AppVersion {
@@ -270,7 +270,7 @@ mod tests {
     fn skips_development_binary_paths() {
         assert_eq!(
             resolve_update_install_method(
-                Path::new("/repo/target/debug/agents-notifier"),
+                Path::new("/repo/target/debug/agents-router"),
                 None,
                 None,
                 None
@@ -279,10 +279,10 @@ mod tests {
         );
         assert_eq!(
             resolve_update_install_method(
-                Path::new("/Users/tester/.local/bin/agents-notifier"),
+                Path::new("/Users/tester/.local/bin/agents-router"),
                 None,
                 None,
-                Some(Path::new("/Users/tester/.local/bin/agents-notifier"))
+                Some(Path::new("/Users/tester/.local/bin/agents-router"))
             ),
             Some(UpdateInstallMethod::Script)
         );
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn selects_install_method_from_environment() {
-        let binary = Path::new("/Users/tester/.local/bin/agents-notifier");
+        let binary = Path::new("/Users/tester/.local/bin/agents-router");
 
         assert_eq!(
             resolve_update_install_method(binary, Some("npx"), None, None),
@@ -318,7 +318,7 @@ mod tests {
 
     #[test]
     fn unknown_install_method_without_known_script_path_skips_update() {
-        let binary = Path::new("/Users/tester/.cargo/bin/agents-notifier");
+        let binary = Path::new("/Users/tester/.cargo/bin/agents-router");
 
         assert_eq!(
             resolve_update_install_method(binary, Some("cargo"), None, None),

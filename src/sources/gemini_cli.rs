@@ -175,7 +175,7 @@ mod tests {
             GeminiCliHookInput {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.gemini/tmp/session-1.json".to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "AfterAgent".to_string(),
                 timestamp: Some("2026-05-12T10:15:30Z".to_string()),
                 prompt: Some("Review this patch.".to_string()),
@@ -198,7 +198,7 @@ mod tests {
                 .workspace
                 .as_ref()
                 .and_then(|workspace| workspace.project_name.as_deref()),
-            Some("agents-notifier")
+            Some("agents-router")
         );
         assert_eq!(
             event
@@ -249,7 +249,7 @@ mod tests {
             GeminiCliHookInput {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.gemini/tmp/session-1.json".to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "Notification".to_string(),
                 timestamp: Some("2026-05-12T10:15:30Z".to_string()),
                 prompt: None,
@@ -281,7 +281,7 @@ mod tests {
             GeminiCliHookInput {
                 session_id: "session-1".to_string(),
                 transcript_path: "/Users/tester/.gemini/tmp/session-1.json".to_string(),
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "BeforeTool".to_string(),
                 timestamp: None,
                 prompt: None,

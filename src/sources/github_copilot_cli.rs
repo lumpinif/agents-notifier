@@ -93,7 +93,7 @@ mod tests {
             GithubCopilotCliNotificationInput {
                 session_id: "session-1".to_string(),
                 timestamp: 1775907268684,
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "Notification".to_string(),
                 message: "GitHub Copilot CLI emitted a notification.".to_string(),
                 title: Some("GitHub Copilot CLI".to_string()),
@@ -114,7 +114,7 @@ mod tests {
                 .workspace
                 .as_ref()
                 .and_then(|workspace| workspace.project_name.as_deref()),
-            Some("agents-notifier")
+            Some("agents-router")
         );
         assert_eq!(
             event
@@ -140,7 +140,7 @@ mod tests {
             GithubCopilotCliNotificationInput {
                 session_id: "session-1".to_string(),
                 timestamp: 1775907268684,
-                cwd: "/Users/tester/projects/agents-notifier".to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
                 hook_event_name: "SessionStart".to_string(),
                 message: "Started.".to_string(),
                 title: None,

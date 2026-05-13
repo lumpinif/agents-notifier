@@ -8,7 +8,7 @@ English documentation: [webhook.md](webhook.md)
 
 ## Payload
 
-Agents Notifier 会把完整 `Signal` 作为 JSON 发出去：
+Agents Router 会把完整 `Signal` 作为 JSON 发出去：
 
 ```json
 {
@@ -39,7 +39,7 @@ Agents Notifier 会把完整 `Signal` 作为 JSON 发出去：
 
 - 一个接受 `POST` 的 HTTPS endpoint。
 - 一个稳定 URL。
-- 已经安装 Agents Notifier。
+- 已经安装 Agents Router。
 
 setup 允许本地测试 URL，例如 `http://127.0.0.1:8080/hook`。远端 HTTP URL 会被拒绝。
 
@@ -54,12 +54,12 @@ Content-Type: application/json
 
 先保持简单。第一步只打印 request body。确认收到第一条 signal 后，再加后续处理。
 
-## 2. 连接 Agents Notifier
+## 2. 连接 Agents Router
 
 运行：
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 选择：
@@ -70,14 +70,14 @@ Webhook
 
 粘贴 HTTPS endpoint URL。
 
-Agents Notifier 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试 JSON payload。
+Agents Router 会保存 provider、启动本地 service，并通过真实 agent 事件使用的同一条 service route 发送一条测试 JSON payload。
 
 ## 手动配置
 
 Webhook 配置在：
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 本机 service 推荐直接使用 `url`：
@@ -86,7 +86,7 @@ Webhook 配置在：
 [[providers]]
 id = "debug_webhook"
 type = "webhook"
-url = "https://example.com/agents-notifier"
+url = "https://example.com/agents-router"
 
 [[routes]]
 sources = ["codex_desktop", "codex_cli"]
@@ -96,7 +96,7 @@ providers = ["debug_webhook"]
 正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 进阶用法：也支持 `url_env`。但只有在你确认环境变量能被运行中的 service 读到时再用。普通 setup 场景下，直接写 `url` 更简单、更稳定。
@@ -118,7 +118,7 @@ agents-notifier start
 - 本地 service 是否正在运行：
 
 ```bash
-agents-notifier status
+agents-router status
 ```
 
 ## 安全

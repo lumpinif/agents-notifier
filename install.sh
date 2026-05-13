@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-REPO="${AGENTS_NOTIFIER_REPO:-lumpinif/agents-notifier}"
-INSTALL_DIR="${AGENTS_NOTIFIER_INSTALL_DIR:-$HOME/.local/bin}"
-VERSION="${AGENTS_NOTIFIER_VERSION:-latest}"
+REPO="${AGENTS_ROUTER_REPO:-lumpinif/agents-router}"
+INSTALL_DIR="${AGENTS_ROUTER_INSTALL_DIR:-$HOME/.local/bin}"
+VERSION="${AGENTS_ROUTER_VERSION:-latest}"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -16,6 +16,29 @@ need curl
 need tar
 
 service_is_running() {
+  case "$os" in
+    Darwin)
+      uid="$(id -u)"
+      for service_target in "gui/${uid}/com.agents-router.service" "user/${uid}/com.agents-router.service"; do
+        if output="$(launchctl print "$service_target" 2>/dev/null)"; then
+          if printf '%s\n' "$output" | grep -Eq '(^|[[:space:]])pid = [1-9][0-9]*|state = running'; then
+            return 0
+          fi
+        fi
+      done
+      return 1
+      ;;
+    Linux)
+      command -v systemctl >/dev/null 2>&1 &&
+        systemctl --user is-active --quiet agents-router.service
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+legacy_service_is_running() {
   case "$os" in
     Darwin)
       uid="$(id -u)"
@@ -41,10 +64,10 @@ service_is_running() {
 service_metadata_path() {
   case "$os" in
     Darwin)
-      printf '%s\n' "$HOME/Library/Application Support/agents-notifier/service.json"
+      printf '%s\n' "$HOME/Library/Application Support/agents-router/service.json"
       ;;
     Linux)
-      printf '%s\n' "$HOME/.local/state/agents-notifier/service.json"
+      printf '%s\n' "$HOME/.local/state/agents-router/service.json"
       ;;
     *)
       return 1
@@ -64,7 +87,11 @@ service_config_path() {
     exit 1
   fi
 
-  printf '%s\n' "$HOME/.config/agents-notifier/config.toml"
+  printf '%s\n' "$HOME/.config/agents-router/config.toml"
+}
+
+default_config_path() {
+  printf '%s\n' "$HOME/.config/agents-router/config.toml"
 }
 
 verify_checksum() {
@@ -87,7 +114,7 @@ case "$os" in
   Darwin) ;;
   Linux) ;;
   *)
-    echo "Agents Notifier install script supports macOS and Linux. Use install.ps1 on Windows." >&2
+    echo "Agents Router install script supports macOS and Linux. Use install.ps1 on Windows." >&2
     exit 1
     ;;
 esac
@@ -111,21 +138,25 @@ else
   esac
 fi
 
-archive="agents-notifier-${target}.tar.gz"
+archive="agents-router-${target}.tar.gz"
 if [ "$VERSION" = "latest" ]; then
   base_url="https://github.com/${REPO}/releases/latest/download"
 elif expr "$VERSION" : 'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
   base_url="https://github.com/${REPO}/releases/download/${VERSION}"
 else
-  echo "AGENTS_NOTIFIER_VERSION must be latest or a vX.Y.Z tag; got: $VERSION" >&2
+  echo "AGENTS_ROUTER_VERSION must be latest or a vX.Y.Z tag; got: $VERSION" >&2
   exit 1
 fi
 tmp_dir="$(mktemp -d)"
 installed_tmp=""
 restart_service_after_install=0
+start_after_legacy_migration=0
 
 if service_is_running; then
   restart_service_after_install=1
+fi
+if legacy_service_is_running; then
+  start_after_legacy_migration=1
 fi
 
 cleanup() {
@@ -136,7 +167,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Downloading Agents Notifier for ${target}..."
+echo "Downloading Agents Router for ${target}..."
 curl -fsSL "${base_url}/${archive}" -o "${tmp_dir}/${archive}"
 curl -fsSL "${base_url}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
 
@@ -144,27 +175,35 @@ curl -fsSL "${base_url}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
 
 tar -xzf "${tmp_dir}/${archive}" -C "$tmp_dir"
 mkdir -p "$INSTALL_DIR"
-installed_tmp="${INSTALL_DIR}/.agents-notifier.$$"
-cp "${tmp_dir}/agents-notifier" "$installed_tmp"
+installed_tmp="${INSTALL_DIR}/.agents-router.$$"
+cp "${tmp_dir}/agents-router" "$installed_tmp"
 chmod 0755 "$installed_tmp"
-mv "$installed_tmp" "${INSTALL_DIR}/agents-notifier"
+mv "$installed_tmp" "${INSTALL_DIR}/agents-router"
 installed_tmp=""
-printf '%s\n' "script" > "${INSTALL_DIR}/.agents-notifier-install-method"
+printf '%s\n' "script" > "${INSTALL_DIR}/.agents-router-install-method"
 
-echo "Installed: ${INSTALL_DIR}/agents-notifier"
+echo "Installed: ${INSTALL_DIR}/agents-router"
+
+"${INSTALL_DIR}/agents-router" migrate-legacy --config "$(default_config_path)"
 
 if [ "$restart_service_after_install" = "1" ]; then
-  echo "Restarting existing Agents Notifier service..."
+  echo "Restarting existing Agents Router service..."
   config_path="$(service_config_path)"
-  "${INSTALL_DIR}/agents-notifier" stop
-  "${INSTALL_DIR}/agents-notifier" start --config "$config_path"
+  "${INSTALL_DIR}/agents-router" stop
+  "${INSTALL_DIR}/agents-router" start --config "$config_path"
+elif [ "$start_after_legacy_migration" = "1" ]; then
+  config_path="$(service_config_path)"
+  if [ -f "$config_path" ]; then
+    echo "Starting Agents Router with migrated config..."
+    "${INSTALL_DIR}/agents-router" start --config "$config_path"
+  fi
 fi
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *)
     echo
-    echo "Add this to your shell profile if agents-notifier is not found:"
+    echo "Add this to your shell profile if agents-router is not found:"
     echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
     ;;
 esac
@@ -172,7 +211,9 @@ esac
 echo
 if [ "$restart_service_after_install" = "1" ]; then
   echo "Service restarted with the installed version."
+elif [ "$start_after_legacy_migration" = "1" ] && [ -f "$(service_config_path)" ]; then
+  echo "Service started with the migrated Agents Router config."
 else
   echo "Next:"
-  echo "  agents-notifier setup"
+  echo "  agents-router setup"
 fi

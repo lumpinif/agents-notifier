@@ -2,9 +2,9 @@
 
 中文文档：[slack.zh-CN.md](slack.zh-CN.md)
 
-Use Slack when you want Agents Notifier updates in one Slack channel.
+Use Slack when you want Agents Router updates in one Slack channel.
 
-Agents Notifier uses Slack Incoming Webhooks. One webhook posts to one channel selected when the webhook is created.
+Agents Router uses Slack Incoming Webhooks. One webhook posts to one channel selected when the webhook is created.
 
 Messages are sent as plain text.
 
@@ -19,7 +19,7 @@ Messages are sent as plain text.
 - A Slack workspace.
 - Permission to create or install a Slack app with Incoming Webhooks.
 - One target channel.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Create a Slack Incoming Webhook
 
@@ -35,12 +35,12 @@ https://hooks.slack.com/services/...
 
 Treat this URL like a secret.
 
-## 2. Connect Agents Notifier
+## 2. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -51,26 +51,26 @@ Slack
 
 Paste the Slack webhook URL.
 
-Agents Notifier stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
+Agents Router stores the provider, starts the local service, and sends a test message through the same service route used by real agent events.
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for Slack.
+Agents Router fixes answer detail to `Preview` for Slack.
 
-Slack has documented message length and truncation limits. Full answers can be long, so Agents Notifier keeps Slack notifications short for reliable delivery.
+Slack has documented message length and truncation limits. Full answers can be long, so Agents Router keeps Slack notifications short for reliable delivery.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for Slack.
+Agents Router disables prompt detail for Slack.
 
-Prompts can be long and private. Slack messages have documented length limits, so Agents Notifier keeps prompts out of Slack notifications.
+Prompts can be long and private. Slack messages have documented length limits, so Agents Router keeps prompts out of Slack notifications.
 
 ## Manual Config
 
 Slack is configured in:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Simple config:
@@ -86,7 +86,7 @@ sources = ["codex_desktop"]
 providers = ["slack"]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["slack"]
 ```
 
@@ -95,16 +95,16 @@ Advanced: `url_env` is supported, but only use it when the environment variable 
 The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 ## Limits
 
-Slack recommends keeping posted message text to 4000 characters and documents truncation for very long posted messages. Agents Notifier uses the 4000-character recommendation as its delivery guard.
+Slack recommends keeping posted message text to 4000 characters and documents truncation for very long posted messages. Agents Router uses the 4000-character recommendation as its delivery guard.
 
-If a formatted Slack notification is too long, Agents Notifier fails the Slack delivery before sending. It does not silently cut your message.
+If a formatted Slack notification is too long, Agents Router fails the Slack delivery before sending. It does not silently cut your message.
 
-Agents Notifier always uses `Preview` answer detail for Slack.
+Agents Router always uses `Preview` answer detail for Slack.
 
 ## If It Does Not Show Up
 
@@ -117,5 +117,5 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```

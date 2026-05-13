@@ -51,7 +51,7 @@ type = "codex_cli"
 id = "phone"
 type = "ntfy"
 server = "https://ntfy.sh"
-topic = "agents-notifier-test"
+topic = "agents-router-test"
 
 [[routes]]
 sources = ["codex_cli"]
@@ -94,7 +94,7 @@ fn test_config(minimum_task_duration_minutes: Option<u64>) -> Config {
             provider_type: ProviderType::Ntfy,
             base_url: None,
             server: Some("https://ntfy.sh".to_string()),
-            topic: Some("agents-notifier-test".to_string()),
+            topic: Some("agents-router-test".to_string()),
             url: None,
             url_env: None,
             secret: None,

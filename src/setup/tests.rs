@@ -4,15 +4,15 @@ use super::*;
 
 #[test]
 fn empty_topic_input_uses_generated_topic() {
-    let topic = resolve_ntfy_topic("  ", "agents-notifier-test")
+    let topic = resolve_ntfy_topic("  ", "agents-router-test")
         .expect("empty input should use generated topic");
 
-    assert_eq!(topic, "agents-notifier-test");
+    assert_eq!(topic, "agents-router-test");
 }
 
 #[test]
 fn rejects_topic_with_path_separator() {
-    let err = resolve_ntfy_topic("bad/topic", "agents-notifier-test")
+    let err = resolve_ntfy_topic("bad/topic", "agents-router-test")
         .expect_err("path separators should be rejected");
 
     assert!(err.to_string().contains("letters, numbers"));
@@ -26,7 +26,7 @@ fn writes_parseable_ntfy_config() {
         AgentSelection::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
-        "agents-notifier-test",
+        "agents-router-test",
     );
 
     write_config(&path, &config).expect("config should be written");
@@ -37,18 +37,15 @@ fn writes_parseable_ntfy_config() {
         parsed
             .provider("phone")
             .and_then(|provider| provider.topic.as_deref()),
-        Some("agents-notifier-test")
+        Some("agents-router-test")
     );
     assert!(parsed.source("codex_desktop").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_cli").is_none());
     assert_eq!(parsed.routes[0].sources, vec!["codex_desktop".to_string()]);
     assert_eq!(parsed.routes[0].minimum_task_duration_minutes, None);
     assert!(parsed.routes[0].only_forward_from_project_paths.is_empty());
-    assert_eq!(
-        parsed.routes[1].sources,
-        vec!["agents_notifier".to_string()]
-    );
+    assert_eq!(parsed.routes[1].sources, vec!["agents_router".to_string()]);
 }
 
 #[test]
@@ -93,20 +90,17 @@ fn writes_parseable_codex_cli_config() {
         AgentSelection::CodexCli,
         AnswerDetail::Preview,
         PromptDetail::Off,
-        "agents-notifier-test",
+        "agents-router-test",
     );
 
     write_config(&path, &config).expect("config should be written");
 
     let parsed = Config::from_path(&path).expect("written config should parse");
     assert!(parsed.source("codex_cli").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_desktop").is_none());
     assert_eq!(parsed.routes[0].sources, vec!["codex_cli".to_string()]);
-    assert_eq!(
-        parsed.routes[1].sources,
-        vec!["agents_notifier".to_string()]
-    );
+    assert_eq!(parsed.routes[1].sources, vec!["agents_router".to_string()]);
 }
 
 #[test]
@@ -117,21 +111,18 @@ fn writes_parseable_claude_code_config() {
         AgentSelection::ClaudeCode,
         AnswerDetail::Preview,
         PromptDetail::Off,
-        "agents-notifier-test",
+        "agents-router-test",
     );
 
     write_config(&path, &config).expect("config should be written");
 
     let parsed = Config::from_path(&path).expect("written config should parse");
     assert!(parsed.source("claude_code").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_desktop").is_none());
     assert!(parsed.source("codex_cli").is_none());
     assert_eq!(parsed.routes[0].sources, vec!["claude_code".to_string()]);
-    assert_eq!(
-        parsed.routes[1].sources,
-        vec!["agents_notifier".to_string()]
-    );
+    assert_eq!(parsed.routes[1].sources, vec!["agents_router".to_string()]);
 }
 
 #[test]
@@ -142,7 +133,7 @@ fn writes_parseable_agent_hook_config() {
         AgentSelection::OpenCodeCli,
         AnswerDetail::Preview,
         PromptDetail::Off,
-        "agents-notifier-test",
+        "agents-router-test",
     );
 
     write_config(&path, &config).expect("config should be written");
@@ -152,14 +143,11 @@ fn writes_parseable_agent_hook_config() {
         .source("opencode_cli")
         .expect("OpenCode CLI source should be configured");
     assert_eq!(source.source_type, SourceType::AgentHook);
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_desktop").is_none());
     assert!(parsed.source("codex_cli").is_none());
     assert_eq!(parsed.routes[0].sources, vec!["opencode_cli".to_string()]);
-    assert_eq!(
-        parsed.routes[1].sources,
-        vec!["agents_notifier".to_string()]
-    );
+    assert_eq!(parsed.routes[1].sources, vec!["agents_router".to_string()]);
 }
 
 #[test]
@@ -170,14 +158,14 @@ fn applies_agent_route_filters_without_filtering_setup_test_route() {
         AgentSelection::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
-        "agents-notifier-test",
+        "agents-router-test",
     );
 
     apply_agent_route_filters(
         &mut config,
         AgentSelection::CodexDesktop,
         Some(12),
-        vec!["/Users/tester/projects/agents-notifier".to_string()],
+        vec!["/Users/tester/projects/agents-router".to_string()],
     );
     write_config(&path, &config).expect("config should be written");
 
@@ -187,12 +175,9 @@ fn applies_agent_route_filters_without_filtering_setup_test_route() {
     assert_eq!(parsed.routes[0].minimum_task_duration_minutes, Some(12));
     assert_eq!(
         parsed.routes[0].only_forward_from_project_paths,
-        vec!["/Users/tester/projects/agents-notifier".to_string()]
+        vec!["/Users/tester/projects/agents-router".to_string()]
     );
-    assert_eq!(
-        parsed.routes[1].sources,
-        vec!["agents_notifier".to_string()]
-    );
+    assert_eq!(parsed.routes[1].sources, vec!["agents_router".to_string()]);
     assert_eq!(parsed.routes[1].minimum_task_duration_minutes, None);
     assert!(parsed.routes[1].only_forward_from_project_paths.is_empty());
 }
@@ -225,7 +210,7 @@ fn writes_parseable_feishu_lark_config() {
         Some("secret")
     );
     assert!(parsed.source("codex_desktop").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_cli").is_none());
 }
 
@@ -250,7 +235,7 @@ fn writes_parseable_webhook_config() {
         Some("https://example.com/hook")
     );
     assert!(parsed.source("codex_desktop").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_cli").is_none());
 }
 
@@ -284,7 +269,7 @@ fn writes_parseable_pushover_config() {
         Some("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ")
     );
     assert!(parsed.source("codex_desktop").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_cli").is_none());
 }
 
@@ -309,7 +294,7 @@ fn writes_parseable_slack_config() {
         Some(slack_test_url().as_str())
     );
     assert!(parsed.source("codex_desktop").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_cli").is_none());
 }
 
@@ -334,7 +319,7 @@ fn writes_parseable_discord_config() {
         Some("https://discord.com/api/webhooks/123456789012345678/token")
     );
     assert!(parsed.source("codex_desktop").is_some());
-    assert!(parsed.source("agents_notifier").is_some());
+    assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_cli").is_none());
 }
 
@@ -480,7 +465,7 @@ fn writes_parseable_email_smtp_config() {
         EmailSmtpSecurity::Starttls,
         Some("alerts@example.com".to_string()),
         Some("smtp-password".to_string()),
-        "Agents Notifier <alerts@example.com>",
+        "Agents Router <alerts@example.com>",
         vec!["Felix <felix@example.com>".to_string()],
         Some("reply@example.com".to_string()),
     );
@@ -526,9 +511,9 @@ fn rejects_non_custom_bot_webhook_url() {
 #[test]
 fn accepts_https_and_local_webhook_urls() {
     assert_eq!(
-        resolve_webhook_url("https://example.com/agents-notifier")
+        resolve_webhook_url("https://example.com/agents-router")
             .expect("HTTPS webhook should be valid"),
-        "https://example.com/agents-notifier"
+        "https://example.com/agents-router"
     );
     assert_eq!(
         resolve_webhook_url("http://127.0.0.1:8080/hook")
@@ -558,8 +543,8 @@ fn accepts_telegram_whatsapp_wechat_and_microsoft_teams_inputs() {
         "123456:test-token"
     );
     assert_eq!(
-        resolve_telegram_chat_id("@agents_notifier").expect("Telegram chat id should be valid"),
-        "@agents_notifier"
+        resolve_telegram_chat_id("@agents_router").expect("Telegram chat id should be valid"),
+        "@agents_router"
     );
     assert_eq!(
         resolve_whatsapp_access_token("test-access-token")
@@ -629,9 +614,9 @@ fn accepts_email_smtp_inputs() {
         "smtp-password"
     );
     assert_eq!(
-        resolve_email_smtp_mailbox("Agents Notifier <alerts@example.com>", "from")
+        resolve_email_smtp_mailbox("Agents Router <alerts@example.com>", "from")
             .expect("SMTP mailbox should be valid"),
-        "Agents Notifier <alerts@example.com>"
+        "Agents Router <alerts@example.com>"
     );
     assert_eq!(
         resolve_email_smtp_recipients("Felix <felix@example.com>, team@example.com")
@@ -698,7 +683,7 @@ fn extracts_ntfy_subscriptions_from_config() {
         AgentSelection::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
-        "agents-notifier-test",
+        "agents-router-test",
     );
 
     let subscriptions = ntfy_subscriptions(&config);
@@ -708,7 +693,7 @@ fn extracts_ntfy_subscriptions_from_config() {
         vec![NtfySubscription {
             provider_id: "phone".to_string(),
             server: "https://ntfy.sh".to_string(),
-            topic: "agents-notifier-test".to_string(),
+            topic: "agents-router-test".to_string(),
         }]
     );
 }
@@ -817,7 +802,7 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456:test-token",
-        "@agents_notifier",
+        "@agents_router",
     );
     let whatsapp_config = build_whatsapp_config(
         AgentSelection::CodexDesktop,
@@ -852,7 +837,7 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
         EmailSmtpSecurity::Starttls,
         Some("alerts@example.com".to_string()),
         Some("smtp-password".to_string()),
-        "Agents Notifier <alerts@example.com>",
+        "Agents Router <alerts@example.com>",
         vec!["Felix <felix@example.com>".to_string()],
         None,
     );
@@ -861,7 +846,7 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
         telegram_targets(&telegram_config),
         vec![TelegramTarget {
             provider_id: "telegram".to_string(),
-            chat_id: "@agents_notifier".to_string(),
+            chat_id: "@agents_router".to_string(),
         }]
     );
     assert_eq!(
@@ -892,7 +877,7 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
             provider_id: "email".to_string(),
             host: "smtp.example.com".to_string(),
             port: 587,
-            from: "Agents Notifier <alerts@example.com>".to_string(),
+            from: "Agents Router <alerts@example.com>".to_string(),
             to: vec!["Felix <felix@example.com>".to_string()],
         }]
     );

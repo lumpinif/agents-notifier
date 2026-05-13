@@ -68,7 +68,7 @@ function main() {
     "--dir",
     releaseAssetsDir,
     "--pattern",
-    "agents-notifier-*",
+    "agents-router-*",
   ]);
 
   run("node", [
@@ -94,8 +94,8 @@ function main() {
   console.log(`Tarballs were prepared in ${tarballsDir}`);
   console.log("");
   console.log("Smoke check:");
-  console.log("  npm view agents-notifier version");
-  console.log("  npm install -g agents-notifier");
+  console.log("  npm view agents-router version");
+  console.log("  npm install -g agents-router");
 }
 
 try {

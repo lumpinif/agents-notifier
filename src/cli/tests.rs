@@ -5,32 +5,32 @@ use super::*;
 #[test]
 fn uninstall_removes_installed_binary_paths() {
     assert!(should_remove_current_binary(Path::new(
-        "/Users/tester/.local/bin/agents-notifier"
+        "/Users/tester/.local/bin/agents-router"
     )));
     assert!(should_remove_current_binary(Path::new(
-        "/Users/tester/.cargo/bin/agents-notifier"
+        "/Users/tester/.cargo/bin/agents-router"
     )));
 }
 
 #[test]
 fn uninstall_keeps_development_binary_paths() {
     assert!(!should_remove_current_binary(Path::new(
-        "/repo/target/debug/agents-notifier"
+        "/repo/target/debug/agents-router"
     )));
     assert!(!should_remove_current_binary(Path::new(
-        "/repo/target/release/agents-notifier"
+        "/repo/target/release/agents-router"
     )));
 }
 
 #[test]
 fn uninstall_keeps_npm_managed_binary_paths() {
     assert!(!should_remove_current_binary_for_install_method(
-        Path::new("/usr/local/lib/node_modules/agents-notifier-linux-x64-gnu/bin/agents-notifier"),
+        Path::new("/usr/local/lib/node_modules/agents-router-linux-x64-gnu/bin/agents-router"),
         Some("npm")
     ));
     assert!(!should_remove_current_binary_for_install_method(
         Path::new(
-            r"C:\Users\tester\AppData\Roaming\npm\node_modules\agents-notifier-win32-x64-msvc\bin\agents-notifier.exe"
+            r"C:\Users\tester\AppData\Roaming\npm\node_modules\agents-router-win32-x64-msvc\bin\agents-router.exe"
         ),
         Some("npm")
     ));
@@ -49,7 +49,7 @@ fn setup_defaults_preserve_existing_config_answers() {
         &mut config,
         setup::AgentSelection::ClaudeCode,
         Some(12),
-        vec!["/Users/tester/projects/agents-notifier".to_string()],
+        vec!["/Users/tester/projects/agents-router".to_string()],
     );
     config.cli.language = CliLanguage::SimplifiedChinese;
 
@@ -62,7 +62,7 @@ fn setup_defaults_preserve_existing_config_answers() {
     assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
     assert_eq!(
         defaults.only_forward_from_project_paths,
-        vec!["/Users/tester/projects/agents-notifier".to_string()]
+        vec!["/Users/tester/projects/agents-router".to_string()]
     );
     assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
     assert_eq!(
@@ -89,17 +89,17 @@ id = "codex_desktop"
 type = "codex_desktop"
 
 [[sources]]
-id = "agents_notifier"
-type = "agents_notifier"
+id = "agents_router"
+type = "agents_router"
 
 [[providers]]
 id = "work_chat"
 type = "feishu_lark"
-url_env = "AGENTS_NOTIFIER_FEISHU_LARK_WEBHOOK_URL"
-secret_env = "AGENTS_NOTIFIER_FEISHU_LARK_SECRET"
+url_env = "AGENTS_ROUTER_FEISHU_LARK_WEBHOOK_URL"
+secret_env = "AGENTS_ROUTER_FEISHU_LARK_SECRET"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop", "agents_router"]
 providers = ["work_chat"]
 "#,
     )
@@ -396,7 +396,7 @@ fn setup_provider_summary_reports_email_without_printing_password() {
         EmailSmtpSecurity::Starttls,
         Some("alerts@example.com".to_string()),
         Some("smtp-password".to_string()),
-        "Agents Notifier <alerts@example.com>",
+        "Agents Router <alerts@example.com>",
         vec!["team@example.com".to_string()],
         Some("reply@example.com".to_string()),
     );
@@ -413,7 +413,7 @@ fn setup_provider_summary_reports_email_without_printing_password() {
                 value: "configured".to_string(),
                 tone: SetupProviderSummaryTone::Success,
             },
-            plain_summary_field("from", "Agents Notifier <alerts@example.com>".to_string()),
+            plain_summary_field("from", "Agents Router <alerts@example.com>".to_string()),
             plain_summary_field("to", "team@example.com".to_string()),
             plain_summary_field("reply-to", "reply@example.com".to_string()),
         ]

@@ -22,7 +22,7 @@ use crate::signal::{
     Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalLifecycle,
     SignalLink, SignalWorkspace,
 };
-use crate::sources::{agent_hook, agents_notifier, claude_code, codex_cli};
+use crate::sources::{agent_hook, agents_router, claude_code, codex_cli};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSignalEvent {
@@ -185,7 +185,7 @@ async fn submit_event_to_unix_socket(
 ) -> anyhow::Result<()> {
     let mut stream = UnixStream::connect(socket_path).await.with_context(|| {
         format!(
-            "agents-notifier service is not running at `{}`; run `agents-notifier start` first",
+            "agents-router service is not running at `{}`; run `agents-router start` first",
             socket_path.display()
         )
     })?;
@@ -212,7 +212,7 @@ async fn submit_event_to_unix_socket(
         Ok(())
     } else {
         anyhow::bail!(
-            "agents-notifier service rejected local ingress event: {}",
+            "agents-router service rejected local ingress event: {}",
             response
                 .error
                 .unwrap_or_else(|| "unknown error".to_string())
@@ -227,7 +227,7 @@ async fn submit_event_to_windows_named_pipe(
 ) -> anyhow::Result<()> {
     let mut stream = ClientOptions::new().open(pipe_name).with_context(|| {
         format!(
-            "agents-notifier service is not running at `{pipe_name}`; run `agents-notifier start` first"
+            "agents-router service is not running at `{pipe_name}`; run `agents-router start` first"
         )
     })?;
 
@@ -253,7 +253,7 @@ async fn submit_event_to_windows_named_pipe(
         Ok(())
     } else {
         anyhow::bail!(
-            "agents-notifier service rejected local ingress event: {}",
+            "agents-router service rejected local ingress event: {}",
             response
                 .error
                 .unwrap_or_else(|| "unknown error".to_string())
@@ -415,9 +415,7 @@ fn create_signal(config: &Config, event: LocalSignalEvent) -> anyhow::Result<Sig
     let source = validate_local_ingress_source(config, &source_id)?;
 
     let mut signal = match source.source_type {
-        SourceType::AgentsNotifier => {
-            agents_notifier::create_signal(config, &source_id, title, body)
-        }
+        SourceType::AgentsRouter => agents_router::create_signal(config, &source_id, title, body),
         SourceType::AgentHook => agent_hook::create_signal(config, &source_id, title, body),
         SourceType::ClaudeCode => claude_code::create_signal(config, &source_id, title, body),
         SourceType::CodexCli => codex_cli::create_signal(config, &source_id, title, body),
@@ -440,7 +438,7 @@ fn validate_local_ingress_source<'a>(
 
     if source.source_type == SourceType::CodexDesktop {
         anyhow::bail!(
-            "source `{}` has type `codex_desktop`; local ingress only accepts `agents_notifier`, `agent_hook`, `codex_cli`, and `claude_code` events",
+            "source `{}` has type `codex_desktop`; local ingress only accepts `agents_router`, `agent_hook`, `codex_cli`, and `claude_code` events",
             source.id
         );
     }
@@ -633,7 +631,7 @@ async fn prepare_socket_path(socket_path: &Path) -> anyhow::Result<()> {
     if socket_path.exists() {
         if UnixStream::connect(socket_path).await.is_ok() {
             anyhow::bail!(
-                "local ingress socket `{}` is already accepting connections; agents-notifier may already be running",
+                "local ingress socket `{}` is already accepting connections; agents-router may already be running",
                 socket_path.display()
             );
         }

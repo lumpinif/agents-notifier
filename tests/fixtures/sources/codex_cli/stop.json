@@ -1,5 +1,5 @@
 {
-  "cwd": "/Users/tester/projects/agents-notifier",
+  "cwd": "/Users/tester/projects/agents-router",
   "hook_event_name": "Stop",
   "last_assistant_message": "Ready for review.",
   "model": "gpt-5.2-codex",

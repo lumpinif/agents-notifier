@@ -31,7 +31,7 @@ async fn emit_submits_event_to_local_service_socket() {
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "emit",
@@ -79,7 +79,7 @@ async fn ingest_submits_structured_codex_cli_stop_event_to_local_service_socket(
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -119,10 +119,10 @@ async fn ingest_submits_structured_codex_cli_stop_event_to_local_service_socket(
     assert_eq!(request["body"], "Codex CLI finished a task.");
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "Stop");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(
         request["workspace"]["project_path"],
-        "/Users/tester/projects/agents-notifier"
+        "/Users/tester/projects/agents-router"
     );
     assert_eq!(request["conversation"]["session_id"], "codex-session-1");
     assert_eq!(request["conversation"]["turn_id"], "turn-1");
@@ -152,7 +152,7 @@ async fn ingest_submits_structured_claude_code_stop_event_to_local_service_socke
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -192,7 +192,7 @@ async fn ingest_submits_structured_claude_code_stop_event_to_local_service_socke
     assert_eq!(request["body"], "Claude Code finished a task.");
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "Stop");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["conversation"]["session_id"], "claude-session-1");
     assert_eq!(
         request["conversation"]["answer"],
@@ -224,7 +224,7 @@ async fn ingest_submits_claude_code_session_start_context_to_local_service_socke
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -262,7 +262,7 @@ async fn ingest_submits_claude_code_session_start_context_to_local_service_socke
     assert_eq!(request["source_id"], "claude_code");
     assert_eq!(request["action"], "store_session_context");
     assert_eq!(request["event"]["raw_name"], "SessionStart");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["conversation"]["session_id"], "claude-session-1");
     assert_eq!(request["conversation"]["model"], "claude-sonnet-4-6");
     assert_eq!(request["metadata"]["session_start_source"], "startup");
@@ -290,7 +290,7 @@ async fn ingest_submits_structured_gemini_cli_after_agent_event_to_local_service
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -330,7 +330,7 @@ async fn ingest_submits_structured_gemini_cli_after_agent_event_to_local_service
     assert_eq!(request["body"], "Gemini CLI finished a task.");
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "AfterAgent");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["conversation"]["session_id"], "gemini-session-1");
     assert_eq!(request["conversation"]["prompt"], "Review this patch.");
     assert_eq!(request["conversation"]["answer"], "Ready for review.");
@@ -360,7 +360,7 @@ async fn ingest_submits_structured_github_copilot_cli_notification_event_to_loca
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -403,7 +403,7 @@ async fn ingest_submits_structured_github_copilot_cli_notification_event_to_loca
     );
     assert_eq!(request["event"]["kind"], "custom");
     assert_eq!(request["event"]["raw_name"], "Notification");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["conversation"]["session_id"], "copilot-session-1");
     assert_eq!(request["metadata"]["notification_type"], "agent_idle");
     assert_eq!(request["metadata"]["timestamp_ms"], "1775907268684");
@@ -430,7 +430,7 @@ async fn ingest_submits_structured_opencode_cli_session_event_to_local_service_s
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -453,7 +453,7 @@ async fn ingest_submits_structured_opencode_cli_session_event_to_local_service_s
                 "status": { "type": "idle" }
             }
         },
-        "cwd": "/Users/tester/projects/agents-notifier",
+        "cwd": "/Users/tester/projects/agents-router",
         "worktree": "main",
         "timestamp": "2026-05-12T10:15:30Z",
         "model": "opencode-model"
@@ -482,7 +482,7 @@ async fn ingest_submits_structured_opencode_cli_session_event_to_local_service_s
     assert_eq!(request["body"], "OpenCode CLI finished a task.");
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "session.status");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["workspace"]["worktree"], "main");
     assert_eq!(request["conversation"]["session_id"], "session-1");
     assert_eq!(request["conversation"]["model"], "opencode-model");
@@ -511,7 +511,7 @@ async fn ingest_submits_structured_generic_agent_hook_event_to_local_service_soc
         serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
     });
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "ingest",
@@ -536,9 +536,9 @@ async fn ingest_submits_structured_generic_agent_hook_event_to_local_service_soc
             "raw_name": "wrapper.completed"
         },
         "workspace": {
-            "cwd": "/Users/tester/projects/agents-notifier",
-            "project_name": "agents-notifier",
-            "project_path": "/Users/tester/projects/agents-notifier"
+            "cwd": "/Users/tester/projects/agents-router",
+            "project_name": "agents-router",
+            "project_path": "/Users/tester/projects/agents-router"
         },
         "conversation": {
             "answer": "Ready for review.",
@@ -573,7 +573,7 @@ async fn ingest_submits_structured_generic_agent_hook_event_to_local_service_soc
     assert_eq!(request["body"], "Cursor CLI finished a task.");
     assert_eq!(request["event"]["kind"], "turn_completed");
     assert_eq!(request["event"]["raw_name"], "wrapper.completed");
-    assert_eq!(request["workspace"]["project_name"], "agents-notifier");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["conversation"]["answer"], "Ready for review.");
     assert_eq!(request["conversation"]["model"], "cursor-model");
     assert_eq!(request["lifecycle"]["duration_ms"], 1200);
@@ -599,7 +599,7 @@ async fn emit_fails_when_local_service_rejects_event() {
             .expect("response should be writable");
     });
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "emit",
@@ -617,7 +617,7 @@ async fn emit_fails_when_local_service_rejects_event() {
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("agents-notifier service rejected local ingress event")
+            .contains("agents-router service rejected local ingress event")
     );
 
     server.await.expect("server task should finish");
@@ -627,7 +627,7 @@ async fn emit_fails_when_local_service_rejects_event() {
 async fn emit_fails_when_local_service_is_not_running() {
     let home = short_home();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_agents-notifier"))
+    let output = Command::new(env!("CARGO_BIN_EXE_agents-router"))
         .env("HOME", home.path())
         .args([
             "emit",
@@ -643,7 +643,7 @@ async fn emit_fails_when_local_service_is_not_running() {
         .expect("command should run");
 
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("run `agents-notifier start` first"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("run `agents-router start` first"));
 }
 
 fn socket_path_for_home(home: &Path) -> PathBuf {
@@ -651,14 +651,14 @@ fn socket_path_for_home(home: &Path) -> PathBuf {
     return home
         .join("Library")
         .join("Application Support")
-        .join("agents-notifier")
-        .join("agents-notifier.sock");
+        .join("agents-router")
+        .join("agents-router.sock");
 
     #[cfg(all(unix, not(target_os = "macos")))]
     home.join(".local")
         .join("state")
-        .join("agents-notifier")
-        .join("agents-notifier.sock")
+        .join("agents-router")
+        .join("agents-router.sock")
 }
 
 fn create_parent(path: &Path) {

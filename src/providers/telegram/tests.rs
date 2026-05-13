@@ -118,7 +118,7 @@ fn validates_telegram_config_values() {
         sound: None,
         bot_token: Some("123456:test-token".to_string()),
         bot_token_env: None,
-        chat_id: Some("@agents_notifier".to_string()),
+        chat_id: Some("@agents_router".to_string()),
         access_token: None,
         access_token_env: None,
         phone_number_id: None,
@@ -143,7 +143,7 @@ fn validates_telegram_config_values() {
     .expect("Telegram provider config should be valid");
 
     assert_eq!(provider.id, "telegram");
-    assert_eq!(provider.chat_id, "@agents_notifier");
+    assert_eq!(provider.chat_id, "@agents_router");
 }
 
 fn test_provider(endpoint: String) -> TelegramProvider {

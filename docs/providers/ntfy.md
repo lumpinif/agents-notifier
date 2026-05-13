@@ -2,7 +2,7 @@
 
 中文文档：[ntfy.zh-CN.md](ntfy.zh-CN.md)
 
-2 minutes. Pick a topic. Subscribe on your phone. Agents Notifier sends updates there.
+2 minutes. Pick a topic. Subscribe on your phone. Agents Router sends updates there.
 
 ## What Is ntfy?
 
@@ -10,7 +10,7 @@
 
 The official docs describe it as a way to send push notifications to your phone or desktop from scripts on any computer, using simple HTTP PUT or POST requests.
 
-For Agents Notifier, ntfy is the fastest phone setup.
+For Agents Router, ntfy is the fastest phone setup.
 
 ## Official Links
 
@@ -25,14 +25,14 @@ For Agents Notifier, ntfy is the fastest phone setup.
 
 - The ntfy app on your phone, or the ntfy web app.
 - One topic name.
-- Agents Notifier installed.
+- Agents Router installed.
 
 ## 1. Choose a Topic
 
 Use a topic that is hard to guess:
 
 ```text
-agents-notifier-felix-8k29
+agents-router-felix-8k29
 ```
 
 Topics on the public `ntfy.sh` server are public unless you reserve or protect them. Do not use a simple topic like `codex`.
@@ -50,12 +50,12 @@ Topic: your-topic-name
 
 The app is now listening.
 
-## 3. Connect Agents Notifier
+## 3. Connect Agents Router
 
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -68,19 +68,19 @@ Press Enter to use the generated topic, or paste your own topic.
 
 ## Answer Detail
 
-Agents Notifier fixes answer detail to `Preview` for ntfy.
+Agents Router fixes answer detail to `Preview` for ntfy.
 
-ntfy has a documented message body size limit. The default server limit is 4K. Full answers can be long, so Agents Notifier keeps ntfy notifications short for reliable delivery.
+ntfy has a documented message body size limit. The default server limit is 4K. Full answers can be long, so Agents Router keeps ntfy notifications short for reliable delivery.
 
 ## Prompt Detail
 
-Agents Notifier disables prompt detail for ntfy.
+Agents Router disables prompt detail for ntfy.
 
-ntfy has a documented message body size limit. The default server limit is 4K. Prompts can be long, so Agents Notifier keeps prompts out of ntfy notifications to avoid unreliable delivery.
+ntfy has a documented message body size limit. The default server limit is 4K. Prompts can be long, so Agents Router keeps prompts out of ntfy notifications to avoid unreliable delivery.
 
 ## 4. Confirm
 
-Agents Notifier starts the local service and sends a test notification.
+Agents Router starts the local service and sends a test notification.
 
 You should see it on your phone.
 
@@ -94,17 +94,17 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```
 
 ## Custom Server
 
-Agents Notifier supports a custom ntfy server in config:
+Agents Router supports a custom ntfy server in config:
 
 ```toml
 [[providers]]
 id = "phone"
 type = "ntfy"
 server = "https://ntfy.example.com"
-topic = "agents-notifier"
+topic = "agents-router"
 ```

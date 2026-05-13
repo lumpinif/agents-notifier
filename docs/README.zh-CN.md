@@ -1,4 +1,4 @@
-# agents-notifier
+# agents-router
 
 两三分钟就能 setup 好。
 然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、微信、Microsoft Teams、Email、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
@@ -20,7 +20,7 @@ English documentation: [../README.md](../README.md)
 使用 Rust 🦀 构建。快速、小巧，并且安静地在后台运行。
 
 ```text
-你电脑上的 Agent -> Agents Notifier -> 你的通知渠道
+你电脑上的 Agent -> Agents Router -> 你的通知渠道
 ```
 
 不需要云账号。不需要托管后端。不需要额外 dashboard。
@@ -56,9 +56,9 @@ Providers（你想在哪里收到通知？）：
 
 ## 🔒 隐私
 
-Agents Notifier 在本地运行。
+Agents Router 在本地运行。
 
-你的数据不会发送到 Agents Notifier 的云端，因为这个项目没有托管云服务。
+你的数据不会发送到 Agents Router 的云端，因为这个项目没有托管云服务。
 
 通知会直接从你的电脑发到你配置的 provider。
 
@@ -89,28 +89,28 @@ Agents Notifier 在本地运行。
 复制到 Terminal 里运行：
 
 ```bash
-npx --yes --prefer-online agents-notifier@latest setup
+npx --yes --prefer-online agents-router@latest setup
 ```
 
 如果你更喜欢持久 npm 安装：
 
 ```bash
-npm install -g agents-notifier
-agents-notifier setup
+npm install -g agents-router
+agents-router setup
 ```
 
 不用 Node.js/npm 的话：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.sh | sh
-agents-notifier setup
+curl -fsSL https://raw.githubusercontent.com/lumpinif/agents-router/main/install.sh | sh
+agents-router setup
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 | iex
-agents-notifier setup
+irm https://raw.githubusercontent.com/lumpinif/agents-router/main/install.ps1 | iex
+agents-router setup
 ```
 
 之后需要升级时，重新运行第一次使用的同一种安装方式即可。如果本机 service 已经在运行，
@@ -119,16 +119,16 @@ agents-notifier setup
 从源码安装：
 
 ```bash
-git clone https://github.com/lumpinif/agents-notifier.git
-cd agents-notifier
+git clone https://github.com/lumpinif/agents-router.git
+cd agents-router
 cargo install --path .
-agents-notifier setup
+agents-router setup
 ```
 
 ## 🚀 设置 - Step 2
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 先选择 CLI 语言。默认是英文，也可以选择简体中文。
@@ -151,7 +151,7 @@ Answer detail、是否包含 prompt、高级项目过滤等设置见 [Setup](set
 - Linux：systemd user service
 - Windows：Task Scheduler
 
-不想继续使用 service 时，运行 `agents-notifier stop` 关闭。
+不想继续使用 service 时，运行 `agents-router stop` 关闭。
 
 Provider 设置教程：
 
@@ -184,45 +184,45 @@ Agent 设置教程：
 一行命令干净卸载：
 
 ```bash
-npx --yes agents-notifier uninstall
+npx --yes agents-router uninstall
 ```
 
 如果你是用全局 npm 安装的，本地清理完成后再删除 npm package：
 
 ```bash
-agents-notifier uninstall
-npm uninstall -g agents-notifier
+agents-router uninstall
+npm uninstall -g agents-router
 ```
 
 ## 🧭 命令
 
 ```bash
-agents-notifier setup    # 设置或修改 agent/provider
-agents-notifier start    # 启动已有 service
-agents-notifier status   # 查看 service 状态
-agents-notifier stop     # 停止 service
-agents-notifier uninstall # 删除 service、配置、日志和状态
-agents-notifier watch    # 前台 debug worker
+agents-router setup    # 设置或修改 agent/provider
+agents-router start    # 启动已有 service
+agents-router status   # 查看 service 状态
+agents-router stop     # 停止 service
+agents-router uninstall # 删除 service、配置、日志和状态
+agents-router watch    # 前台 debug worker
 ```
 
 CLI agent hooks 可以这样提交事件：
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source codex_cli \
   --title "Codex" \
   --body "Ready for review."
 ```
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source claude_code \
   --title "Claude Code" \
   --body "Claude Code finished a task."
 ```
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source gemini_cli \
   --title "Gemini CLI" \
   --body "Gemini CLI finished a task."
@@ -235,7 +235,7 @@ agents-notifier emit \
 ```text
 Codex Desktop
 
-Project: agents-notifier
+Project: agents-router
 Session: README polish
 Open in Codex: codex://threads/019e1049-2d6d-7de2-bcdf-f47346930b71
 Duration: 1m 32s
@@ -248,10 +248,10 @@ Preview: Updated the README with a clearer setup flow...
 ## 📝 配置
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
-大多数用户应该直接使用 `agents-notifier setup`。
+大多数用户应该直接使用 `agents-router setup`。
 正在运行的 service 会自动加载有效的 config 修改。
 
 ## 🧩 核心

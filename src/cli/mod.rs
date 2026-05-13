@@ -14,31 +14,32 @@ use qrcode::render::unicode;
 use tokio::task::JoinSet;
 use tokio::time::sleep;
 
-use agents_notifier::config::{
+use agents_router::config::{
     AnswerDetail, CliConfig, CliLanguage, Config, ConfigError, EmailSmtpSecurity, PromptDetail,
     ProviderConfig, ProviderType, RouteConfig, SourceType,
 };
-use agents_notifier::i18n::{I18n, Text};
-use agents_notifier::local_ingress::{self, LocalSignalEvent};
-use agents_notifier::local_open_bridge;
+use agents_router::i18n::{I18n, Text};
+use agents_router::legacy;
+use agents_router::local_ingress::{self, LocalSignalEvent};
+use agents_router::local_open_bridge;
 #[cfg(target_os = "macos")]
-use agents_notifier::paths::pid_file_path;
-use agents_notifier::paths::{
+use agents_router::paths::pid_file_path;
+use agents_router::paths::{
     app_support_dir_path, default_config_file_path, ingress_endpoint, log_file_path,
     service_metadata_path,
 };
 #[cfg(target_os = "macos")]
-use agents_notifier::process::{StopOutcome, SystemProcessManager, stop_with_manager};
-use agents_notifier::providers::build_providers;
-use agents_notifier::runtime::{
+use agents_router::process::{StopOutcome, SystemProcessManager, stop_with_manager};
+use agents_router::providers::build_providers;
+use agents_router::runtime::{
     RuntimeState, ensure_sources_supported_on_current_platform, reload_config_on_change,
 };
-use agents_notifier::service::{
+use agents_router::service::{
     PlatformServiceManager, ServiceDefinition, ServiceStartOutcome, ServiceStopOutcome,
     load_metadata,
 };
-use agents_notifier::setup;
-use agents_notifier::sources::{
+use agents_router::setup;
+use agents_router::sources::{
     agent_hook, claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
 };
 
@@ -122,7 +123,7 @@ impl ProgressLine {
 }
 
 #[derive(Debug, Parser)]
-#[command(name = "agents-notifier")]
+#[command(name = "agents-router")]
 #[command(version)]
 #[command(about = "Local-first notification routing for coding agents")]
 struct Cli {
@@ -137,7 +138,7 @@ enum Command {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
     },
-    #[command(about = "Set up Agents Notifier and start the service")]
+    #[command(about = "Set up Agents Router and start the service")]
     Setup {
         #[arg(long, value_name = "PATH", help = "Path to the config file")]
         config: Option<PathBuf>,
@@ -154,11 +155,11 @@ enum Command {
     },
     #[command(about = "Stop the local notification service")]
     Stop,
-    #[command(about = "Stop the service and remove Agents Notifier local files")]
+    #[command(about = "Stop the service and remove Agents Router local files")]
     Uninstall,
     #[command(about = "Show the local notification service status")]
     Status,
-    #[command(about = "Print the agents-notifier version")]
+    #[command(about = "Print the agents-router version")]
     Version,
     #[command(about = "Submit a hook event to the running local service")]
     Emit {
@@ -175,6 +176,11 @@ enum Command {
         source: String,
         #[arg(long, value_enum, help = "Structured hook input format")]
         format: IngestFormat,
+    },
+    #[command(hide = true)]
+    MigrateLegacy {
+        #[arg(long, value_name = "PATH", help = "Path to the config file")]
+        config: Option<PathBuf>,
     },
 }
 
@@ -198,6 +204,9 @@ pub async fn run() -> anyhow::Result<()> {
         } => {
             let allow_setup = config_path.is_none();
             let config_path = resolve_config_path(config_path)?;
+            if allow_setup {
+                print_legacy_migration(legacy::migrate_legacy_installation(&config_path)?);
+            }
             let loaded = load_config(&config_path, allow_setup).await?;
             run_start_service(&config_path, loaded, false, true).await
         }
@@ -205,6 +214,7 @@ pub async fn run() -> anyhow::Result<()> {
             config: config_path,
         } => {
             let config_path = resolve_config_path(config_path)?;
+            print_legacy_migration(legacy::migrate_legacy_installation(&config_path)?);
             let loaded = match run_provider_setup(&config_path).await? {
                 ProviderSetupOutcome::Loaded(loaded) => loaded,
                 ProviderSetupOutcome::Exit(code) => std::process::exit(code),
@@ -230,7 +240,7 @@ pub async fn run() -> anyhow::Result<()> {
         Command::Uninstall => run_uninstall(),
         Command::Status => run_status(),
         Command::Version => {
-            println!("agents-notifier {}", env!("CARGO_PKG_VERSION"));
+            println!("agents-router {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         Command::Emit {
@@ -239,6 +249,29 @@ pub async fn run() -> anyhow::Result<()> {
             body,
         } => run_emit(&source, title, body).await,
         Command::Ingest { source, format } => run_ingest(&source, format).await,
+        Command::MigrateLegacy {
+            config: config_path,
+        } => {
+            let config_path = resolve_config_path(config_path)?;
+            print_legacy_migration(legacy::migrate_legacy_installation(&config_path)?);
+            Ok(())
+        }
+    }
+}
+
+fn print_legacy_migration(outcome: legacy::LegacyMigrationOutcome) {
+    if !outcome.changed() {
+        return;
+    }
+
+    if outcome.migrated_config {
+        println!("Migrated existing Agents Notifier config to Agents Router.");
+    }
+    if outcome.removed_service {
+        println!("Removed existing Agents Notifier service.");
+    }
+    if outcome.removed_files > 0 {
+        println!("Removed existing Agents Notifier local files.");
     }
 }
 
@@ -275,7 +308,7 @@ async fn run_start_service(
     if loaded.guided_setup.is_some() {
         println!();
     }
-    let progress = ProgressLine::start("Starting agents-notifier")?;
+    let progress = ProgressLine::start("Starting agents-router")?;
     let start_result = async {
         cleanup_legacy_background_service()?;
 
@@ -553,7 +586,7 @@ fn configured_agents(config: &Config) -> Vec<String> {
                     .map(|agent| agent.display_name().to_string())
                     .unwrap_or_else(|| format!("Agent hook ({})", source.id)),
             ),
-            SourceType::AgentsNotifier => None,
+            SourceType::AgentsRouter => None,
         })
         .collect()
 }
@@ -567,7 +600,7 @@ fn first_configured_agent(config: &Config) -> Option<setup::AgentSelection> {
             SourceType::CodexCli => Some(setup::AgentSelection::CodexCli),
             SourceType::ClaudeCode => Some(setup::AgentSelection::ClaudeCode),
             SourceType::AgentHook => setup::AgentSelection::from_hook_source_id(&source.id),
-            SourceType::AgentsNotifier => None,
+            SourceType::AgentsRouter => None,
         })
 }
 
@@ -647,7 +680,7 @@ fn run_status() -> anyhow::Result<()> {
     let status = manager.status()?;
     let metadata = load_metadata(&metadata_path).ok();
 
-    print_heading("agents-notifier status");
+    print_heading("agents-router status");
     print_section("Service");
     print_field("manager", status.platform);
     print_bool_field("installed", status.installed);
@@ -682,7 +715,7 @@ fn run_status() -> anyhow::Result<()> {
 }
 
 fn local_ingress_ready_now(
-    endpoint: &agents_notifier::paths::IngressEndpoint,
+    endpoint: &agents_router::paths::IngressEndpoint,
     service_running: bool,
 ) -> bool {
     #[cfg(unix)]
@@ -690,9 +723,9 @@ fn local_ingress_ready_now(
 
     match endpoint {
         #[cfg(unix)]
-        agents_notifier::paths::IngressEndpoint::UnixSocket(path) => path.exists(),
+        agents_router::paths::IngressEndpoint::UnixSocket(path) => path.exists(),
         #[cfg(windows)]
-        agents_notifier::paths::IngressEndpoint::WindowsNamedPipe(_) => service_running,
+        agents_router::paths::IngressEndpoint::WindowsNamedPipe(_) => service_running,
     }
 }
 
@@ -801,7 +834,7 @@ async fn finish_guided_setup(setup: GuidedSetup, i18n: I18n) -> anyhow::Result<(
         println!("{}", style(i18n.text(Text::TestDidNotArrive)).yellow());
         println!("{}", i18n.text(Text::CheckProviderSettingsAndRetest));
         println!(
-            "agents-notifier emit --source agents_notifier --title \"Agents Notifier\" --body \"Test notification from your computer.\""
+            "agents-router emit --source agents_router --title \"Agents Router\" --body \"Test notification from your computer.\""
         );
     }
 
@@ -812,60 +845,60 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
     if i18n.language() == CliLanguage::SimplifiedChinese {
         match agent {
             setup::AgentSelection::CodexDesktop => {
-                println!("Agents Notifier 会监听这台电脑上的 Codex Desktop 完成事件。");
+                println!("Agents Router 会监听这台电脑上的 Codex Desktop 完成事件。");
             }
             setup::AgentSelection::CodexCli => {
-                println!("Agents Notifier 已准备接收 Codex CLI hook event。");
+                println!("Agents Router 已准备接收 Codex CLI hook event。");
                 println!(
-                    "让 Codex CLI Stop hook 调用：`agents-notifier ingest --source codex_cli --format codex_cli_stop`。"
+                    "让 Codex CLI Stop hook 调用：`agents-router ingest --source codex_cli --format codex_cli_stop`。"
                 );
             }
             setup::AgentSelection::ClaudeCode => {
-                println!("Agents Notifier 已准备接收 Claude Code hook event。");
+                println!("Agents Router 已准备接收 Claude Code hook event。");
                 println!(
-                    "让 Claude Code hook 调用：`agents-notifier ingest --source claude_code --format claude_code_hook`。"
+                    "让 Claude Code hook 调用：`agents-router ingest --source claude_code --format claude_code_hook`。"
                 );
             }
             setup::AgentSelection::CursorCli => {
-                println!("Agents Notifier 已准备接收 Cursor CLI hook event。");
+                println!("Agents Router 已准备接收 Cursor CLI hook event。");
                 println!(
-                    "让 Cursor CLI wrapper 在 CLI 成功退出后调用：`agents-notifier emit --source cursor_cli`。"
+                    "让 Cursor CLI wrapper 在 CLI 成功退出后调用：`agents-router emit --source cursor_cli`。"
                 );
             }
             setup::AgentSelection::OpenCodeCli => {
-                println!("Agents Notifier 已准备接收 OpenCode CLI hook event。");
+                println!("Agents Router 已准备接收 OpenCode CLI hook event。");
                 println!(
-                    "让 OpenCode plugin 在 session idle 时调用：`agents-notifier ingest --source opencode_cli --format opencode_cli_session`。"
+                    "让 OpenCode plugin 在 session idle 时调用：`agents-router ingest --source opencode_cli --format opencode_cli_session`。"
                 );
             }
             setup::AgentSelection::OpenClaw => {
-                println!("Agents Notifier 已准备接收 OpenClaw hook event。");
+                println!("Agents Router 已准备接收 OpenClaw hook event。");
                 println!(
-                    "让 OpenClaw plugin hook 在 agent_end 调用：`agents-notifier emit --source openclaw`。"
+                    "让 OpenClaw plugin hook 在 agent_end 调用：`agents-router emit --source openclaw`。"
                 );
             }
             setup::AgentSelection::HermesAgentCli => {
-                println!("Agents Notifier 已准备接收 Hermes Agent CLI hook event。");
+                println!("Agents Router 已准备接收 Hermes Agent CLI hook event。");
                 println!(
-                    "让 Hermes plugin hook 在 post_llm_call 调用：`agents-notifier emit --source hermes_agent_cli`。"
+                    "让 Hermes plugin hook 在 post_llm_call 调用：`agents-router emit --source hermes_agent_cli`。"
                 );
             }
             setup::AgentSelection::GithubCopilotCli => {
-                println!("Agents Notifier 已准备接收 GitHub Copilot CLI hook event。");
+                println!("Agents Router 已准备接收 GitHub Copilot CLI hook event。");
                 println!(
-                    "让 GitHub Copilot CLI notification hook 调用：`agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification`。"
+                    "让 GitHub Copilot CLI notification hook 调用：`agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification`。"
                 );
             }
             setup::AgentSelection::GeminiCli => {
-                println!("Agents Notifier 已准备接收 Gemini CLI hook event。");
+                println!("Agents Router 已准备接收 Gemini CLI hook event。");
                 println!(
-                    "让 Gemini CLI AfterAgent 或 Notification hook 调用：`agents-notifier ingest --source gemini_cli --format gemini_cli_hook`。"
+                    "让 Gemini CLI AfterAgent 或 Notification hook 调用：`agents-router ingest --source gemini_cli --format gemini_cli_hook`。"
                 );
             }
             setup::AgentSelection::Aider => {
-                println!("Agents Notifier 已准备接收 Aider notification event。");
+                println!("Agents Router 已准备接收 Aider notification event。");
                 println!(
-                    "让 Aider notifications-command 调用：`agents-notifier emit --source aider`。"
+                    "让 Aider notifications-command 调用：`agents-router emit --source aider`。"
                 );
             }
         }
@@ -874,60 +907,60 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
 
     match agent {
         setup::AgentSelection::CodexDesktop => {
-            println!("Agents Notifier will watch Codex Desktop completed jobs on this computer.");
+            println!("Agents Router will watch Codex Desktop completed jobs on this computer.");
         }
         setup::AgentSelection::CodexCli => {
-            println!("Agents Notifier is ready for Codex CLI hook events.");
+            println!("Agents Router is ready for Codex CLI hook events.");
             println!(
-                "Configure your Codex CLI Stop hook to call `agents-notifier ingest --source codex_cli --format codex_cli_stop`."
+                "Configure your Codex CLI Stop hook to call `agents-router ingest --source codex_cli --format codex_cli_stop`."
             );
         }
         setup::AgentSelection::ClaudeCode => {
-            println!("Agents Notifier is ready for Claude Code hook events.");
+            println!("Agents Router is ready for Claude Code hook events.");
             println!(
-                "Configure your Claude Code hook to call `agents-notifier ingest --source claude_code --format claude_code_hook`."
+                "Configure your Claude Code hook to call `agents-router ingest --source claude_code --format claude_code_hook`."
             );
         }
         setup::AgentSelection::CursorCli => {
-            println!("Agents Notifier is ready for Cursor CLI hook events.");
+            println!("Agents Router is ready for Cursor CLI hook events.");
             println!(
-                "Configure your Cursor CLI wrapper to call `agents-notifier emit --source cursor_cli` after the CLI exits successfully."
+                "Configure your Cursor CLI wrapper to call `agents-router emit --source cursor_cli` after the CLI exits successfully."
             );
         }
         setup::AgentSelection::OpenCodeCli => {
-            println!("Agents Notifier is ready for OpenCode CLI hook events.");
+            println!("Agents Router is ready for OpenCode CLI hook events.");
             println!(
-                "Configure your OpenCode plugin to call `agents-notifier ingest --source opencode_cli --format opencode_cli_session` when the session becomes idle."
+                "Configure your OpenCode plugin to call `agents-router ingest --source opencode_cli --format opencode_cli_session` when the session becomes idle."
             );
         }
         setup::AgentSelection::OpenClaw => {
-            println!("Agents Notifier is ready for OpenClaw hook events.");
+            println!("Agents Router is ready for OpenClaw hook events.");
             println!(
-                "Configure your OpenClaw plugin hook to call `agents-notifier emit --source openclaw` from agent_end."
+                "Configure your OpenClaw plugin hook to call `agents-router emit --source openclaw` from agent_end."
             );
         }
         setup::AgentSelection::HermesAgentCli => {
-            println!("Agents Notifier is ready for Hermes Agent CLI hook events.");
+            println!("Agents Router is ready for Hermes Agent CLI hook events.");
             println!(
-                "Configure your Hermes plugin hook to call `agents-notifier emit --source hermes_agent_cli` from post_llm_call."
+                "Configure your Hermes plugin hook to call `agents-router emit --source hermes_agent_cli` from post_llm_call."
             );
         }
         setup::AgentSelection::GithubCopilotCli => {
-            println!("Agents Notifier is ready for GitHub Copilot CLI hook events.");
+            println!("Agents Router is ready for GitHub Copilot CLI hook events.");
             println!(
-                "Configure your GitHub Copilot CLI notification hook to call `agents-notifier ingest --source github_copilot_cli --format github_copilot_cli_notification`."
+                "Configure your GitHub Copilot CLI notification hook to call `agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification`."
             );
         }
         setup::AgentSelection::GeminiCli => {
-            println!("Agents Notifier is ready for Gemini CLI hook events.");
+            println!("Agents Router is ready for Gemini CLI hook events.");
             println!(
-                "Configure your Gemini CLI AfterAgent or Notification hook to call `agents-notifier ingest --source gemini_cli --format gemini_cli_hook`."
+                "Configure your Gemini CLI AfterAgent or Notification hook to call `agents-router ingest --source gemini_cli --format gemini_cli_hook`."
             );
         }
         setup::AgentSelection::Aider => {
-            println!("Agents Notifier is ready for Aider notification events.");
+            println!("Agents Router is ready for Aider notification events.");
             println!(
-                "Configure Aider notifications-command to call `agents-notifier emit --source aider`."
+                "Configure Aider notifications-command to call `agents-router emit --source aider`."
             );
         }
     }
@@ -959,12 +992,9 @@ async fn offer_test_notification(config: &Config, i18n: I18n) -> anyhow::Result<
 }
 
 fn can_send_test_notification(config: &Config) -> bool {
-    config.source("agents_notifier").is_some()
+    config.source("agents_router").is_some()
         && config.routes.iter().any(|route| {
-            route
-                .sources
-                .iter()
-                .any(|source| source == "agents_notifier")
+            route.sources.iter().any(|source| source == "agents_router")
                 && !route.providers.is_empty()
         })
 }
@@ -976,18 +1006,16 @@ async fn send_test_notification() -> anyhow::Result<()> {
     local_ingress::submit_event(
         &endpoint,
         &LocalSignalEvent::new(
-            "agents_notifier",
-            "Agents Notifier",
-            "Test notification from your computer. If this arrived, Agents Notifier is working.",
+            "agents_router",
+            "Agents Router",
+            "Test notification from your computer. If this arrived, Agents Router is working.",
         ),
     )
     .await
     .context("failed to send test notification through the local service")
 }
 
-async fn wait_for_service(
-    endpoint: &agents_notifier::paths::IngressEndpoint,
-) -> anyhow::Result<()> {
+async fn wait_for_service(endpoint: &agents_router::paths::IngressEndpoint) -> anyhow::Result<()> {
     let started = Instant::now();
     loop {
         if local_ingress::is_ready(endpoint).await {
@@ -996,7 +1024,7 @@ async fn wait_for_service(
 
         if started.elapsed() >= SERVICE_READY_TIMEOUT {
             anyhow::bail!(
-                "agents-notifier service did not become ready at `{}`; check the log file",
+                "agents-router service did not become ready at `{}`; check the log file",
                 endpoint.display()
             );
         }
@@ -1015,13 +1043,13 @@ fn run_stop() -> anyhow::Result<()> {
     let manager = PlatformServiceManager::system()?;
     match manager.stop()? {
         ServiceStopOutcome::NotInstalled => {
-            println!("agents-notifier service is not installed.");
+            println!("agents-router service is not installed.");
         }
         ServiceStopOutcome::AlreadyStopped => {
-            println!("agents-notifier service is already stopped.");
+            println!("agents-router service is already stopped.");
         }
         ServiceStopOutcome::Stopped => {
-            println!("agents-notifier service stopped.");
+            println!("agents-router service stopped.");
         }
     }
 
@@ -1047,7 +1075,7 @@ fn run_uninstall() -> anyhow::Result<()> {
     }
 
     let current_binary = std::env::current_exe().context("failed to locate current binary")?;
-    let install_method = std::env::var("AGENTS_NOTIFIER_INSTALL_METHOD").ok();
+    let install_method = std::env::var("AGENTS_ROUTER_INSTALL_METHOD").ok();
     if should_remove_current_binary_for_install_method(&current_binary, install_method.as_deref()) {
         remove_path_if_exists(&current_binary)?;
     } else if install_method.as_deref() == Some("npm") {
@@ -1055,7 +1083,7 @@ fn run_uninstall() -> anyhow::Result<()> {
             "left npm-managed binary in place: {}",
             current_binary.display()
         );
-        println!("Remove the npm package with: npm uninstall -g agents-notifier");
+        println!("Remove the npm package with: npm uninstall -g agents-router");
     } else {
         println!(
             "left development binary in place: {}",
@@ -1063,7 +1091,7 @@ fn run_uninstall() -> anyhow::Result<()> {
         );
     }
 
-    println!("agents-notifier uninstalled.");
+    println!("agents-router uninstalled.");
     Ok(())
 }
 
@@ -1102,7 +1130,7 @@ fn should_remove_current_binary_for_install_method(
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    if file_name != "agents-notifier" && file_name != "agents-notifier.exe" {
+    if file_name != "agents-router" && file_name != "agents-router.exe" {
         return false;
     }
 
@@ -1126,7 +1154,7 @@ async fn run_watch(config_path: &Path, config: Config) -> anyhow::Result<()> {
 async fn run_service_tasks(
     config_path: PathBuf,
     runtime: RuntimeState,
-    endpoint: agents_notifier::paths::IngressEndpoint,
+    endpoint: agents_router::paths::IngressEndpoint,
 ) -> anyhow::Result<()> {
     let mut tasks = JoinSet::new();
     tasks.spawn(reload_config_on_change(config_path, runtime.clone()));
@@ -1140,7 +1168,7 @@ async fn run_service_tasks(
 async fn run_service_tasks(
     config_path: PathBuf,
     runtime: RuntimeState,
-    endpoint: agents_notifier::paths::IngressEndpoint,
+    endpoint: agents_router::paths::IngressEndpoint,
 ) -> anyhow::Result<()> {
     let mut tasks = JoinSet::new();
     tasks.spawn(reload_config_on_change(config_path, runtime.clone()));

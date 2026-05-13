@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::service_file_path;
 
-pub const LAUNCH_AGENT_LABEL: &str = "com.agents-notifier.service";
-pub const SYSTEMD_USER_UNIT_NAME: &str = "agents-notifier.service";
-pub const WINDOWS_TASK_NAME: &str = r"\AgentsNotifier";
+pub const LAUNCH_AGENT_LABEL: &str = "com.agents-router.service";
+pub const SYSTEMD_USER_UNIT_NAME: &str = "agents-router.service";
+pub const WINDOWS_TASK_NAME: &str = r"\AgentsRouter";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceDefinition {
@@ -641,7 +641,7 @@ pub fn build_systemd_unit(definition: &ServiceDefinition) -> String {
 
     format!(
         r#"[Unit]
-Description=Agents Notifier local notification service
+Description=Agents Router local notification service
 After=default.target
 
 [Service]

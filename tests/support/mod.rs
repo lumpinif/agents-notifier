@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use agents_notifier::config::{
+use agents_router::config::{
     CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
     SourceConfig, SourceType,
 };
-use agents_notifier::delivery::ProviderSendResult;
-use agents_notifier::router::{Provider, ProviderFuture};
-use agents_notifier::signal::Signal;
+use agents_router::delivery::ProviderSendResult;
+use agents_router::router::{Provider, ProviderFuture};
+use agents_router::signal::Signal;
 
 pub struct SignalCaptureProvider {
     signals: Arc<Mutex<Vec<Signal>>>,
@@ -60,8 +60,8 @@ pub fn source_contract_config(source_id: &str, source_type: SourceType) -> Confi
         cli: CliConfig::default(),
         log: LogConfig::default(),
         notification: NotificationConfig {
-            answer_detail: agents_notifier::config::AnswerDetail::Full,
-            prompt_detail: agents_notifier::config::PromptDetail::On,
+            answer_detail: agents_router::config::AnswerDetail::Full,
+            prompt_detail: agents_router::config::PromptDetail::On,
         },
         sources: vec![SourceConfig {
             id: source_id.to_string(),

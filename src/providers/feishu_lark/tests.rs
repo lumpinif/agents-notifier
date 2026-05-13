@@ -140,7 +140,7 @@ fn formats_card_elements_with_supplied_time() {
 #[test]
 fn formats_codex_desktop_message_with_clickable_open_link() {
     let signal = structured_codex_signal(
-        Some("agents-notifier sync report"),
+        Some("agents-router sync report"),
         None,
         Some(SignalAnswer {
             kind: SignalAnswerKind::Preview,
@@ -154,14 +154,14 @@ fn formats_codex_desktop_message_with_clickable_open_link() {
             FeishuLarkCardElement::Div {
                 text: FeishuLarkLarkMarkdown {
                     tag: "lark_md",
-                    content: "**agents-notifier sync report**".to_string()
+                    content: "**agents-router sync report**".to_string()
                 }
             },
             FeishuLarkCardElement::ColumnSet {
                 flex_mode: "bisect",
                 background_style: "default",
                 columns: vec![
-                    metric_column("Project Name", "agents-notifier", None),
+                    metric_column("Project Name", "agents-router", None),
                     metric_column("Branch", "main", None),
                     metric_column("Model", "gpt-5.2-codex", None)
                 ]
@@ -207,8 +207,8 @@ fn builds_card_body_from_structured_signal() {
     assert_eq!(
         FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00"),
         FeishuLarkCardBody {
-            project: Some("agents-notifier".to_string()),
-            project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+            project: Some("agents-router".to_string()),
+            project_path: Some("/Users/tester/projects/agents-router".to_string()),
             session: Some("session-1".to_string()),
             model: Some("gpt-5.2-codex".to_string()),
             duration: Some("1m 32s".to_string()),
@@ -264,8 +264,8 @@ fn builds_card_body_with_prompt_before_answer() {
     assert_eq!(
         FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00"),
         FeishuLarkCardBody {
-            project: Some("agents-notifier".to_string()),
-            project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+            project: Some("agents-router".to_string()),
+            project_path: Some("/Users/tester/projects/agents-router".to_string()),
             session: Some("session-1".to_string()),
             model: Some("gpt-5.2-codex".to_string()),
             duration: Some("1m 32s".to_string()),
@@ -455,9 +455,9 @@ fn structured_codex_signal(
     );
 
     signal.workspace = Some(SignalWorkspace {
-        cwd: Some("/Users/tester/projects/agents-notifier".to_string()),
-        project_name: Some("agents-notifier".to_string()),
-        project_path: Some("/Users/tester/projects/agents-notifier".to_string()),
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
+        project_name: Some("agents-router".to_string()),
+        project_path: Some("/Users/tester/projects/agents-router".to_string()),
         branch: Some("main".to_string()),
         worktree: None,
     });

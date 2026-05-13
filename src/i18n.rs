@@ -165,12 +165,12 @@ impl Text {
                 "It does not change Codex or other agent settings."
             }
             Self::SetupInteractiveRequired => {
-                "`agents-notifier setup` must be run in an interactive terminal so you can choose an agent and a provider."
+                "`agents-router setup` must be run in an interactive terminal so you can choose an agent and a provider."
             }
             Self::FirstStartStartingSetup => "Starting setup now.",
             Self::FirstStartSetupScope => "Setup connects one agent to one notification provider.",
-            Self::AgentPrompt => "Which agent should Agents Notifier watch?",
-            Self::ProviderPrompt => "Where should Agents Notifier send notifications?",
+            Self::AgentPrompt => "Which agent should Agents Router watch?",
+            Self::ProviderPrompt => "Where should Agents Router send notifications?",
             Self::NotificationPreferencePrompt => {
                 "Which completed tasks should send notifications?"
             }
@@ -253,7 +253,7 @@ impl Text {
             Self::EmailIntro2 => {
                 "Use STARTTLS on port 587 unless your provider explicitly gives you port 465."
             }
-            Self::WechatSetupMethodPrompt => "How should Agents Notifier connect to WeChat?",
+            Self::WechatSetupMethodPrompt => "How should Agents Router connect to WeChat?",
             Self::WechatScanQrOption => "Scan WeChat QR code",
             Self::WechatExistingTokenOption => "Paste existing iLink token",
             Self::WechatTokenVerifying => "Verifying WeChat iLink token...",
@@ -333,9 +333,7 @@ impl Text {
                 "Check the provider settings in your config, then run this test again:"
             }
             Self::SendTestNow => "Send a test notification now?",
-            Self::Working => {
-                "Agents Notifier is working. Agent notifications can now be forwarded."
-            }
+            Self::Working => "Agents Router is working. Agent notifications can now be forwarded.",
             Self::ServiceRunningButTestMissing => {
                 "The service is running, but the test notification did not arrive."
             }
@@ -351,11 +349,11 @@ impl Text {
             Self::SetupTitle => "设置 agent 通知",
             Self::SetupDoesNotChangeAgentSettings => "不会修改 Codex 或其他 agent 的设置。",
             Self::SetupInteractiveRequired => {
-                "`agents-notifier setup` 必须在可交互终端里运行，用来选择 agent 和通知 provider。"
+                "`agents-router setup` 必须在可交互终端里运行，用来选择 agent 和通知 provider。"
             }
             Self::FirstStartStartingSetup => "现在开始设置。",
             Self::FirstStartSetupScope => "这次只连接一个 agent 和一个通知 provider。",
-            Self::AgentPrompt => "Agents Notifier 要监听哪个 agent？",
+            Self::AgentPrompt => "Agents Router 要监听哪个 agent？",
             Self::ProviderPrompt => "通知要发到哪里？",
             Self::NotificationPreferencePrompt => "哪些完成的任务需要发送通知？",
             Self::AnswerDetailPrompt => "回答内容长度",
@@ -405,7 +403,7 @@ impl Text {
             Self::TeamsIntro2 => "创建 Teams workflow 或 incoming webhook，然后粘贴 webhook URL。",
             Self::EmailIntro1 => "Email SMTP 通过你的 SMTP server 发送纯文本邮件通知。",
             Self::EmailIntro2 => "默认用 587 端口 STARTTLS。只有服务商明确要求时才用 465。",
-            Self::WechatSetupMethodPrompt => "Agents Notifier 要怎么连接微信？",
+            Self::WechatSetupMethodPrompt => "Agents Router 要怎么连接微信？",
             Self::WechatScanQrOption => "扫描微信二维码",
             Self::WechatExistingTokenOption => "粘贴已有 iLink token",
             Self::WechatTokenVerifying => "正在验证微信 iLink token...",
@@ -461,7 +459,7 @@ impl Text {
                 "检查 config 里的 provider 设置，然后重新运行这个测试："
             }
             Self::SendTestNow => "现在发送一条测试通知？",
-            Self::Working => "Agents Notifier 已正常工作。Agent 通知现在可以转发。",
+            Self::Working => "Agents Router 已正常工作。Agent 通知现在可以转发。",
             Self::ServiceRunningButTestMissing => "Service 正在运行，但测试通知没有到达。",
             Self::CheckProviderSettingsPrinted => "检查上面打印出来的 provider 设置。",
         }

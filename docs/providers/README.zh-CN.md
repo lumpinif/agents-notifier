@@ -3,7 +3,7 @@
 English documentation: [README.md](README.md)  
 中文文档：[../README.zh-CN.md](../README.zh-CN.md)
 
-先设置 provider。然后运行 `agents-notifier setup`。
+先设置 provider。然后运行 `agents-router setup`。
 
 ## 教程
 

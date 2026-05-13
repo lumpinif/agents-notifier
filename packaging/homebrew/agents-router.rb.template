@@ -1,0 +1,23 @@
+class AgentsRouter < Formula
+  desc "Local-only notifications for AI coding agents"
+  homepage "https://github.com/lumpinif/agents-router"
+  version "0.1.4"
+
+  on_macos do
+    if Hardware::CPU.arm?
+      url "https://github.com/lumpinif/agents-router/releases/download/v#{version}/agents-router-aarch64-apple-darwin.tar.gz"
+      sha256 "REPLACE_WITH_AARCH64_SHA256"
+    else
+      url "https://github.com/lumpinif/agents-router/releases/download/v#{version}/agents-router-x86_64-apple-darwin.tar.gz"
+      sha256 "REPLACE_WITH_X86_64_SHA256"
+    end
+  end
+
+  def install
+    bin.install "agents-router"
+  end
+
+  test do
+    assert_match "agents-router", shell_output("#{bin}/agents-router --help")
+  end
+end

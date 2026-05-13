@@ -8,9 +8,9 @@ Official Cursor CLI references:
 - <https://docs.cursor.com/en/cli/using>
 - <https://docs.cursor.com/en/cli/reference/output-format>
 
-Cursor CLI's official docs describe interactive mode, non-interactive `--print` mode, and structured output formats. They do not currently document a native completion hook for the CLI. Because of that, Agents Notifier uses a small wrapper script for Cursor CLI instead of reading Cursor internals.
+Cursor CLI's official docs describe interactive mode, non-interactive `--print` mode, and structured output formats. They do not currently document a native completion hook for the CLI. Because of that, Agents Router uses a small wrapper script for Cursor CLI instead of reading Cursor internals.
 
-## What Agents Notifier Needs
+## What Agents Router Needs
 
 Configure this source:
 
@@ -22,10 +22,10 @@ type = "agent_hook"
 
 Then route `cursor_cli` to your provider.
 
-Agents Notifier only needs your wrapper to run this command after Cursor CLI exits successfully:
+Agents Router only needs your wrapper to run this command after Cursor CLI exits successfully:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source cursor_cli \
   --title "Cursor CLI" \
   --body "Cursor CLI finished a task."
@@ -45,7 +45,7 @@ set -euo pipefail
 
 cursor-agent -p "$@" --output-format text
 
-agents-notifier emit \
+agents-router emit \
   --source cursor_cli \
   --title "Cursor CLI" \
   --body "Cursor CLI finished a task."
@@ -56,19 +56,19 @@ Make it executable and use it instead of calling `cursor-agent -p` directly.
 ## Test the Route
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source cursor_cli \
   --title "Cursor CLI" \
   --body "Test notification from Cursor CLI."
 ```
 
-If your provider receives this notification, the Agents Notifier side is working.
+If your provider receives this notification, the Agents Router side is working.
 
 ## If It Fails
 
 Check these first:
 
-- The local service is running with `agents-notifier status`.
+- The local service is running with `agents-router status`.
 - Your config includes the `cursor_cli` source with `type = "agent_hook"`.
 - Your route includes `cursor_cli`.
-- `agents-notifier` is available in the shell environment used by your wrapper.
+- `agents-router` is available in the shell environment used by your wrapper.

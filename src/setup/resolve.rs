@@ -2,7 +2,7 @@ use super::*;
 
 pub fn generated_ntfy_topic() -> String {
     let id = Uuid::new_v4().simple().to_string();
-    format!("agents-notifier-{}", &id[..12])
+    format!("agents-router-{}", &id[..12])
 }
 
 pub fn resolve_ntfy_topic(input: &str, generated_topic: &str) -> anyhow::Result<String> {

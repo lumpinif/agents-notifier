@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Agents Notifier.
+Thanks for helping improve Agents Router.
 
 Keep the project small, local-first, and easy to trust.
 

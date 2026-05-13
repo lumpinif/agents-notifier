@@ -1224,8 +1224,8 @@ pub(in crate::cli) fn prompt_for_email_smtp_mailbox(
         } else {
             localized_string(
                 i18n,
-                format!("{label}, for example Agents Notifier <alerts@example.com>"),
-                format!("{label}，例如 Agents Notifier <alerts@example.com>"),
+                format!("{label}, for example Agents Router <alerts@example.com>"),
+                format!("{label}，例如 Agents Router <alerts@example.com>"),
             )
         };
         let input = prompt_text(prompt, format!("failed to read {label}"))?;

@@ -16,8 +16,8 @@ async fn start_fails_with_actionable_message_when_default_config_is_missing() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(!output.status.success());
-    assert!(stderr.contains("No agents-notifier config found"));
-    assert!(stderr.contains("Run `agents-notifier setup` in an interactive terminal"));
+    assert!(stderr.contains("No agents-router config found"));
+    assert!(stderr.contains("Run `agents-router setup` in an interactive terminal"));
     assert!(stderr.contains("--config <PATH>"));
 }
 
@@ -85,7 +85,7 @@ async fn version_command_prints_package_version() {
     assert!(output.status.success());
     assert_eq!(
         stdout.trim(),
-        concat!("agents-notifier ", env!("CARGO_PKG_VERSION"))
+        concat!("agents-router ", env!("CARGO_PKG_VERSION"))
     );
 }
 
@@ -104,7 +104,7 @@ async fn version_flag_prints_package_version() {
     assert!(output.status.success());
     assert_eq!(
         stdout.trim(),
-        concat!("agents-notifier ", env!("CARGO_PKG_VERSION"))
+        concat!("agents-router ", env!("CARGO_PKG_VERSION"))
     );
 }
 
@@ -122,7 +122,7 @@ async fn help_lists_uninstall_command() {
 
     assert!(output.status.success());
     assert!(stdout.contains("uninstall"));
-    assert!(stdout.contains("remove Agents Notifier local files"));
+    assert!(stdout.contains("remove Agents Router local files"));
 }
 
 fn short_home() -> TempDir {
@@ -130,7 +130,7 @@ fn short_home() -> TempDir {
 }
 
 fn command_with_home(home: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_agents-notifier"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_agents-router"));
     command.env("HOME", home);
     command.env("USERPROFILE", home);
     command.env("APPDATA", home.join("AppData").join("Roaming"));

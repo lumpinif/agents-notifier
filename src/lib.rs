@@ -1,6 +1,7 @@
 pub mod config;
 pub mod delivery;
 pub mod i18n;
+pub mod legacy;
 pub mod local_ingress;
 pub mod local_machine;
 pub mod local_open_bridge;

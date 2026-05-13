@@ -5,7 +5,7 @@
 Use setup to create or replace the local config, start the service, and send a test notification.
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Without an existing config, setup shows recommended defaults. If a config already exists, setup
@@ -31,12 +31,12 @@ language = "en"
 ```
 
 Use `language = "zh-CN"` for Simplified Chinese. You can also set
-`AGENTS_NOTIFIER_LANGUAGE=zh-CN` before running setup to make Chinese the default selection.
+`AGENTS_ROUTER_LANGUAGE=zh-CN` before running setup to make Chinese the default selection.
 Setup prompts and setup confirmation output use the selected language.
 
 ## Agent
 
-Choose the agent Agents Notifier should watch:
+Choose the agent Agents Router should watch:
 
 ```text
 1. Codex Desktop
@@ -114,11 +114,11 @@ providers = ["work_chat"]
 minimum_task_duration_minutes = 5
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["work_chat"]
 ```
 
-The `agents_notifier` route is intentionally separate and unfiltered. Setup test notifications use
+The `agents_router` route is intentionally separate and unfiltered. Setup test notifications use
 that internal source, so the test still verifies your provider even when real agent notifications
 are limited to long-running tasks.
 
@@ -139,15 +139,15 @@ Full Answer includes the visible assistant answer and omits Codex App control di
 
 Answer detail is only configurable for providers without a small message size limit or delivery guard.
 
-Agents Notifier fixes answer detail to `Preview` for:
+Agents Router fixes answer detail to `Preview` for:
 
 - ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
 - Pushover, because Pushover messages are limited to 1024 characters.
 - Slack, because Slack has documented message length and truncation limits.
 - Discord, because Discord webhook content is limited to 2000 characters.
 - Telegram, because Telegram Bot API text messages are limited to 4096 characters.
-- WhatsApp, because Agents Notifier uses a 4096-character guard for WhatsApp text bodies.
-- WeChat, because Agents Notifier uses a 3800-character guard for WeChat iLink text messages.
+- WhatsApp, because Agents Router uses a 4096-character guard for WhatsApp text bodies.
+- WeChat, because Agents Router uses a 3800-character guard for WeChat iLink text messages.
 - Microsoft Teams, because Teams webhook messages have a documented 28 KB size limit.
 
 ## Prompt Detail
@@ -175,15 +175,15 @@ prompt_detail = "off"
 
 Prompt detail is only configurable for providers without a small message size limit or delivery guard.
 
-Agents Notifier disables prompt detail for:
+Agents Router disables prompt detail for:
 
 - ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
 - Pushover, because Pushover messages are limited to 1024 characters.
 - Slack, because Slack has documented message length and truncation limits.
 - Discord, because Discord webhook content is limited to 2000 characters.
 - Telegram, because Telegram Bot API text messages are limited to 4096 characters.
-- WhatsApp, because Agents Notifier uses a 4096-character guard for WhatsApp text bodies.
-- WeChat, because Agents Notifier uses a 3800-character guard for WeChat iLink text messages.
+- WhatsApp, because Agents Router uses a 4096-character guard for WhatsApp text bodies.
+- WeChat, because Agents Router uses a 3800-character guard for WeChat iLink text messages.
 - Microsoft Teams, because Teams webhook messages have a documented 28 KB size limit.
 
 To include prompts:
@@ -212,7 +212,7 @@ The running service automatically reloads valid config changes. If the service i
 start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 If a manual edit makes the config invalid, the running service keeps the last valid config and logs
@@ -228,16 +228,16 @@ route:
 sources = ["codex_desktop"]
 providers = ["work_chat"]
 only_forward_from_project_paths = [
-  "/Users/felix/Desktop/felix-projects/agents-notifier",
+  "/Users/felix/Desktop/felix-projects/agents-router",
   "/Users/felix/Desktop/felix-projects/another-project",
 ]
 
 [[routes]]
-sources = ["agents_notifier"]
+sources = ["agents_router"]
 providers = ["work_chat"]
 ```
 
-When this filter is set, Agents Notifier forwards a signal only when its `workspace.project_path`
+When this filter is set, Agents Router forwards a signal only when its `workspace.project_path`
 is one of those paths or inside one of those paths. A project path must be a clean absolute path.
 If a source does not provide `workspace.project_path`, filtered routes do not match.
 
@@ -254,7 +254,7 @@ The running service automatically reloads valid config changes. If the service i
 start it:
 
 ```bash
-agents-notifier start
+agents-router start
 ```
 
 If a manual edit makes the config invalid, the running service keeps the last valid config and logs
@@ -265,7 +265,7 @@ the reload failure.
 Setup writes:
 
 ```text
-~/.config/agents-notifier/config.toml
+~/.config/agents-router/config.toml
 ```
 
 Then it starts the local service and sends a test notification through the same provider delivery path.

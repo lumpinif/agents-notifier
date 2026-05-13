@@ -2,7 +2,7 @@
 
 中文文档：[codex-cli.zh-CN.md](codex-cli.zh-CN.md)
 
-Use Codex CLI integration when you want a terminal Codex workflow to submit completion events to the running Agents Notifier service.
+Use Codex CLI integration when you want a terminal Codex workflow to submit completion events to the running Agents Router service.
 
 Official Codex CLI references:
 
@@ -10,12 +10,12 @@ Official Codex CLI references:
 - <https://developers.openai.com/codex/hooks/>
 - <https://github.com/openai/codex>
 
-## What Agents Notifier Needs
+## What Agents Router Needs
 
 For structured notifications, configure Codex CLI to pipe its Stop hook JSON into:
 
 ```bash
-agents-notifier ingest --source codex_cli --format codex_cli_stop
+agents-router ingest --source codex_cli --format codex_cli_stop
 ```
 
 `ingest` reads the hook payload from stdin and preserves fields Codex CLI exposes, including project path, session id, turn id, model, and the last assistant message.
@@ -23,7 +23,7 @@ agents-notifier ingest --source codex_cli --format codex_cli_stop
 If you only need a simple custom message, Codex CLI can run this command instead:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source codex_cli \
   --title "Codex CLI" \
   --body "Codex CLI finished a task."
@@ -36,7 +36,7 @@ agents-notifier emit \
 Run:
 
 ```bash
-agents-notifier setup
+agents-router setup
 ```
 
 Choose:
@@ -49,14 +49,14 @@ Then choose a provider.
 
 ## 2. Connect Codex CLI
 
-Configure your Codex CLI Stop hook command to run the `agents-notifier ingest` command above with the hook JSON on stdin.
+Configure your Codex CLI Stop hook command to run the `agents-router ingest` command above with the hook JSON on stdin.
 
 When structured hook stdin is not available, Codex CLI's `notify` setting can use the simple `emit` path. Add this to `~/.codex/config.toml`:
 
 
 ```toml
 notify = [
-  "agents-notifier",
+  "agents-router",
   "emit",
   "--source",
   "codex_cli",
@@ -74,13 +74,13 @@ Keep this command in the runtime hook configuration. Do not ask the agent model 
 After the service is running, test the same ingress path:
 
 ```bash
-agents-notifier emit \
+agents-router emit \
   --source codex_cli \
   --title "Codex CLI" \
   --body "Test notification from Codex CLI."
 ```
 
-If the provider receives this notification, the Agents Notifier side is working.
+If the provider receives this notification, the Agents Router side is working.
 
 ## If It Fails
 
@@ -89,7 +89,7 @@ Check these first:
 - The local service is running:
 
 ```bash
-agents-notifier status
+agents-router status
 ```
 
 - Your config includes the `codex_cli` source.
