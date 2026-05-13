@@ -93,7 +93,7 @@ sources = ["codex_desktop", "codex_cli"]
 providers = ["debug_webhook"]
 ```
 
-Restart the service:
+The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
 agents-notifier start

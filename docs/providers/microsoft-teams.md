@@ -80,13 +80,17 @@ type = "microsoft_teams"
 url = "<your Teams webhook URL>"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["microsoft_teams"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["microsoft_teams"]
 ```
 
 Advanced: `url_env` is supported, but only use it when the environment variable is visible to the running local service. For normal setup, `url` is simpler and more predictable.
 
-Restart the service after manual edits:
+The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
 agents-notifier start

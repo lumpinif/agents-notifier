@@ -52,7 +52,7 @@ hi
 
 Send it in WeChat, not in Terminal. That message lets Agents Notifier discover the `recipient_user_id` and `context_token` required by iLink `sendmessage`.
 
-Agents Notifier then writes the provider config, starts the local service, and sends a test notification through the same route used by real agent events.
+Agents Notifier then writes the provider config, starts the local service, and sends a test notification through the same provider delivery path used by real agent events.
 
 ## How It Works
 
@@ -105,13 +105,17 @@ context_token = "<recipient context token>"
 # route_tag = "<optional advanced SKRouteTag>"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["wechat"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["wechat"]
 ```
 
 Advanced: `token_env` and `context_token_env` are supported, but only use them when the environment variables are visible to the running local service. For normal setup, inline values are simpler and more predictable.
 
-Restart the service after manual edits:
+The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
 agents-notifier start

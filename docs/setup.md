@@ -85,6 +85,46 @@ Provider guides:
 - [Email SMTP](providers/email-smtp.md)
 - [Webhook](providers/webhook.md)
 
+## Notification Preference
+
+Choose which completed tasks should send notifications:
+
+```text
+1. Every completed task (Recommended)
+2. Tasks 5 minutes or longer
+3. Custom minimum duration
+```
+
+Press Enter to keep `Every completed task`.
+
+Default behavior:
+
+- If `minimum_task_duration_minutes` is not set, completed tasks are not filtered by duration.
+- `Every completed task` writes no `minimum_task_duration_minutes` field.
+- `Tasks 5 minutes or longer` writes `minimum_task_duration_minutes = 5`.
+- `Custom minimum duration` writes the positive integer number of minutes you enter.
+- If a route has `minimum_task_duration_minutes`, a signal without `lifecycle.duration_ms` does not match that route.
+
+Manual config:
+
+```toml
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["work_chat"]
+minimum_task_duration_minutes = 5
+
+[[routes]]
+sources = ["agents_notifier"]
+providers = ["work_chat"]
+```
+
+The `agents_notifier` route is intentionally separate and unfiltered. Setup test notifications use
+that internal source, so the test still verifies your provider even when real agent notifications
+are limited to long-running tasks.
+
+If a route has both `minimum_task_duration_minutes` and `only_forward_from_project_paths`, both
+filters must match before the notification is sent.
+
 ## Answer Detail
 
 Choose how much answer text notifications include:
@@ -168,12 +208,57 @@ answer_detail = "full"
 prompt_detail = "on"
 ```
 
-After manual edits, restart the service:
+The running service automatically reloads valid config changes. If the service is not running,
+start it:
 
 ```bash
-agents-notifier stop
 agents-notifier start
 ```
+
+If a manual edit makes the config invalid, the running service keeps the last valid config and logs
+the reload failure.
+
+## Advanced Project Filter
+
+To forward notifications only from specific projects, manually add project paths to the real agent
+route:
+
+```toml
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["work_chat"]
+only_forward_from_project_paths = [
+  "/Users/felix/Desktop/felix-projects/agents-notifier",
+  "/Users/felix/Desktop/felix-projects/another-project",
+]
+
+[[routes]]
+sources = ["agents_notifier"]
+providers = ["work_chat"]
+```
+
+When this filter is set, Agents Notifier forwards a signal only when its `workspace.project_path`
+is one of those paths or inside one of those paths. A project path must be a clean absolute path.
+If a source does not provide `workspace.project_path`, filtered routes do not match.
+
+Default behavior:
+
+- If `only_forward_from_project_paths` is not set or is an empty array, notifications are not filtered by project path.
+- Setup does not ask for this option. Add it manually when you want a route to forward only selected projects.
+- The value is an array, so one route can allow multiple project paths.
+- Paths must be absolute, non-empty, and must not contain `.` or `..` path components.
+- Matching uses path components, not string prefixes. For example, `/Users/me/app` matches `/Users/me/app/api`, but does not match `/Users/me/app-copy`.
+- If a route has both `only_forward_from_project_paths` and `minimum_task_duration_minutes`, both filters must match.
+
+The running service automatically reloads valid config changes. If the service is not running,
+start it:
+
+```bash
+agents-notifier start
+```
+
+If a manual edit makes the config invalid, the running service keeps the last valid config and logs
+the reload failure.
 
 ## Result
 
@@ -183,5 +268,5 @@ Setup writes:
 ~/.config/agents-notifier/config.toml
 ```
 
-Then it starts the local service and sends a test notification through the same route.
+Then it starts the local service and sends a test notification through the same provider delivery path.
 On macOS this is a LaunchAgent. On Linux this is a systemd user service. On Windows this is a Task Scheduler task.

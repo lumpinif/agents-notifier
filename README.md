@@ -88,7 +88,7 @@ Recommended:
 Copy this into your Terminal:
 
 ```bash
-npx --yes agents-notifier setup
+npx --yes --prefer-online agents-notifier@latest setup
 ```
 
 Prefer a persistent npm install:
@@ -112,6 +112,8 @@ irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 
 agents-notifier setup
 ```
 
+To upgrade later, rerun the same install method you used the first time.
+
 From source:
 
 ```bash
@@ -127,18 +129,17 @@ agents-notifier setup
 agents-notifier setup
 ```
 
-Setup only requires two choices:
-
 First choose the CLI language. English is the default, and Simplified Chinese is available.
 
-Then setup only requires two choices:
+Then setup asks for three choices:
 
 1. Which agent should it watch?
 2. Where should notifications go?
+3. Which completed tasks should send notifications?
 
 Then it writes config, starts the service, and sends a test notification.
 
-For optional settings such as answer detail and prompt inclusion, see [Setup](docs/setup.md).
+For optional settings such as answer detail, prompt inclusion, and advanced project filters, see [Setup](docs/setup.md).
 
 ## 🎉 That's it
 
@@ -266,6 +267,7 @@ Preview: Updated the README with a clearer setup flow...
 ```
 
 Most users should use `agents-notifier setup`.
+The running service automatically reloads valid config changes.
 
 ## 🧩 Core
 

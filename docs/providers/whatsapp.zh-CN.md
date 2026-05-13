@@ -107,13 +107,17 @@ phone_number_id = "123456789012345"
 recipient_phone_number = "15551234567"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["whatsapp"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["whatsapp"]
 ```
 
 进阶：支持 `access_token_env`，但只有当这个环境变量对正在运行的本地 service 可见时才使用它。普通 setup 里，`access_token` 更简单、更可预测。
 
-手动修改后，重启 service：
+正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
 agents-notifier start

@@ -111,7 +111,11 @@ from = "Agents Notifier <alerts@example.com>"
 to = ["you@example.com"]
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["email"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["email"]
 ```
 
@@ -144,7 +148,7 @@ from = "Agents Notifier <alerts@example.com>"
 to = ["you@example.com"]
 ```
 
-Restart the service after manual edits:
+The running service automatically reloads valid config changes. If it is not running, start it:
 
 ```bash
 agents-notifier start

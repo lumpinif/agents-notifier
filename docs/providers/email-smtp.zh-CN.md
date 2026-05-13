@@ -111,7 +111,11 @@ from = "Agents Notifier <alerts@example.com>"
 to = ["you@example.com"]
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["email"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["email"]
 ```
 
@@ -144,7 +148,7 @@ from = "Agents Notifier <alerts@example.com>"
 to = ["you@example.com"]
 ```
 
-手动修改后，重启 service：
+正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
 agents-notifier start

@@ -89,7 +89,7 @@ Agents Notifier 在本地运行。
 复制到 Terminal 里运行：
 
 ```bash
-npx --yes agents-notifier setup
+npx --yes --prefer-online agents-notifier@latest setup
 ```
 
 如果你更喜欢持久 npm 安装：
@@ -113,6 +113,8 @@ irm https://raw.githubusercontent.com/lumpinif/agents-notifier/main/install.ps1 
 agents-notifier setup
 ```
 
+之后需要升级时，重新运行第一次使用的同一种安装方式即可。
+
 从源码安装：
 
 ```bash
@@ -130,14 +132,15 @@ agents-notifier setup
 
 先选择 CLI 语言。默认是英文，也可以选择简体中文。
 
-然后只需要回答 2 个必选问题：
+然后回答 3 个问题：
 
 1. 要监听哪个 agent？
 2. 通知要发到哪里？
+3. 哪些完成的任务需要发送通知？
 
 然后它会写入配置、启动 service，并发送一条测试通知。
 
-Answer detail、是否包含 prompt 等可选设置见 [Setup](setup.zh-CN.md)。
+Answer detail、是否包含 prompt、高级项目过滤等设置见 [Setup](setup.zh-CN.md)。
 
 ## 🎉 就这样
 
@@ -248,6 +251,7 @@ Preview: Updated the README with a clearer setup flow...
 ```
 
 大多数用户应该直接使用 `agents-notifier setup`。
+正在运行的 service 会自动加载有效的 config 修改。
 
 ## 🧩 核心
 

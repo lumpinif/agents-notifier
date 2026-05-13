@@ -80,13 +80,17 @@ type = "discord"
 url = "https://discord.com/api/webhooks/123456789012345678/your-webhook-token"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["discord"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["discord"]
 ```
 
 高级用法：支持 `url_env`，但只有当这个环境变量对正在运行的本机 service 可见时才使用它。普通 setup 场景下，`url` 更简单、更可预测。
 
-手动修改后重启 service：
+手动修改后，正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
 agents-notifier start

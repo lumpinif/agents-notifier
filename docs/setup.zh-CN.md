@@ -84,6 +84,45 @@ Provider 教程：
 - [Email SMTP](providers/email-smtp.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
 
+## 通知偏好
+
+选择哪些完成的任务需要发送通知：
+
+```text
+1. Every completed task (Recommended)
+2. Tasks 5 minutes or longer
+3. Custom minimum duration
+```
+
+直接按 Enter 会使用 `Every completed task`。
+
+默认行为：
+
+- 如果没有设置 `minimum_task_duration_minutes`，完成的任务不会按耗时过滤。
+- 选择 `Every completed task` 时，不会写入 `minimum_task_duration_minutes` 字段。
+- 选择 `Tasks 5 minutes or longer` 时，会写入 `minimum_task_duration_minutes = 5`。
+- 选择 `Custom minimum duration` 时，会写入你输入的正整数分钟数。
+- 如果某条 route 设置了 `minimum_task_duration_minutes`，但某个 Signal 没有 `lifecycle.duration_ms`，这条 route 不会匹配。
+
+手动配置：
+
+```toml
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["work_chat"]
+minimum_task_duration_minutes = 5
+
+[[routes]]
+sources = ["agents_notifier"]
+providers = ["work_chat"]
+```
+
+`agents_notifier` route 会故意保持独立且不加过滤。setup 测试通知使用这个内部 source，
+所以即使真实 agent 通知只转发长时间任务，测试通知仍然能验证你的 provider 是否可用。
+
+如果同一条 route 同时设置了 `minimum_task_duration_minutes` 和
+`only_forward_from_project_paths`，两个条件都满足后才会发送通知。
+
 ## Answer Detail
 
 选择通知里包含多少回答内容：
@@ -165,12 +204,52 @@ answer_detail = "full"
 prompt_detail = "on"
 ```
 
-手动修改后，重启 service：
+正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
-agents-notifier stop
 agents-notifier start
 ```
+
+如果手动修改后的 config 无效，正在运行的 service 会继续使用上一份有效 config，并在日志里记录 reload 失败。
+
+## 高级项目过滤
+
+如果只想转发具体项目下的通知，可以手动把项目路径加到真实 agent 的 route 上：
+
+```toml
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["work_chat"]
+only_forward_from_project_paths = [
+  "/Users/felix/Desktop/felix-projects/agents-notifier",
+  "/Users/felix/Desktop/felix-projects/another-project",
+]
+
+[[routes]]
+sources = ["agents_notifier"]
+providers = ["work_chat"]
+```
+
+设置这个过滤后，只有当 Signal 的 `workspace.project_path` 等于这些路径之一，或位于这些路径之下时，
+Agents Notifier 才会转发。项目路径必须是干净的绝对路径。如果某个 source 没有提供
+`workspace.project_path`，带项目过滤的 route 就不会匹配。
+
+默认行为：
+
+- 如果没有设置 `only_forward_from_project_paths`，或它是空数组，通知不会按项目路径过滤。
+- Setup 不会询问这个选项。需要只转发指定项目时，手动把它加到真实 agent 的 route 上。
+- 这个值是数组，所以同一条 route 可以允许多个项目路径。
+- 路径必须是非空绝对路径，不能包含 `.` 或 `..` 路径组件。
+- 匹配使用路径组件语义，不是字符串前缀。例如 `/Users/me/app` 会匹配 `/Users/me/app/api`，但不会匹配 `/Users/me/app-copy`。
+- 如果同一条 route 同时设置了 `only_forward_from_project_paths` 和 `minimum_task_duration_minutes`，两个条件都必须满足。
+
+正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
+
+```bash
+agents-notifier start
+```
+
+如果手动修改后的 config 无效，正在运行的 service 会继续使用上一份有效 config，并在日志里记录 reload 失败。
 
 ## 结果
 
@@ -180,5 +259,5 @@ Setup 会写入：
 ~/.config/agents-notifier/config.toml
 ```
 
-然后它会启动本机 service，并通过同一条 route 发送测试通知。
+然后它会启动本机 service，并通过同一条 provider 投递链路发送测试通知。
 macOS 使用 LaunchAgent，Linux 使用 systemd user service，Windows 使用 Task Scheduler。

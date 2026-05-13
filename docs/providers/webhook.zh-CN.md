@@ -93,7 +93,7 @@ sources = ["codex_desktop", "codex_cli"]
 providers = ["debug_webhook"]
 ```
 
-重启 service：
+正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
 agents-notifier start

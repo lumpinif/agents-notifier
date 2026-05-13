@@ -105,13 +105,17 @@ context_token = "<recipient context token>"
 # route_tag = "<optional advanced SKRouteTag>"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["wechat"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["wechat"]
 ```
 
 进阶：支持 `token_env` 和 `context_token_env`，但只有在环境变量对本机 service 可见时才使用。普通 setup 场景下，直接写入配置更简单、更可预测。
 
-手动修改配置后，重启 service：
+手动修改配置后，正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
 agents-notifier start

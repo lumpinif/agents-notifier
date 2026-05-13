@@ -87,7 +87,11 @@ app_token = "your-application-api-token"
 user_key = "your-user-or-group-key"
 
 [[routes]]
-sources = ["codex_desktop", "agents_notifier"]
+sources = ["codex_desktop"]
+providers = ["pushover"]
+
+[[routes]]
+sources = ["agents_notifier"]
 providers = ["pushover"]
 ```
 
@@ -105,7 +109,7 @@ sound = "pushover"
 
 高级用法：支持 `app_token_env` 和 `user_key_env`，但只有当这些环境变量对正在运行的本机 service 可见时才应该使用。
 
-手动修改后重启 service：
+手动修改后，正在运行的 service 会自动加载有效的 config 修改。如果 service 没有运行，启动它：
 
 ```bash
 agents-notifier start
