@@ -15,6 +15,7 @@ const PACKAGE_BY_PLATFORM = {
 
 const STABLE_INSTALL_COMMANDS = new Set(["setup", "start", "watch"]);
 const STABLE_FORWARD_COMMANDS = new Set(["status", "stop", "uninstall"]);
+const INSTALL_METHOD_MARKER_FILE = ".agents-notifier-install-method";
 
 function fail(message) {
   console.error(`agents-notifier: ${message}`);
@@ -147,6 +148,13 @@ function installStableBinary(sourcePath, destinationPath) {
   }
 }
 
+function writeInstallMethodMarker(destinationPath, installMethod) {
+  fs.writeFileSync(
+    path.join(path.dirname(destinationPath), INSTALL_METHOD_MARKER_FILE),
+    `${installMethod}\n`
+  );
+}
+
 function printPathHint(destinationPath) {
   const installDir = path.dirname(destinationPath);
   const pathEntries = (process.env.PATH || "")
@@ -195,6 +203,7 @@ if (installMethod === "npx" && STABLE_INSTALL_COMMANDS.has(command)) {
   const stablePath = stableInstallPath(binaryName);
   try {
     installStableBinary(binaryPath, stablePath);
+    writeInstallMethodMarker(stablePath, "npx");
   } catch (error) {
     fail(`failed to install stable binary at ${stablePath}: ${error.message}`);
   }

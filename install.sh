@@ -3,6 +3,7 @@ set -eu
 
 REPO="${AGENTS_NOTIFIER_REPO:-lumpinif/agents-notifier}"
 INSTALL_DIR="${AGENTS_NOTIFIER_INSTALL_DIR:-$HOME/.local/bin}"
+VERSION="${AGENTS_NOTIFIER_VERSION:-latest}"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -59,11 +60,22 @@ else
 fi
 
 archive="agents-notifier-${target}.tar.gz"
-base_url="https://github.com/${REPO}/releases/latest/download"
+if [ "$VERSION" = "latest" ]; then
+  base_url="https://github.com/${REPO}/releases/latest/download"
+elif expr "$VERSION" : 'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
+  base_url="https://github.com/${REPO}/releases/download/${VERSION}"
+else
+  echo "AGENTS_NOTIFIER_VERSION must be latest or a vX.Y.Z tag; got: $VERSION" >&2
+  exit 1
+fi
 tmp_dir="$(mktemp -d)"
+installed_tmp=""
 
 cleanup() {
   rm -rf "$tmp_dir"
+  if [ -n "$installed_tmp" ]; then
+    rm -f "$installed_tmp"
+  fi
 }
 trap cleanup EXIT INT TERM
 
@@ -75,8 +87,12 @@ curl -fsSL "${base_url}/${archive}.sha256" -o "${tmp_dir}/${archive}.sha256"
 
 tar -xzf "${tmp_dir}/${archive}" -C "$tmp_dir"
 mkdir -p "$INSTALL_DIR"
-cp "${tmp_dir}/agents-notifier" "${INSTALL_DIR}/agents-notifier"
-chmod 0755 "${INSTALL_DIR}/agents-notifier"
+installed_tmp="${INSTALL_DIR}/.agents-notifier.$$"
+cp "${tmp_dir}/agents-notifier" "$installed_tmp"
+chmod 0755 "$installed_tmp"
+mv "$installed_tmp" "${INSTALL_DIR}/agents-notifier"
+installed_tmp=""
+printf '%s\n' "script" > "${INSTALL_DIR}/.agents-notifier-install-method"
 
 echo "Installed: ${INSTALL_DIR}/agents-notifier"
 
