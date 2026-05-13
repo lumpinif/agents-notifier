@@ -14,7 +14,7 @@ use crate::config::{AnswerDetail, Config, PromptDetail, SourceConfig, SourceType
 use crate::paths::{
     codex_desktop_source_state_path, codex_session_index_path, codex_sessions_dir_path,
 };
-use crate::router::Router;
+use crate::router::{Provider, Router};
 use crate::runtime::RuntimeState;
 use crate::signal::Signal;
 use rollout::{
@@ -63,29 +63,7 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
                     snapshot.config.notification.prompt_detail,
                 )?;
                 let providers = snapshot.provider_refs();
-                let mut route_failed = false;
-                for signal in &batch.signals {
-                    info!(
-                        signal.id = %signal.id,
-                        source.id = %signal.source_id(),
-                        source.type = %signal.source_type(),
-                        event = "signal.created",
-                    );
-
-                    if let Err(error) = Router::new(&snapshot.config).route(signal, &providers).await {
-                        route_failed = true;
-                        warn!(
-                            signal.id = %signal.id,
-                            source.id = %signal.source_id(),
-                            source.type = %signal.source_type(),
-                            error = %error,
-                            event = "provider.send.failed",
-                        );
-                    }
-                }
-                if !route_failed {
-                    watcher.commit(batch)?;
-                }
+                route_and_checkpoint_batch(watcher, &snapshot.config, &providers, batch).await?;
             }
             signal = tokio::signal::ctrl_c() => {
                 signal.context("failed to listen for shutdown signal")?;
@@ -98,6 +76,34 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
             }
         }
     }
+}
+
+async fn route_and_checkpoint_batch(
+    watcher: &mut CodexDesktopSessionWatcher,
+    config: &Config,
+    providers: &[&dyn Provider],
+    batch: CodexDesktopPollBatch,
+) -> anyhow::Result<()> {
+    for signal in &batch.signals {
+        info!(
+            signal.id = %signal.id,
+            source.id = %signal.source_id(),
+            source.type = %signal.source_type(),
+            event = "signal.created",
+        );
+
+        if let Err(error) = Router::new(config).route(signal, providers).await {
+            warn!(
+                signal.id = %signal.id,
+                source.id = %signal.source_id(),
+                source.type = %signal.source_type(),
+                error = %error,
+                event = "provider.send.failed",
+            );
+        }
+    }
+    watcher.commit(batch)?;
+    Ok(())
 }
 
 fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {

@@ -4,6 +4,8 @@ use std::io::Write;
 use tempfile::tempdir;
 
 use crate::config::{AnswerDetail, PromptDetail, SourceType};
+use crate::delivery::{DeliveryError, DeliveryErrorContext, DeliveryErrorKind};
+use crate::router::{Provider, ProviderFuture};
 
 use super::*;
 
@@ -299,11 +301,106 @@ fn uncommitted_poll_retries_task_complete() {
     assert!(after_commit.signals.is_empty());
 }
 
+#[tokio::test]
+async fn provider_failure_does_not_reopen_codex_desktop_rollout_events() {
+    let dir = tempdir().expect("tempdir should be created");
+    let sessions_dir = dir.path().join("sessions");
+    let day_dir = sessions_dir.join("2026").join("05").join("10");
+    fs::create_dir_all(&day_dir).expect("session dir should be created");
+    let rollout_path = day_dir.join("rollout-2026-05-10T01-00-00-session-1.jsonl");
+    let index_path = dir.path().join("session_index.jsonl");
+    let state_path = dir.path().join("source-state.json");
+
+    write_lines(&rollout_path, &[session_meta_line("session-1")]);
+    write_lines(
+        &index_path,
+        &[r#"{"id":"session-1","thread_name":"agents-router sync report","updated_at":"2026-05-09T17:00:00Z"}"#.to_string()],
+    );
+
+    let mut watcher = CodexDesktopSessionWatcher::new(
+        sessions_dir.clone(),
+        index_path.clone(),
+        state_path.clone(),
+    )
+    .expect("watcher should start");
+    watcher
+        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .and_then(|batch| watcher.commit(batch))
+        .expect("first poll should pass");
+
+    append_line(
+        &rollout_path,
+        &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
+    );
+    let batch = watcher
+        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .expect("task poll should pass");
+    assert_eq!(batch.signals.len(), 1);
+
+    let provider = FailingProvider;
+    let providers: Vec<&dyn Provider> = vec![&provider];
+    route_and_checkpoint_batch(&mut watcher, &routing_config(), &providers, batch)
+        .await
+        .expect("provider failure should not fail checkpointing");
+
+    let after_failure = watcher
+        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .expect("post-failure poll should pass");
+    assert!(
+        after_failure.signals.is_empty(),
+        "provider failure must not cause the same Codex Desktop completion to be emitted again"
+    );
+}
+
+struct FailingProvider;
+
+impl Provider for FailingProvider {
+    fn id(&self) -> &str {
+        "failing"
+    }
+
+    fn provider_type(&self) -> &str {
+        "test"
+    }
+
+    fn send<'a>(&'a self, signal: &'a Signal) -> ProviderFuture<'a> {
+        Box::pin(async move {
+            Err(DeliveryError::new(
+                DeliveryErrorKind::ProviderRejected,
+                DeliveryErrorContext::provider_send(signal, self.id(), self.provider_type()),
+                "send failed",
+            ))
+        })
+    }
+}
+
 fn source_config() -> SourceConfig {
     SourceConfig {
         id: "codex_desktop".to_string(),
         source_type: SourceType::CodexDesktop,
     }
+}
+
+fn routing_config() -> Config {
+    Config::from_toml_str(
+        r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[providers]]
+id = "failing"
+type = "webhook"
+url = "http://127.0.0.1:9/unused"
+
+[[routes]]
+sources = ["codex_desktop"]
+providers = ["failing"]
+"#,
+    )
+    .expect("routing config should be valid")
 }
 
 fn session_meta_line(session_id: &str) -> String {
