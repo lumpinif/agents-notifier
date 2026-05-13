@@ -83,8 +83,14 @@ Rules:
 - Use commits to keep the development path clear.
 - Commit within clear boundaries.
 - Do not mix unrelated changes.
+- Use Conventional Commits for every commit message.
+- Use `feat:` for user-visible features and `fix:` for user-visible bug fixes.
+- Use `docs:`, `test:`, `refactor:`, `chore:`, `ci:`, `build:`, `perf:`, or `style:` only when that type literally matches the change.
+- Mark breaking changes with `!` after the type or scope, and explain them with a `BREAKING CHANGE:` footer.
 - Never push to a remote unless the user explicitly asks for it.
 - If the user asks for a commit, treat it as a local commit only.
+
+Release automation depends on these commit types. `release-please` reads merged commits on `main`, opens a release PR, updates `CHANGELOG.md`, bumps `Cargo.toml` and `Cargo.lock`, and creates the release tag after the release PR is merged.
 
 ## Documentation
 
@@ -92,3 +98,5 @@ Rules:
 - Engineering standards belong in `DEVELOPING/engineering/`.
 - Keep documentation short, precise, and useful for agents.
 - Update documentation when the implemented contract changes.
+- `DEVELOPING/` is intentionally ignored by this repository and must never be pushed to `main`.
+- `DEVELOPING/` is managed by its own local Git history. Read or update it when local agent context needs it, but never stage it with `git add -f`, commit it, or include it in repository pushes.
