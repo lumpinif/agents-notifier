@@ -77,7 +77,7 @@ impl SessionInfo {
         }
     }
 
-    fn is_codex_desktop(&self) -> bool {
+    pub(super) fn is_codex_desktop(&self) -> bool {
         self.originator.as_deref() == Some("Codex Desktop")
     }
 

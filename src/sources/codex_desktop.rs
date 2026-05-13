@@ -113,6 +113,38 @@ fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
         .find(|source| source.source_type == SourceType::CodexDesktop)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexSessionOrigin {
+    Desktop,
+    Other,
+    Unknown,
+}
+
+pub fn codex_session_origin(
+    sessions_dir: &Path,
+    session_id: &str,
+) -> anyhow::Result<CodexSessionOrigin> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() {
+        return Ok(CodexSessionOrigin::Unknown);
+    }
+
+    for path in discover_rollout_paths(sessions_dir)? {
+        let session = read_session_info(&path)?;
+        if session.id.as_deref() != Some(session_id) {
+            continue;
+        }
+
+        return if session.is_codex_desktop() {
+            Ok(CodexSessionOrigin::Desktop)
+        } else {
+            Ok(CodexSessionOrigin::Other)
+        };
+    }
+
+    Ok(CodexSessionOrigin::Unknown)
+}
+
 struct CodexDesktopSessionWatcher {
     sessions_dir: PathBuf,
     session_index_path: PathBuf,

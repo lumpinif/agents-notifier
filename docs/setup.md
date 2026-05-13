@@ -59,6 +59,11 @@ existing Codex CLI `notify` command unchanged because `notify` is a single comma
 already belong to another local integration. Manual configs must use `id = "codex_cli"` for this
 source. See [Codex CLI](agents/codex-cli.md) for manual hook and `notify` fallback details.
 
+Codex Desktop and Codex CLI can be enabled together. Because they can share the same Codex config,
+Desktop may also trigger the CLI Stop hook. Agents Router keeps Codex Desktop as the source of
+record for Desktop sessions and ignores only Stop hook payloads that can be proven to belong to
+Codex Desktop. Unknown sessions still route through `codex_cli`.
+
 When the active config includes Claude Code, Agents Router ensures the required hooks in
 `~/.claude/settings.json` during setup, start, watch, and successful hot reloads. It adds
 `SessionStart`, `UserPromptSubmit`, `Stop`, and `Notification` hooks and preserves existing Claude

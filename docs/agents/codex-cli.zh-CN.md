@@ -23,6 +23,12 @@ agents-router ingest --source codex_cli --format codex_cli_stop
 
 Agents Router 不会覆盖 Codex CLI 的 `notify`。`notify` 是单个命令槽位，可能已经被 Codex Computer Use 或其他本地集成占用。Stop hook 可以和现有 `notify` 共存，所以它是默认、优先、长期更稳的方案。
 
+Codex Desktop 和 Codex CLI 可以同时配置。它们可能共享同一份 `~/.codex/config.toml`，
+所以 Codex Desktop 也可能触发 Stop hook。当 `codex_desktop` 已启用，并且 Agents Router
+能证明这次 hook session 来自 Codex Desktop 时，这个 hook 会被忽略，由 Codex Desktop
+watcher 作为权威来源处理。无法确认来源的 session 不会被忽略，会继续走 `codex_cli`，
+避免误丢终端里的 Codex 通知。
+
 ## 1. 设置 service
 
 运行：
@@ -51,6 +57,10 @@ type = "codex_cli"
 
 Codex CLI 只有一个全局 Stop hook，所以这个 source 不接受 `my_codex` 这类自定义 source id。
 正在运行的 service hot reload 到包含 `codex_cli` 的有效 config 时，会先确保 Stop hook 已经写好，再使用新的 runtime config。如果 Stop hook 写不进去，这次 reload 会失败，service 继续使用上一份有效 runtime config。
+
+如果同一份 config 里也包含 `codex_desktop`，并且你希望同时接收 Desktop 和终端 Codex
+完成通知，就把两个 source 都保留在 route 里。只有当 Stop hook payload 能被识别为
+Codex Desktop session 时，Agents Router 才会忽略这次 hook。
 
 ## 2. 手动配置 Stop hook
 
@@ -126,5 +136,7 @@ agents-router status
 - route 里是否包含 `codex_cli`。
 - `~/.codex/config.toml` 里是否有 `codex_hooks = true`。
 - Stop hook 命令是否是 `agents-router ingest --source codex_cli --format codex_cli_stop`。
+- 如果你同时使用 Codex Desktop，是否已经配置了 `codex_desktop`，让 Desktop 完成通知由
+  Desktop watcher 处理，而不是共享 Stop hook。
 - 如果你使用 `notify` fallback，`notify` 是否指向 `agents-router emit --source codex_cli`。
 - Codex CLI 运行 hooks 的 shell 环境里是否能找到 `agents-router`。

@@ -212,6 +212,10 @@ Manual CLI hooks can submit events with:
 agents-router ingest --source codex_cli --format codex_cli_stop
 ```
 
+Codex Desktop and Codex CLI may be enabled together. If the shared Codex Stop hook fires for a
+session that Agents Router can identify as Codex Desktop, the hook is ignored and the Desktop watcher
+handles that completion.
+
 ```bash
 agents-router emit \
   --source claude_code \

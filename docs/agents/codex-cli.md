@@ -29,6 +29,12 @@ agents-router ingest --source codex_cli --format codex_cli_stop
 
 Agents Router does not overwrite Codex CLI `notify`. `notify` is a single command slot and may already be used by Codex Computer Use or another local integration. Stop hooks can coexist with that existing `notify` command, so they are the safest default.
 
+Codex Desktop and Codex CLI can both be configured. They may share the same `~/.codex/config.toml`,
+so Codex Desktop can also trigger the Stop hook. When `codex_desktop` is enabled and Agents Router
+can prove the hook session came from Codex Desktop, the hook is ignored and the Codex Desktop watcher
+remains the source of record. Unknown sessions are not ignored; they continue through `codex_cli` so
+terminal Codex runs are not dropped.
+
 ## 1. Set Up the Service
 
 Run:
@@ -59,6 +65,10 @@ Codex CLI has one global Stop hook, so custom source ids such as `my_codex` are 
 source. When the running service hot reloads a valid config that includes `codex_cli`, it ensures
 the Stop hook before using the new runtime config. If the hook cannot be written, reload fails and
 the service keeps the last valid runtime config.
+
+If the same config also includes `codex_desktop`, keep both sources in your route when you want both
+Desktop and terminal Codex completions. Desktop-origin Stop hook payloads are ignored only when the
+session can be identified as Codex Desktop.
 
 ## 2. Manual Stop Hook
 
@@ -134,5 +144,7 @@ agents-router status
 - The route includes `codex_cli`.
 - `~/.codex/config.toml` has `codex_hooks = true`.
 - The Stop hook command uses `agents-router ingest --source codex_cli --format codex_cli_stop`.
+- If you also use Codex Desktop, `codex_desktop` is configured when you expect Desktop completions
+  to come from the Desktop watcher instead of the shared Stop hook.
 - If you are using the `notify` fallback, `notify` points to `agents-router emit --source codex_cli`.
 - `agents-router` is available in the shell environment Codex CLI uses for hooks.

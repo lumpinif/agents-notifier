@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Context;
 use serde::Deserialize;
 
@@ -7,6 +9,7 @@ use crate::signal::{
     Signal, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
 };
 use crate::sources::agent_hook;
+use crate::sources::codex_desktop::{self, CodexSessionOrigin};
 use crate::sources::hook_payload::{present, project_name_from_cwd};
 
 const DEFAULT_TITLE: &str = "Codex CLI";
@@ -31,6 +34,60 @@ pub struct CodexCliStopHookInput {
     model: Option<String>,
     session_id: String,
     turn_id: String,
+}
+
+pub fn stop_hook_input_is_shadowed_by_codex_desktop(
+    config: &Config,
+    input: &CodexCliStopHookInput,
+    sessions_dir: &Path,
+) -> anyhow::Result<bool> {
+    if !has_codex_desktop_source(config) {
+        return Ok(false);
+    }
+
+    let session_id = input.session_id.trim();
+    if session_id.is_empty() {
+        return Ok(false);
+    }
+
+    Ok(matches!(
+        codex_desktop::codex_session_origin(sessions_dir, session_id)?,
+        CodexSessionOrigin::Desktop
+    ))
+}
+
+pub fn local_stop_event_is_shadowed_by_codex_desktop(
+    config: &Config,
+    event: &LocalSignalEvent,
+    sessions_dir: &Path,
+) -> anyhow::Result<bool> {
+    if event.source_id != SourceType::CodexCli.as_str() || !has_codex_desktop_source(config) {
+        return Ok(false);
+    }
+    if !matches!(
+        event.event.as_ref(),
+        Some(SignalEvent {
+            kind: SignalEventKind::TurnCompleted,
+            raw_name: Some(raw_name),
+        }) if raw_name == "Stop"
+    ) {
+        return Ok(false);
+    }
+
+    let Some(session_id) = event
+        .conversation
+        .as_ref()
+        .and_then(|conversation| conversation.session_id.as_deref())
+        .map(str::trim)
+        .filter(|session_id| !session_id.is_empty())
+    else {
+        return Ok(false);
+    };
+
+    Ok(matches!(
+        codex_desktop::codex_session_origin(sessions_dir, session_id)?,
+        CodexSessionOrigin::Desktop
+    ))
 }
 
 pub fn local_event_from_stop_hook(
@@ -79,14 +136,24 @@ pub fn local_event_from_stop_hook(
     Ok(event)
 }
 
+fn has_codex_desktop_source(config: &Config) -> bool {
+    config
+        .sources
+        .iter()
+        .any(|source| source.source_type == SourceType::CodexDesktop)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
     use crate::config::{
         CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType,
         RouteConfig, SourceConfig, SourceType,
     };
     use crate::signal::SignalLifecycleStatus;
+    use tempfile::tempdir;
 
     #[test]
     fn creates_signal_from_cli_args() {
@@ -194,6 +261,93 @@ mod tests {
         );
     }
 
+    #[test]
+    fn desktop_origin_stop_hook_is_shadowed_when_desktop_source_is_enabled() {
+        let sessions_dir = tempdir().expect("sessions dir should be created");
+        write_session_meta(sessions_dir.path(), "session-1", "Codex Desktop");
+        let input = stop_hook_input("session-1");
+        let mut config = test_config(SourceType::CodexCli);
+        config.sources.push(SourceConfig {
+            id: "codex_desktop".to_string(),
+            source_type: SourceType::CodexDesktop,
+        });
+
+        let shadowed =
+            stop_hook_input_is_shadowed_by_codex_desktop(&config, &input, sessions_dir.path())
+                .expect("origin should be classified");
+
+        assert!(shadowed);
+    }
+
+    #[test]
+    fn unknown_origin_stop_hook_is_not_shadowed() {
+        let sessions_dir = tempdir().expect("sessions dir should be created");
+        let input = stop_hook_input("session-1");
+        let mut config = test_config(SourceType::CodexCli);
+        config.sources.push(SourceConfig {
+            id: "codex_desktop".to_string(),
+            source_type: SourceType::CodexDesktop,
+        });
+
+        let shadowed =
+            stop_hook_input_is_shadowed_by_codex_desktop(&config, &input, sessions_dir.path())
+                .expect("missing session should be unknown");
+
+        assert!(!shadowed);
+    }
+
+    #[test]
+    fn cli_origin_stop_hook_is_not_shadowed() {
+        let sessions_dir = tempdir().expect("sessions dir should be created");
+        write_session_meta(sessions_dir.path(), "session-1", "codex_cli_rs");
+        let input = stop_hook_input("session-1");
+        let mut config = test_config(SourceType::CodexCli);
+        config.sources.push(SourceConfig {
+            id: "codex_desktop".to_string(),
+            source_type: SourceType::CodexDesktop,
+        });
+
+        let shadowed =
+            stop_hook_input_is_shadowed_by_codex_desktop(&config, &input, sessions_dir.path())
+                .expect("CLI origin should be classified");
+
+        assert!(!shadowed);
+    }
+
+    #[test]
+    fn desktop_origin_stop_hook_is_not_shadowed_without_desktop_source() {
+        let sessions_dir = tempdir().expect("sessions dir should be created");
+        write_session_meta(sessions_dir.path(), "session-1", "Codex Desktop");
+        let input = stop_hook_input("session-1");
+        let config = test_config(SourceType::CodexCli);
+
+        let shadowed =
+            stop_hook_input_is_shadowed_by_codex_desktop(&config, &input, sessions_dir.path())
+                .expect("origin should be ignored when desktop source is disabled");
+
+        assert!(!shadowed);
+    }
+
+    #[test]
+    fn desktop_origin_local_stop_event_is_shadowed_when_desktop_source_is_enabled() {
+        let sessions_dir = tempdir().expect("sessions dir should be created");
+        write_session_meta(sessions_dir.path(), "session-1", "Codex Desktop");
+        let input = stop_hook_input("session-1");
+        let event = local_event_from_stop_hook("codex_cli", input)
+            .expect("stop hook should create local event");
+        let mut config = test_config(SourceType::CodexCli);
+        config.sources.push(SourceConfig {
+            id: "codex_desktop".to_string(),
+            source_type: SourceType::CodexDesktop,
+        });
+
+        let shadowed =
+            local_stop_event_is_shadowed_by_codex_desktop(&config, &event, sessions_dir.path())
+                .expect("origin should be classified");
+
+        assert!(shadowed);
+    }
+
     fn test_config(source_type: SourceType) -> Config {
         Config {
             schema_version: 1,
@@ -249,5 +403,28 @@ mod tests {
                 vec!["debug".to_string()],
             )],
         }
+    }
+
+    fn stop_hook_input(session_id: &str) -> CodexCliStopHookInput {
+        CodexCliStopHookInput {
+            cwd: "/Users/tester/projects/agents-router".to_string(),
+            hook_event_name: "Stop".to_string(),
+            last_assistant_message: Some("Ready for review.".to_string()),
+            model: Some("gpt-5.2-codex".to_string()),
+            session_id: session_id.to_string(),
+            turn_id: "turn-1".to_string(),
+        }
+    }
+
+    fn write_session_meta(sessions_dir: &Path, session_id: &str, originator: &str) {
+        let path = sessions_dir.join(format!("rollout-2026-05-14T00-00-00-{session_id}.jsonl"));
+        fs::write(
+            path,
+            format!(
+                r#"{{"timestamp":"2026-05-14T00:00:00.000Z","type":"session_meta","payload":{{"id":"{session_id}","originator":"{originator}","cwd":"/Users/tester/projects/agents-router","model":"gpt-5.2-codex"}}}}
+"#
+            ),
+        )
+        .expect("session meta should be written");
     }
 }

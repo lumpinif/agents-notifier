@@ -136,6 +136,193 @@ async fn ingest_submits_structured_codex_cli_stop_event_to_local_service_socket(
 }
 
 #[tokio::test]
+async fn ingest_ignores_codex_desktop_stop_hook_when_desktop_source_is_enabled() {
+    let home = short_home();
+    write_codex_desktop_and_cli_config(home.path());
+    write_codex_rollout_session_meta(home.path(), "desktop-session-1", "Codex Desktop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
+        .env("HOME", home.path())
+        .args([
+            "ingest",
+            "--source",
+            "codex_cli",
+            "--format",
+            "codex_cli_stop",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("command should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be piped");
+    stdin
+        .write_all(codex_stop_payload("desktop-session-1").as_bytes())
+        .await
+        .expect("hook input should be writable");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("command should finish");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[tokio::test]
+async fn ingest_uses_service_metadata_config_for_codex_desktop_stop_hook_noop() {
+    let home = short_home();
+    let config_path = home.path().join("custom").join("agents-router.toml");
+    write_codex_desktop_and_cli_config_at(&config_path);
+    write_service_metadata(home.path(), &config_path);
+    write_codex_rollout_session_meta(home.path(), "desktop-session-1", "Codex Desktop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
+        .env("HOME", home.path())
+        .args([
+            "ingest",
+            "--source",
+            "codex_cli",
+            "--format",
+            "codex_cli_stop",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("command should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be piped");
+    stdin
+        .write_all(codex_stop_payload("desktop-session-1").as_bytes())
+        .await
+        .expect("hook input should be writable");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("command should finish");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[tokio::test]
+async fn ingest_does_not_ignore_codex_desktop_stop_hook_for_noncanonical_source_id() {
+    let home = short_home();
+    write_codex_desktop_and_cli_config(home.path());
+    write_codex_rollout_session_meta(home.path(), "desktop-session-1", "Codex Desktop");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
+        .env("HOME", home.path())
+        .args([
+            "ingest",
+            "--source",
+            "my_codex",
+            "--format",
+            "codex_cli_stop",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("command should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be piped");
+    stdin
+        .write_all(codex_stop_payload("desktop-session-1").as_bytes())
+        .await
+        .expect("hook input should be writable");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("command should finish");
+
+    assert!(
+        !output.status.success(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("agents-router service is not running"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[tokio::test]
+async fn ingest_keeps_codex_cli_stop_hook_when_origin_is_unknown() {
+    let home = short_home();
+    write_codex_desktop_and_cli_config(home.path());
+    let socket_path = socket_path_for_home(home.path());
+    create_parent(&socket_path);
+    let listener = UnixListener::bind(&socket_path).expect("test socket should bind");
+
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("client should connect");
+        let mut raw_request = Vec::new();
+        stream
+            .read_to_end(&mut raw_request)
+            .await
+            .expect("request should be readable");
+        stream
+            .write_all(br#"{"ok":true,"error":null}"#)
+            .await
+            .expect("response should be writable");
+        serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
+        .env("HOME", home.path())
+        .args([
+            "ingest",
+            "--source",
+            "codex_cli",
+            "--format",
+            "codex_cli_stop",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("command should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be piped");
+    stdin
+        .write_all(codex_stop_payload("unknown-session-1").as_bytes())
+        .await
+        .expect("hook input should be writable");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("command should finish");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let request = server.await.expect("server task should finish");
+    assert_eq!(request["source_id"], "codex_cli");
+    assert_eq!(request["conversation"]["session_id"], "unknown-session-1");
+}
+
+#[tokio::test]
 async fn ingest_submits_structured_claude_code_stop_event_to_local_service_socket() {
     let home = short_home();
     let socket_path = socket_path_for_home(home.path());
@@ -732,9 +919,118 @@ fn socket_path_for_home(home: &Path) -> PathBuf {
         .join("agents-router.sock")
 }
 
+fn config_path_for_home(home: &Path) -> PathBuf {
+    home.join(".config")
+        .join("agents-router")
+        .join("config.toml")
+}
+
+fn codex_sessions_path_for_home(home: &Path) -> PathBuf {
+    home.join(".codex").join("sessions")
+}
+
+fn service_metadata_path_for_home(home: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    return home
+        .join("Library")
+        .join("Application Support")
+        .join("agents-router")
+        .join("service.json");
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    home.join(".local")
+        .join("state")
+        .join("agents-router")
+        .join("service.json")
+}
+
 fn create_parent(path: &Path) {
     fs::create_dir_all(path.parent().expect("path should have parent"))
         .expect("parent directory should be created");
+}
+
+fn write_codex_desktop_and_cli_config(home: &Path) {
+    let path = config_path_for_home(home);
+    write_codex_desktop_and_cli_config_at(&path);
+}
+
+fn write_codex_desktop_and_cli_config_at(path: &Path) {
+    create_parent(path);
+    fs::write(
+        path,
+        r#"
+schema_version = 1
+
+[notification]
+answer_detail = "preview"
+
+[[sources]]
+id = "codex_desktop"
+type = "codex_desktop"
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = "http://127.0.0.1:9/agents-router-test"
+
+[[routes]]
+sources = ["codex_desktop", "codex_cli"]
+providers = ["debug_webhook"]
+"#,
+    )
+    .expect("config should be written");
+}
+
+fn write_service_metadata(home: &Path, config_path: &Path) {
+    let path = service_metadata_path_for_home(home);
+    create_parent(&path);
+    fs::write(
+        path,
+        format!(
+            r#"{{
+  "binary_path": "/tmp/agents-router",
+  "config_path": "{}",
+  "log_file": "/tmp/agents-router.log",
+  "installed_at": "2026-05-14T00:00:00Z"
+}}"#,
+            config_path.display()
+        ),
+    )
+    .expect("service metadata should be written");
+}
+
+fn write_codex_rollout_session_meta(home: &Path, session_id: &str, originator: &str) {
+    let path = codex_sessions_path_for_home(home)
+        .join("2026")
+        .join("05")
+        .join("14")
+        .join(format!("rollout-2026-05-14T00-00-00-{session_id}.jsonl"));
+    create_parent(&path);
+    fs::write(
+        path,
+        format!(
+            r#"{{"timestamp":"2026-05-14T00:00:00.000Z","type":"session_meta","payload":{{"id":"{session_id}","originator":"{originator}","cwd":"/Users/tester/projects/agents-router","model":"gpt-5.2-codex"}}}}
+"#
+        ),
+    )
+    .expect("rollout should be written");
+}
+
+fn codex_stop_payload(session_id: &str) -> String {
+    format!(
+        r#"{{
+  "cwd": "/Users/tester/projects/agents-router",
+  "hook_event_name": "Stop",
+  "last_assistant_message": "Ready for review.",
+  "model": "gpt-5.2-codex",
+  "session_id": "{session_id}",
+  "turn_id": "turn-1"
+}}"#
+    )
 }
 
 fn short_home() -> TempDir {

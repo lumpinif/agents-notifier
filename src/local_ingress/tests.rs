@@ -5,6 +5,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::fs;
 #[cfg(unix)]
 use std::time::{Duration, Instant};
+use tempfile::TempDir;
 #[cfg(unix)]
 use tempfile::tempdir;
 #[cfg(unix)]
@@ -472,6 +473,58 @@ async fn route_event_rejects_codex_desktop_local_ingress() {
     );
 }
 
+#[tokio::test]
+async fn route_event_ignores_desktop_origin_codex_cli_stop_when_desktop_source_is_enabled() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let provider = TestProvider {
+        calls: Arc::clone(&calls),
+    };
+    let sessions_dir = write_codex_session("session-1", "Codex Desktop");
+    let state = LocalIngressState::default();
+
+    route_event_with_state_and_codex_sessions_dir(
+        &codex_desktop_and_cli_config(),
+        &[&provider],
+        &state,
+        codex_stop_event("session-1"),
+        Some(sessions_dir.path()),
+    )
+    .await
+    .expect("desktop-origin hook should be ignored");
+
+    assert!(
+        calls
+            .lock()
+            .expect("calls lock should not be poisoned")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn route_event_keeps_unknown_origin_codex_cli_stop_when_desktop_source_is_enabled() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let provider = TestProvider {
+        calls: Arc::clone(&calls),
+    };
+    let sessions_dir = TempDir::new().expect("sessions dir should be created");
+    let state = LocalIngressState::default();
+
+    route_event_with_state_and_codex_sessions_dir(
+        &codex_desktop_and_cli_config(),
+        &[&provider],
+        &state,
+        codex_stop_event("unknown-session-1"),
+        Some(sessions_dir.path()),
+    )
+    .await
+    .expect("unknown-origin hook should route");
+
+    assert_eq!(
+        *calls.lock().expect("calls lock should not be poisoned"),
+        vec!["codex_cli:Codex CLI finished a task.".to_string()]
+    );
+}
+
 #[test]
 fn create_signal_applies_structured_fields_with_notification_policy() {
     let mut config = test_config("codex_cli", SourceType::CodexCli);
@@ -589,6 +642,55 @@ fn test_config(source_id: &str, source_type: SourceType) -> Config {
             vec!["debug".to_string()],
         )],
     }
+}
+
+fn codex_desktop_and_cli_config() -> Config {
+    let mut config = test_config("codex_cli", SourceType::CodexCli);
+    config.sources.push(SourceConfig {
+        id: "codex_desktop".to_string(),
+        source_type: SourceType::CodexDesktop,
+    });
+    config.routes[0].sources.push("codex_desktop".to_string());
+    config
+}
+
+fn codex_stop_event(session_id: &str) -> LocalSignalEvent {
+    let mut event = LocalSignalEvent::new("codex_cli", "Codex CLI", "Codex CLI finished a task.");
+    event.event = Some(SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("Stop".to_string()),
+    });
+    event.conversation = Some(LocalSignalConversation {
+        session_id: Some(session_id.to_string()),
+        session_title: None,
+        turn_id: Some("turn-1".to_string()),
+        prompt: None,
+        answer: Some("Ready for review.".to_string()),
+        model: Some("gpt-5.2-codex".to_string()),
+    });
+    event.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: None,
+        duration_ms: None,
+    });
+    event
+}
+
+fn write_codex_session(session_id: &str, originator: &str) -> TempDir {
+    let dir = TempDir::new().expect("sessions dir should be created");
+    let path = dir
+        .path()
+        .join(format!("rollout-2026-05-14T00-00-00-{session_id}.jsonl"));
+    std::fs::write(
+        path,
+        format!(
+            r#"{{"timestamp":"2026-05-14T00:00:00.000Z","type":"session_meta","payload":{{"id":"{session_id}","originator":"{originator}","cwd":"/Users/tester/projects/agents-router","model":"gpt-5.2-codex"}}}}
+"#
+        ),
+    )
+    .expect("session meta should be written");
+    dir
 }
 
 fn timestamp() -> DateTime<Utc> {

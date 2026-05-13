@@ -28,8 +28,8 @@ use agents_router::local_open_bridge;
 #[cfg(target_os = "macos")]
 use agents_router::paths::pid_file_path;
 use agents_router::paths::{
-    app_support_dir_path, default_config_file_path, ingress_endpoint, log_file_path,
-    service_metadata_path,
+    app_support_dir_path, codex_sessions_dir_path, default_config_file_path, ingress_endpoint,
+    log_file_path, service_metadata_path,
 };
 #[cfg(target_os = "macos")]
 use agents_router::process::{StopOutcome, SystemProcessManager, stop_with_manager};
@@ -1363,6 +1363,9 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
         IngestFormat::CodexCliStop => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse codex_cli stop hook JSON")?;
+            if codex_cli_stop_hook_is_shadowed_by_codex_desktop(source_id, &input) {
+                return Ok(());
+            }
             codex_cli::local_event_from_stop_hook(source_id, input)?
         }
         IngestFormat::GeminiCliHook => {
@@ -1383,6 +1386,36 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
     };
 
     local_ingress::submit_event(&ingress_endpoint()?, &event).await
+}
+
+fn codex_cli_stop_hook_is_shadowed_by_codex_desktop(
+    source_id: &str,
+    input: &codex_cli::CodexCliStopHookInput,
+) -> bool {
+    if source_id != SourceType::CodexCli.as_str() {
+        return false;
+    }
+
+    let Some(config) = codex_cli_stop_hook_shadowing_config() else {
+        return false;
+    };
+    let Ok(sessions_dir) = codex_sessions_dir_path() else {
+        return false;
+    };
+
+    codex_cli::stop_hook_input_is_shadowed_by_codex_desktop(&config, input, &sessions_dir)
+        .unwrap_or(false)
+}
+
+fn codex_cli_stop_hook_shadowing_config() -> Option<Config> {
+    if let Ok(metadata_path) = service_metadata_path()
+        && let Ok(metadata) = load_metadata(&metadata_path)
+    {
+        return Config::from_path(&PathBuf::from(metadata.config_path)).ok();
+    }
+
+    let config_path = default_config_file_path().ok()?;
+    Config::from_path(&config_path).ok()
 }
 
 fn init_tracing(level: &str) -> anyhow::Result<()> {

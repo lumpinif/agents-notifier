@@ -212,6 +212,10 @@ agents-router watch    # 前台 debug worker
 agents-router ingest --source codex_cli --format codex_cli_stop
 ```
 
+Codex Desktop 和 Codex CLI 可以同时启用。如果共享的 Codex Stop hook 为一个可识别的
+Codex Desktop session 触发，Agents Router 会忽略这次 hook，并由 Desktop watcher 处理
+这次完成通知。
+
 ```bash
 agents-router emit \
   --source claude_code \

@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 #[cfg(unix)]
 use std::fs;
+use std::path::Path;
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::Context;
@@ -17,7 +18,7 @@ use tokio::time::{Duration, timeout};
 use tracing::{info, warn};
 
 use crate::config::{AnswerDetail, Config, PromptDetail, SourceType};
-use crate::paths::IngressEndpoint;
+use crate::paths::{IngressEndpoint, codex_sessions_dir_path};
 use crate::router::{Provider, Router};
 use crate::runtime::RuntimeState;
 use crate::signal::{
@@ -395,6 +396,24 @@ pub async fn route_event_with_state(
     state: &LocalIngressState,
     event: LocalSignalEvent,
 ) -> anyhow::Result<()> {
+    let codex_sessions_dir = codex_sessions_dir_path().ok();
+    route_event_with_state_and_codex_sessions_dir(
+        config,
+        providers,
+        state,
+        event,
+        codex_sessions_dir.as_deref(),
+    )
+    .await
+}
+
+async fn route_event_with_state_and_codex_sessions_dir(
+    config: &Config,
+    providers: &[&dyn Provider],
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+    codex_sessions_dir: Option<&Path>,
+) -> anyhow::Result<()> {
     info!(
         source.id = %event.source_id,
         action = ?event.action,
@@ -413,6 +432,10 @@ pub async fn route_event_with_state(
         LocalSignalAction::RouteSignal => {}
     }
 
+    if codex_cli_stop_event_is_shadowed_by_codex_desktop(config, &event, codex_sessions_dir) {
+        return Ok(());
+    }
+
     let mut signal = create_signal(config, event)?;
     apply_session_context(state, &mut signal)?;
     apply_turn_start_context(state, &mut signal)?;
@@ -425,6 +448,40 @@ pub async fn route_event_with_state(
 
     Router::new(config).route(&signal, providers).await?;
     Ok(())
+}
+
+fn codex_cli_stop_event_is_shadowed_by_codex_desktop(
+    config: &Config,
+    event: &LocalSignalEvent,
+    codex_sessions_dir: Option<&Path>,
+) -> bool {
+    let Some(codex_sessions_dir) = codex_sessions_dir else {
+        return false;
+    };
+
+    match codex_cli::local_stop_event_is_shadowed_by_codex_desktop(
+        config,
+        event,
+        codex_sessions_dir,
+    ) {
+        Ok(true) => {
+            info!(
+                source.id = %event.source_id,
+                event = "ingress.codex_cli_stop.ignored",
+                reason = "codex_desktop_source_enabled",
+            );
+            true
+        }
+        Ok(false) => false,
+        Err(error) => {
+            warn!(
+                source.id = %event.source_id,
+                error = %error,
+                event = "ingress.codex_cli_stop.origin_unresolved",
+            );
+            false
+        }
+    }
 }
 
 pub async fn route_event_with_runtime(
