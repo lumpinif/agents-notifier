@@ -19,11 +19,15 @@ pub struct LegacyMigrationOutcome {
     pub migrated_config: bool,
     pub removed_service: bool,
     pub removed_files: usize,
+    pub retained_cargo_binaries: Vec<PathBuf>,
 }
 
 impl LegacyMigrationOutcome {
     pub fn changed(&self) -> bool {
-        self.migrated_config || self.removed_service || self.removed_files > 0
+        self.migrated_config
+            || self.removed_service
+            || self.removed_files > 0
+            || !self.retained_cargo_binaries.is_empty()
     }
 }
 
@@ -58,7 +62,9 @@ pub fn migrate_legacy_installation(config_path: &Path) -> anyhow::Result<LegacyM
     }
 
     outcome.removed_files += cleanup_legacy_pid_processes()?;
-    outcome.removed_files += cleanup_legacy_binaries(&legacy_binary_paths)?;
+    let binary_cleanup = cleanup_legacy_binaries(&legacy_binary_paths)?;
+    outcome.removed_files += binary_cleanup.removed_files;
+    outcome.retained_cargo_binaries = binary_cleanup.retained_cargo_binaries;
     outcome.removed_files += cleanup_legacy_files()?;
 
     Ok(outcome)
@@ -259,30 +265,48 @@ fn cleanup_legacy_service() -> anyhow::Result<bool> {
     Ok(false)
 }
 
-fn cleanup_legacy_binaries(metadata_binary_paths: &[PathBuf]) -> anyhow::Result<usize> {
-    let mut removed = 0;
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct LegacyBinaryCleanupOutcome {
+    removed_files: usize,
+    retained_cargo_binaries: Vec<PathBuf>,
+}
+
+fn cleanup_legacy_binaries(
+    metadata_binary_paths: &[PathBuf],
+) -> anyhow::Result<LegacyBinaryCleanupOutcome> {
+    let mut outcome = LegacyBinaryCleanupOutcome::default();
     let mut seen = HashSet::new();
 
     for path in metadata_binary_paths
         .iter()
         .cloned()
         .chain(legacy_marker_binary_paths()?)
+        .chain(legacy_cargo_binary_paths()?)
     {
-        if !seen.insert(path.clone()) || !should_remove_legacy_binary(&path) {
+        if !seen.insert(path.clone()) || !is_legacy_binary_path(&path) || !path.exists() {
+            continue;
+        }
+
+        if is_cargo_managed_binary_path(&path) {
+            outcome.retained_cargo_binaries.push(path);
+            continue;
+        }
+
+        if !should_remove_legacy_binary(&path) {
             continue;
         }
 
         if remove_path_if_exists(&path)? {
-            removed += 1;
+            outcome.removed_files += 1;
         }
         let marker = path.with_file_name(".agents-notifier-install-method");
         if remove_path_if_exists(&marker)? {
-            removed += 1;
+            outcome.removed_files += 1;
         }
         remove_empty_parent(&path)?;
     }
 
-    Ok(removed)
+    Ok(outcome)
 }
 
 fn cleanup_legacy_files() -> anyhow::Result<usize> {
@@ -308,6 +332,34 @@ fn legacy_marker_binary_paths() -> anyhow::Result<Vec<PathBuf>> {
             }
         }
     }
+
+    Ok(paths)
+}
+
+fn legacy_cargo_binary_paths() -> anyhow::Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Some(cargo_home) = std::env::var_os("CARGO_HOME")
+        && !cargo_home.is_empty()
+    {
+        push_unique_path(
+            &mut paths,
+            &mut seen,
+            PathBuf::from(cargo_home)
+                .join("bin")
+                .join(legacy_binary_file_name()),
+        );
+    }
+
+    push_unique_path(
+        &mut paths,
+        &mut seen,
+        home_dir()?
+            .join(".cargo")
+            .join("bin")
+            .join(legacy_binary_file_name()),
+    );
 
     Ok(paths)
 }
@@ -380,17 +432,45 @@ fn legacy_metadata(path: &Path) -> anyhow::Result<Option<LegacyServiceMetadata>>
     Ok(Some(metadata))
 }
 
-fn should_remove_legacy_binary(path: &Path) -> bool {
+fn is_legacy_binary_path(path: &Path) -> bool {
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    if file_name != LEGACY_BINARY_NAME && file_name != "agents-notifier.exe" {
+
+    file_name == LEGACY_BINARY_NAME || file_name == "agents-notifier.exe"
+}
+
+fn should_remove_legacy_binary(path: &Path) -> bool {
+    if !is_legacy_binary_path(path) || is_cargo_managed_binary_path(path) {
         return false;
     }
 
     !path
         .components()
         .any(|component| component.as_os_str() == "target")
+}
+
+fn is_cargo_managed_binary_path(path: &Path) -> bool {
+    if !is_legacy_binary_path(path) {
+        return false;
+    }
+
+    if let Some(parent) = path.parent()
+        && let Some(cargo_home) = std::env::var_os("CARGO_HOME")
+        && !cargo_home.is_empty()
+        && parent == PathBuf::from(cargo_home).join("bin")
+    {
+        return true;
+    }
+
+    let components = path
+        .components()
+        .map(|component| component.as_os_str())
+        .collect::<Vec<_>>();
+
+    components
+        .windows(2)
+        .any(|window| window[0] == ".cargo" && window[1] == "bin")
 }
 
 #[cfg(unix)]
@@ -752,7 +832,23 @@ providers = ["hook"]
             "/repo/target/debug/agents-notifier"
         )));
         assert!(!should_remove_legacy_binary(Path::new(
+            "/Users/tester/.cargo/bin/agents-notifier"
+        )));
+        assert!(!should_remove_legacy_binary(Path::new(
             "/Users/tester/.local/bin/agents-router"
+        )));
+    }
+
+    #[test]
+    fn recognizes_legacy_cargo_binary_paths() {
+        assert!(is_cargo_managed_binary_path(Path::new(
+            "/Users/tester/.cargo/bin/agents-notifier"
+        )));
+        assert!(!is_cargo_managed_binary_path(Path::new(
+            "/Users/tester/.local/bin/agents-notifier"
+        )));
+        assert!(!is_cargo_managed_binary_path(Path::new(
+            "/Users/tester/.cargo/bin/agents-router"
         )));
     }
 

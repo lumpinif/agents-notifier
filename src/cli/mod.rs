@@ -273,6 +273,12 @@ fn print_legacy_migration(outcome: legacy::LegacyMigrationOutcome) {
     if outcome.removed_files > 0 {
         println!("Removed existing Agents Notifier local files.");
     }
+    for path in outcome.retained_cargo_binaries {
+        println!(
+            "Found existing Agents Notifier Cargo binary and left it in place: {}",
+            path.display()
+        );
+    }
 }
 
 fn resolve_config_path(config: Option<PathBuf>) -> anyhow::Result<PathBuf> {
