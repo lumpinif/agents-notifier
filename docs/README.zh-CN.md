@@ -205,13 +205,11 @@ agents-router uninstall # 删除 service、配置、日志和状态
 agents-router watch    # 前台 debug worker
 ```
 
-CLI agent hooks 可以这样提交事件：
+当当前生效的 config 包含 `codex_cli` 时，Agents Router 会自动安装推荐的 Codex CLI Stop hook。
+手动 CLI hooks 可以这样提交事件：
 
 ```bash
-agents-router emit \
-  --source codex_cli \
-  --title "Codex" \
-  --body "Ready for review."
+agents-router ingest --source codex_cli --format codex_cli_stop
 ```
 
 ```bash

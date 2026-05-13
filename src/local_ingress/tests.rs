@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 #[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
@@ -237,6 +238,166 @@ async fn route_event_merges_claude_session_start_model_into_stop_signal() {
 }
 
 #[tokio::test]
+async fn route_event_computes_claude_duration_from_user_prompt_submit_and_stop() {
+    let signals = Arc::new(Mutex::new(Vec::new()));
+    let provider = SignalCaptureProvider {
+        signals: Arc::clone(&signals),
+    };
+    let state = LocalIngressState::default();
+    let mut config = test_config("claude_code", SourceType::ClaudeCode);
+    config.routes[0].minimum_task_duration_minutes = Some(5);
+    let started_at = timestamp();
+    let completed_at = started_at + ChronoDuration::minutes(7);
+
+    let mut user_prompt = LocalSignalEvent::new(
+        "claude_code",
+        "Claude Code",
+        "Claude Code turn timing started.",
+    );
+    user_prompt.action = LocalSignalAction::StoreTurnStart;
+    user_prompt.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: Some("Do not store this prompt.".to_string()),
+        answer: None,
+        model: None,
+    });
+    user_prompt.lifecycle = Some(SignalLifecycle {
+        status: None,
+        started_at: Some(started_at),
+        completed_at: None,
+        duration_ms: None,
+    });
+
+    route_event_with_state(&config, &[&provider], &state, user_prompt)
+        .await
+        .expect("UserPromptSubmit should store Claude Code turn start");
+    assert!(
+        signals
+            .lock()
+            .expect("signals lock should not be poisoned")
+            .is_empty(),
+        "UserPromptSubmit should not route a provider notification"
+    );
+
+    let mut stop =
+        LocalSignalEvent::new("claude_code", "Claude Code", "Claude Code finished a task.");
+    stop.event = Some(SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("Stop".to_string()),
+    });
+    stop.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: Some("Ready for review.".to_string()),
+        model: None,
+    });
+    stop.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: Some(completed_at),
+        duration_ms: None,
+    });
+
+    route_event_with_state(&config, &[&provider], &state, stop)
+        .await
+        .expect("Stop should route a Claude Code completion signal");
+
+    let routed = signals.lock().expect("signals lock should not be poisoned");
+    assert_eq!(routed.len(), 1);
+    let lifecycle = routed[0]
+        .lifecycle
+        .as_ref()
+        .expect("computed lifecycle should be present");
+    assert_eq!(lifecycle.started_at, Some(started_at));
+    assert_eq!(lifecycle.completed_at, Some(completed_at));
+    assert_eq!(lifecycle.duration_ms, Some(420_000));
+    assert_eq!(
+        routed[0]
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.prompt.as_deref()),
+        None
+    );
+}
+
+#[tokio::test]
+async fn route_event_uses_explicit_stop_start_when_computing_claude_duration() {
+    let signals = Arc::new(Mutex::new(Vec::new()));
+    let provider = SignalCaptureProvider {
+        signals: Arc::clone(&signals),
+    };
+    let state = LocalIngressState::default();
+    let config = test_config("claude_code", SourceType::ClaudeCode);
+    let stored_started_at = timestamp();
+    let explicit_started_at = stored_started_at + ChronoDuration::minutes(2);
+    let completed_at = stored_started_at + ChronoDuration::minutes(7);
+
+    let mut user_prompt = LocalSignalEvent::new(
+        "claude_code",
+        "Claude Code",
+        "Claude Code turn timing started.",
+    );
+    user_prompt.action = LocalSignalAction::StoreTurnStart;
+    user_prompt.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: None,
+        model: None,
+    });
+    user_prompt.lifecycle = Some(SignalLifecycle {
+        status: None,
+        started_at: Some(stored_started_at),
+        completed_at: None,
+        duration_ms: None,
+    });
+
+    route_event_with_state(&config, &[&provider], &state, user_prompt)
+        .await
+        .expect("UserPromptSubmit should store Claude Code turn start");
+
+    let mut stop =
+        LocalSignalEvent::new("claude_code", "Claude Code", "Claude Code finished a task.");
+    stop.event = Some(SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("Stop".to_string()),
+    });
+    stop.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: Some("Ready for review.".to_string()),
+        model: None,
+    });
+    stop.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: Some(explicit_started_at),
+        completed_at: Some(completed_at),
+        duration_ms: None,
+    });
+
+    route_event_with_state(&config, &[&provider], &state, stop)
+        .await
+        .expect("Stop should route a Claude Code completion signal");
+
+    let routed = signals.lock().expect("signals lock should not be poisoned");
+    assert_eq!(routed.len(), 1);
+    let lifecycle = routed[0]
+        .lifecycle
+        .as_ref()
+        .expect("computed lifecycle should be present");
+    assert_eq!(lifecycle.started_at, Some(explicit_started_at));
+    assert_eq!(lifecycle.completed_at, Some(completed_at));
+    assert_eq!(lifecycle.duration_ms, Some(300_000));
+}
+
+#[tokio::test]
 async fn route_event_creates_generic_agent_hook_signal_and_uses_service_router() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let provider = TestProvider {
@@ -428,4 +589,10 @@ fn test_config(source_id: &str, source_type: SourceType) -> Config {
             vec!["debug".to_string()],
         )],
     }
+}
+
+fn timestamp() -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc)
 }

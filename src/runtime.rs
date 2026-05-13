@@ -10,6 +10,7 @@ use tracing::{info, warn};
 use crate::config::Config;
 #[cfg(target_os = "linux")]
 use crate::config::SourceType;
+use crate::local_integrations::{self, LocalSourceIntegrationPaths, LocalSourceIntegrationReport};
 use crate::providers::build_providers;
 use crate::router::Provider;
 
@@ -43,6 +44,20 @@ impl RuntimeState {
     pub fn reload_from_path(&self, path: &Path) -> anyhow::Result<()> {
         let snapshot = RuntimeSnapshot::from_path(path)?;
         self.replace(snapshot)
+    }
+
+    pub fn reload_from_path_with_local_integrations(
+        &self,
+        path: &Path,
+        integration_paths: &LocalSourceIntegrationPaths,
+    ) -> anyhow::Result<LocalSourceIntegrationReport> {
+        let snapshot = RuntimeSnapshot::from_path(path)?;
+        let report = local_integrations::ensure_local_source_integrations_with_paths(
+            &snapshot.config,
+            integration_paths,
+        )?;
+        self.replace(snapshot)?;
+        Ok(report)
     }
 
     fn replace(&self, snapshot: RuntimeSnapshot) -> anyhow::Result<()> {
@@ -94,6 +109,7 @@ pub async fn reload_config_on_change(
     config_path: PathBuf,
     runtime: RuntimeState,
 ) -> anyhow::Result<()> {
+    let integration_paths = LocalSourceIntegrationPaths::detect()?;
     let mut observed_state = ConfigFileState::read(&config_path);
     let mut interval = time::interval(CONFIG_RELOAD_POLL_INTERVAL);
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -118,14 +134,17 @@ pub async fn reload_config_on_change(
         }
 
         match &settled_state {
-            ConfigFileState::Present(_) => match runtime.reload_from_path(&config_path) {
-                Ok(()) => {
+            ConfigFileState::Present(_) => match runtime
+                .reload_from_path_with_local_integrations(&config_path, &integration_paths)
+            {
+                Ok(integration_report) => {
                     let snapshot = runtime.current()?;
                     info!(
                         config.path = %config_path.display(),
                         sources = snapshot.config.sources.len(),
                         providers = snapshot.config.providers.len(),
                         routes = snapshot.config.routes.len(),
+                        local_integrations_changed = integration_report.has_changes(),
                         event = "config.reload.succeeded",
                     );
                 }

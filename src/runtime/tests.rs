@@ -4,6 +4,7 @@ use crate::config::{
     CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
     SourceConfig, SourceType,
 };
+use crate::local_integrations::{CODEX_CLI_STOP_HOOK_COMMAND, LocalSourceIntegrationPaths};
 use crate::setup;
 
 use super::*;
@@ -64,6 +65,72 @@ minimum_task_duration_minutes = 0
     runtime
         .reload_from_path(&path)
         .expect_err("invalid config should not reload");
+
+    assert_eq!(
+        runtime
+            .current()
+            .expect("runtime snapshot should be readable")
+            .config
+            .routes[0]
+            .minimum_task_duration_minutes,
+        Some(5)
+    );
+}
+
+#[test]
+fn reload_with_local_integrations_applies_before_replacing_snapshot() {
+    let dir = tempdir().expect("tempdir should be created");
+    let path = dir.path().join("config.toml");
+    let codex_config_path = dir.path().join("codex").join("config.toml");
+    let claude_settings_path = dir.path().join("claude").join("settings.json");
+    let integration_paths = LocalSourceIntegrationPaths {
+        codex_cli_config_path: codex_config_path.clone(),
+        claude_code_settings_path: claude_settings_path,
+    };
+    setup::write_config(&path, &test_config(None)).expect("config should be written");
+    let runtime = RuntimeState::new(test_config(Some(5))).expect("runtime should be created");
+
+    let report = runtime
+        .reload_from_path_with_local_integrations(&path, &integration_paths)
+        .expect("valid config and local integrations should reload");
+
+    assert!(report.has_changes());
+    assert!(
+        std::fs::read_to_string(codex_config_path)
+            .expect("Codex CLI config should be written")
+            .contains(CODEX_CLI_STOP_HOOK_COMMAND)
+    );
+    assert_eq!(
+        runtime
+            .current()
+            .expect("runtime snapshot should be readable")
+            .config
+            .routes[0]
+            .minimum_task_duration_minutes,
+        None
+    );
+}
+
+#[test]
+fn failed_local_integration_keeps_previous_runtime_snapshot() {
+    let dir = tempdir().expect("tempdir should be created");
+    let path = dir.path().join("config.toml");
+    let codex_config_path = dir.path().join("codex").join("config.toml");
+    std::fs::create_dir_all(codex_config_path.parent().expect("path should have parent"))
+        .expect("codex config dir should be created");
+    std::fs::write(&codex_config_path, "notify = [")
+        .expect("invalid Codex config should be written");
+    let claude_settings_path = dir.path().join("claude").join("settings.json");
+    let integration_paths = LocalSourceIntegrationPaths {
+        codex_cli_config_path: codex_config_path,
+        claude_code_settings_path: claude_settings_path,
+    };
+    setup::write_config(&path, &test_config(None)).expect("config should be written");
+    let runtime = RuntimeState::new(test_config(Some(5))).expect("runtime should be created");
+
+    runtime
+        .reload_from_path_with_local_integrations(&path, &integration_paths)
+        .expect_err("invalid local integration config should fail reload");
 
     assert_eq!(
         runtime

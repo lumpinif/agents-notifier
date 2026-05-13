@@ -79,6 +79,14 @@ pub fn codex_session_index_path() -> anyhow::Result<PathBuf> {
     Ok(codex_session_index_path_for_home(&home_dir()?))
 }
 
+pub fn codex_cli_config_path() -> anyhow::Result<PathBuf> {
+    Ok(codex_cli_config_path_for_home(&home_dir()?))
+}
+
+pub fn claude_code_settings_path() -> anyhow::Result<PathBuf> {
+    Ok(claude_code_settings_path_for_home(&home_dir()?))
+}
+
 pub fn default_config_file_path() -> anyhow::Result<PathBuf> {
     Ok(default_config_file_path_for_home(&home_dir()?))
 }
@@ -156,6 +164,14 @@ pub fn codex_sessions_dir_path_for_home(home: &Path) -> PathBuf {
 
 pub fn codex_session_index_path_for_home(home: &Path) -> PathBuf {
     home.join(".codex").join("session_index.jsonl")
+}
+
+pub fn codex_cli_config_path_for_home(home: &Path) -> PathBuf {
+    home.join(".codex").join("config.toml")
+}
+
+pub fn claude_code_settings_path_for_home(home: &Path) -> PathBuf {
+    home.join(".claude").join("settings.json")
 }
 
 pub fn default_config_file_path_for_home(home: &Path) -> PathBuf {
@@ -334,6 +350,22 @@ mod tests {
         let path = codex_session_index_path_for_home(&home);
 
         assert_eq!(path, home.join(".codex").join("session_index.jsonl"));
+    }
+
+    #[test]
+    fn builds_codex_cli_config_path() {
+        let home = test_home();
+        let path = codex_cli_config_path_for_home(&home);
+
+        assert_eq!(path, home.join(".codex").join("config.toml"));
+    }
+
+    #[test]
+    fn builds_claude_code_settings_path() {
+        let home = test_home();
+        let path = claude_code_settings_path_for_home(&home);
+
+        assert_eq!(path, home.join(".claude").join("settings.json"));
     }
 
     #[test]

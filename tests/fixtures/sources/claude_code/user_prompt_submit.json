@@ -1,0 +1,8 @@
+{
+  "session_id": "claude-session-1",
+  "transcript_path": "/Users/tester/.claude/projects/agents-router/claude-session-1.jsonl",
+  "cwd": "/Users/tester/projects/agents-router",
+  "permission_mode": "default",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Implement the requested change."
+}

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Context;
+use chrono::Utc;
 use serde::Deserialize;
 
 use crate::config::{Config, SourceType};
@@ -56,11 +57,14 @@ pub fn local_event_from_hook(
 
     match hook_event_name.as_str() {
         "SessionStart" => local_event_from_session_start_hook(source_id, input, hook_event_name),
+        "UserPromptSubmit" => {
+            local_event_from_user_prompt_submit_hook(source_id, input, hook_event_name)
+        }
         "Stop" => local_event_from_stop_hook(source_id, input, hook_event_name),
         "Notification" => local_event_from_notification_hook(source_id, input, hook_event_name),
         event_name => {
             anyhow::bail!(
-                "claude_code ingest expected `hook_event_name` to be `SessionStart`, `Stop`, or `Notification`, got `{event_name}`"
+                "claude_code ingest expected `hook_event_name` to be `SessionStart`, `UserPromptSubmit`, `Stop`, or `Notification`, got `{event_name}`"
             )
         }
     }
@@ -125,6 +129,39 @@ fn local_event_from_stop_hook(
     event.lifecycle = Some(SignalLifecycle {
         status: Some(SignalLifecycleStatus::Completed),
         started_at: None,
+        completed_at: Some(Utc::now()),
+        duration_ms: None,
+    });
+    event.metadata = metadata_from_hook_input(&input);
+
+    Ok(event)
+}
+
+fn local_event_from_user_prompt_submit_hook(
+    source_id: impl Into<String>,
+    input: ClaudeCodeHookInput,
+    hook_event_name: String,
+) -> anyhow::Result<LocalSignalEvent> {
+    let common = common_hook_fields(&input)?;
+    let mut event =
+        LocalSignalEvent::new(source_id, DEFAULT_TITLE, "Claude Code turn timing started.");
+    event.action = LocalSignalAction::StoreTurnStart;
+    event.event = Some(SignalEvent {
+        kind: SignalEventKind::Custom,
+        raw_name: Some(hook_event_name),
+    });
+    event.workspace = Some(workspace_from_cwd(&common.cwd));
+    event.conversation = Some(LocalSignalConversation {
+        session_id: Some(common.session_id),
+        session_title: None,
+        turn_id: None,
+        prompt: None,
+        answer: None,
+        model: input.model.as_deref().and_then(present),
+    });
+    event.lifecycle = Some(SignalLifecycle {
+        status: None,
+        started_at: Some(Utc::now()),
         completed_at: None,
         duration_ms: None,
     });
@@ -362,6 +399,60 @@ mod tests {
                 .get("session_start_source")
                 .map(String::as_str),
             Some("startup")
+        );
+    }
+
+    #[test]
+    fn creates_local_turn_start_from_user_prompt_submit_hook_input() {
+        let event = local_event_from_hook(
+            "claude_code",
+            ClaudeCodeHookInput {
+                session_id: "session-1".to_string(),
+                transcript_path: "/Users/tester/.claude/projects/project/session-1.jsonl"
+                    .to_string(),
+                cwd: "/Users/tester/projects/agents-router".to_string(),
+                hook_event_name: "UserPromptSubmit".to_string(),
+                permission_mode: Some("default".to_string()),
+                source: None,
+                last_assistant_message: None,
+                model: Some("claude-sonnet-4-6".to_string()),
+                stop_hook_active: None,
+                title: None,
+                message: None,
+                notification_type: None,
+            },
+        )
+        .expect("UserPromptSubmit hook should create turn start event");
+
+        assert_eq!(event.source_id, "claude_code");
+        assert_eq!(event.action, LocalSignalAction::StoreTurnStart);
+        assert_eq!(
+            event
+                .event
+                .as_ref()
+                .and_then(|event| event.raw_name.as_deref()),
+            Some("UserPromptSubmit")
+        );
+        assert_eq!(
+            event
+                .conversation
+                .as_ref()
+                .and_then(|conversation| conversation.session_id.as_deref()),
+            Some("session-1")
+        );
+        assert_eq!(
+            event
+                .conversation
+                .as_ref()
+                .and_then(|conversation| conversation.prompt.as_deref()),
+            None
+        );
+        assert!(
+            event
+                .lifecycle
+                .as_ref()
+                .and_then(|lifecycle| lifecycle.started_at)
+                .is_some()
         );
     }
 

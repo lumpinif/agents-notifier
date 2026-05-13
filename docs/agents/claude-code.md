@@ -4,19 +4,19 @@
 
 Use Claude Code integration when you want Claude Code lifecycle hooks to submit completion or attention events to the running Agents Router service.
 
-Claude Code hooks are user-defined commands that run at lifecycle points such as `SessionStart`, `Stop`, and `Notification`. Agents Router uses that official hook path and reads the hook JSON Claude Code sends on stdin.
+Claude Code hooks are user-defined commands that run at lifecycle points such as `SessionStart`, `UserPromptSubmit`, `Stop`, and `Notification`. Agents Router uses that official hook path and reads the hook JSON Claude Code sends on stdin.
 
 Official Claude Code hook reference: <https://code.claude.com/docs/en/hooks>
 
 ## What Agents Router Needs
 
-For structured notifications, configure Claude Code to run:
+For structured notifications, Claude Code must run:
 
 ```bash
 agents-router ingest --source claude_code --format claude_code_hook
 ```
 
-`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, model, and the last assistant message. Claude Code exposes `model` on `SessionStart`, so Agents Router records that session context and merges it into the later `Stop` signal for the same session. Agents Router validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
+`ingest` reads the hook payload from stdin and preserves fields Claude Code exposes, including project path, session id, attention message, model, and the last assistant message. Claude Code exposes `model` on `SessionStart`, so Agents Router records that session context and merges it into the later `Stop` signal for the same session. `UserPromptSubmit` records the turn start time, and `Stop` records the completion time, so Agents Router can compute `duration_ms` for notification preferences such as "tasks 5 minutes or longer." Agents Router validates `transcript_path` when Claude Code sends it, but does not forward that local path to providers.
 
 If you only need a simple custom message, Claude Code can run this command instead:
 
@@ -45,17 +45,32 @@ Claude Code
 
 Then choose a provider.
 
-## 2. Connect Claude Code
-
-Add command hooks to your Claude Code settings. Use `SessionStart` when you want completion notifications to include the model. Use `Stop` when you want a notification after Claude finishes responding. Use `Notification` when you want Claude Code attention prompts to reach your provider too.
-
-For a single machine, use:
+Setup writes the Agents Router config, starts the local service, sends a test notification, and
+ensures the Claude Code hooks in:
 
 ```text
 ~/.claude/settings.json
 ```
 
-For one project only, use:
+It preserves existing Claude Code settings and hooks.
+
+## 2. Manual Hook Reference
+
+Most users do not need to edit Claude Code settings manually. This section shows what setup writes,
+and is useful if you keep custom Claude Code settings.
+
+Use `SessionStart` when you want completion notifications to include the model. Use
+`UserPromptSubmit` when you want duration-based notification preferences. Use `Stop` when you want a
+notification after Claude finishes responding. Use `Notification` when you want Claude Code
+attention prompts to reach your provider too.
+
+Agents Router uses the user-level settings file:
+
+```text
+~/.claude/settings.json
+```
+
+You can also configure one project manually:
 
 ```text
 .claude/settings.local.json
@@ -67,6 +82,16 @@ Example:
 {
   "hooks": {
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "agents-router ingest --source claude_code --format claude_code_hook"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
@@ -88,7 +113,6 @@ Example:
     ],
     "Notification": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
@@ -101,7 +125,7 @@ Example:
 }
 ```
 
-Keep this command in the runtime hook configuration. Do not ask the agent model to run it manually.
+Keep this command in runtime hook configuration. Do not ask the agent model to run it manually.
 
 When structured hook stdin is not available, use the simple `emit` command shown above.
 

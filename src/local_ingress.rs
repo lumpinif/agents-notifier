@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anyhow::Context;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[cfg(windows)]
@@ -20,8 +21,8 @@ use crate::paths::IngressEndpoint;
 use crate::router::{Provider, Router};
 use crate::runtime::RuntimeState;
 use crate::signal::{
-    Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalLifecycle,
-    SignalLink, SignalWorkspace,
+    Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalEventKind,
+    SignalLifecycle, SignalLifecycleStatus, SignalLink, SignalWorkspace,
 };
 use crate::sources::{agent_hook, agents_router, claude_code, codex_cli};
 
@@ -75,6 +76,7 @@ pub enum LocalSignalAction {
     #[default]
     RouteSignal,
     StoreSessionContext,
+    StoreTurnStart,
 }
 
 impl LocalSignalAction {
@@ -115,13 +117,33 @@ impl LocalIngressState {
             .session_context
             .lock()
             .map_err(|_| anyhow::anyhow!("local ingress session context lock is poisoned"))?;
-        session_context.insert(
-            SessionContextKey {
+        let context = session_context
+            .entry(SessionContextKey {
                 source_id,
                 session_id,
-            },
-            LocalSessionContext { model },
-        );
+            })
+            .or_default();
+        context.model = Some(model);
+        Ok(())
+    }
+
+    fn record_turn_started_at(
+        &self,
+        source_id: String,
+        session_id: String,
+        started_at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let mut session_context = self
+            .session_context
+            .lock()
+            .map_err(|_| anyhow::anyhow!("local ingress session context lock is poisoned"))?;
+        let context = session_context
+            .entry(SessionContextKey {
+                source_id,
+                session_id,
+            })
+            .or_default();
+        context.turn_started_at = Some(started_at);
         Ok(())
     }
 
@@ -135,7 +157,31 @@ impl LocalIngressState {
                 source_id: source_id.to_string(),
                 session_id: session_id.to_string(),
             })
-            .map(|context| context.model.clone()))
+            .and_then(|context| context.model.clone()))
+    }
+
+    fn take_turn_started_at(
+        &self,
+        source_id: &str,
+        session_id: &str,
+    ) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let mut session_context = self
+            .session_context
+            .lock()
+            .map_err(|_| anyhow::anyhow!("local ingress session context lock is poisoned"))?;
+        let key = SessionContextKey {
+            source_id: source_id.to_string(),
+            session_id: session_id.to_string(),
+        };
+        let Some(context) = session_context.get_mut(&key) else {
+            return Ok(None);
+        };
+
+        let started_at = context.turn_started_at.take();
+        if context.model.is_none() && context.turn_started_at.is_none() {
+            session_context.remove(&key);
+        }
+        Ok(started_at)
     }
 }
 
@@ -145,9 +191,10 @@ struct SessionContextKey {
     session_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct LocalSessionContext {
-    model: String,
+    model: Option<String>,
+    turn_started_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -354,13 +401,21 @@ pub async fn route_event_with_state(
         event = "ingress.received",
     );
 
-    if event.action == LocalSignalAction::StoreSessionContext {
-        store_session_context(config, state, event)?;
-        return Ok(());
+    match event.action {
+        LocalSignalAction::StoreSessionContext => {
+            store_session_context(config, state, event)?;
+            return Ok(());
+        }
+        LocalSignalAction::StoreTurnStart => {
+            store_turn_start(config, state, event)?;
+            return Ok(());
+        }
+        LocalSignalAction::RouteSignal => {}
     }
 
     let mut signal = create_signal(config, event)?;
     apply_session_context(state, &mut signal)?;
+    apply_turn_start_context(state, &mut signal)?;
     info!(
         signal.id = %signal.id,
         source.id = %signal.source_id(),
@@ -407,6 +462,36 @@ fn store_session_context(
         conversation.session_id = %session_id,
         conversation.model = %model,
         event = "ingress.session_context.stored",
+    );
+    Ok(())
+}
+
+fn store_turn_start(
+    config: &Config,
+    state: &LocalIngressState,
+    event: LocalSignalEvent,
+) -> anyhow::Result<()> {
+    let source_id = event.source_id;
+    validate_local_ingress_source(config, &source_id)?;
+    let conversation = event
+        .conversation
+        .context("local ingress turn start event missing `conversation`")?;
+    let session_id = conversation
+        .session_id
+        .and_then(present_owned)
+        .context("local ingress turn start event missing `conversation.session_id`")?;
+    let lifecycle = event
+        .lifecycle
+        .context("local ingress turn start event missing `lifecycle`")?;
+    let started_at = lifecycle
+        .started_at
+        .context("local ingress turn start event missing `lifecycle.started_at`")?;
+
+    state.record_turn_started_at(source_id.clone(), session_id.clone(), started_at)?;
+    info!(
+        source.id = %source_id,
+        conversation.session_id = %session_id,
+        event = "ingress.turn_start.stored",
     );
     Ok(())
 }
@@ -483,6 +568,48 @@ fn apply_session_context(state: &LocalIngressState, signal: &mut Signal) -> anyh
     if let Some(model) = state.session_model(&source_id, session_id)? {
         conversation.model = Some(model);
     }
+    Ok(())
+}
+
+fn apply_turn_start_context(state: &LocalIngressState, signal: &mut Signal) -> anyhow::Result<()> {
+    if signal.event.kind != SignalEventKind::TurnCompleted {
+        return Ok(());
+    }
+
+    let source_id = signal.source_id().to_string();
+    let Some(conversation) = signal.conversation.as_ref() else {
+        return Ok(());
+    };
+    let Some(session_id) = conversation.session_id.as_deref() else {
+        return Ok(());
+    };
+    let Some(started_at) = state.take_turn_started_at(&source_id, session_id)? else {
+        return Ok(());
+    };
+
+    let lifecycle = signal.lifecycle.get_or_insert(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: None,
+        duration_ms: None,
+    });
+    let effective_started_at = if let Some(started_at) = lifecycle.started_at {
+        started_at
+    } else {
+        lifecycle.started_at = Some(started_at);
+        started_at
+    };
+    if lifecycle.duration_ms.is_none()
+        && let Some(completed_at) = lifecycle.completed_at
+    {
+        let duration_ms = completed_at
+            .signed_duration_since(effective_started_at)
+            .num_milliseconds();
+        if let Ok(duration_ms) = u64::try_from(duration_ms) {
+            lifecycle.duration_ms = Some(duration_ms);
+        }
+    }
+
     Ok(())
 }
 

@@ -245,7 +245,6 @@ impl RouteConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RouteFilterMissReason {
-    MissingDuration,
     DurationTooShort,
     MissingProjectPath,
     ProjectPathNotAllowed,
@@ -254,7 +253,6 @@ enum RouteFilterMissReason {
 impl RouteFilterMissReason {
     fn as_str(self) -> &'static str {
         match self {
-            Self::MissingDuration => "missing_duration",
             Self::DurationTooShort => "duration_too_short",
             Self::MissingProjectPath => "missing_project_path",
             Self::ProjectPathNotAllowed => "project_path_not_allowed",
@@ -263,18 +261,14 @@ impl RouteFilterMissReason {
 }
 
 fn route_filter_miss(signal: &Signal, route: &RouteConfig) -> Option<RouteFilterMissReason> {
-    if let Some(minimum_duration_ms) = route.minimum_task_duration_ms() {
-        let Some(duration_ms) = signal
+    if let Some(minimum_duration_ms) = route.minimum_task_duration_ms()
+        && let Some(duration_ms) = signal
             .lifecycle
             .as_ref()
             .and_then(|lifecycle| lifecycle.duration_ms)
-        else {
-            return Some(RouteFilterMissReason::MissingDuration);
-        };
-
-        if duration_ms < minimum_duration_ms {
-            return Some(RouteFilterMissReason::DurationTooShort);
-        }
+        && duration_ms < minimum_duration_ms
+    {
+        return Some(RouteFilterMissReason::DurationTooShort);
     }
 
     if !route.only_forward_from_project_paths.is_empty() {

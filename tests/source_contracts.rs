@@ -4,6 +4,7 @@ use agents_router::config::SourceType;
 use agents_router::local_ingress::{LocalIngressState, route_event_with_state};
 use agents_router::signal::{SignalAnswerKind, SignalEventKind};
 use agents_router::sources::{claude_code, codex_cli, gemini_cli, github_copilot_cli};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use support::{SignalCaptureProvider, source_contract_config};
 
 #[tokio::test]
@@ -67,6 +68,59 @@ async fn claude_code_session_start_model_is_merged_into_stop_signal() {
 }
 
 #[tokio::test]
+async fn claude_code_user_prompt_submit_start_is_merged_into_stop_duration() {
+    let config = source_contract_config("claude_code", SourceType::ClaudeCode);
+    let state = LocalIngressState::default();
+    let capture = SignalCaptureProvider::new();
+    let started_at = timestamp();
+    let completed_at = started_at + ChronoDuration::minutes(7);
+
+    let mut user_prompt = claude_code::local_event_from_hook(
+        "claude_code",
+        serde_json::from_str(include_str!(
+            "fixtures/sources/claude_code/user_prompt_submit.json"
+        ))
+        .expect("Claude Code UserPromptSubmit fixture should parse"),
+    )
+    .expect("Claude Code UserPromptSubmit fixture should create local event");
+    user_prompt
+        .lifecycle
+        .as_mut()
+        .expect("UserPromptSubmit lifecycle should be present")
+        .started_at = Some(started_at);
+
+    route_event_with_state(&config, &[&capture], &state, user_prompt)
+        .await
+        .expect("UserPromptSubmit fixture should store turn start");
+    assert!(capture.signals().is_empty());
+
+    let mut stop = claude_code::local_event_from_hook(
+        "claude_code",
+        serde_json::from_str(include_str!("fixtures/sources/claude_code/stop.json"))
+            .expect("Claude Code Stop fixture should parse"),
+    )
+    .expect("Claude Code Stop fixture should create local event");
+    stop.lifecycle
+        .as_mut()
+        .expect("Stop lifecycle should be present")
+        .completed_at = Some(completed_at);
+
+    route_event_with_state(&config, &[&capture], &state, stop)
+        .await
+        .expect("Stop fixture should route signal");
+
+    let signals = capture.signals();
+    assert_eq!(signals.len(), 1);
+    let lifecycle = signals[0]
+        .lifecycle
+        .as_ref()
+        .expect("Stop signal should include lifecycle");
+    assert_eq!(lifecycle.started_at, Some(started_at));
+    assert_eq!(lifecycle.completed_at, Some(completed_at));
+    assert_eq!(lifecycle.duration_ms, Some(420_000));
+}
+
+#[tokio::test]
 async fn codex_cli_stop_fixture_routes_turn_completed_signal() {
     let config = source_contract_config("codex_cli", SourceType::CodexCli);
     let state = LocalIngressState::default();
@@ -101,6 +155,12 @@ async fn codex_cli_stop_fixture_routes_turn_completed_signal() {
             .map(|answer| answer.content.as_str()),
         Some("Ready for review.")
     );
+}
+
+fn timestamp() -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339("2026-05-08T12:00:00Z")
+        .unwrap()
+        .with_timezone(&Utc)
 }
 
 #[tokio::test]

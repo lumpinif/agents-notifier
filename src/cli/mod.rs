@@ -21,6 +21,9 @@ use agents_router::config::{
 use agents_router::i18n::{I18n, Text};
 use agents_router::legacy;
 use agents_router::local_ingress::{self, LocalSignalEvent};
+use agents_router::local_integrations::{
+    self, ClaudeCodeHooksSetupStatus, CodexCliStopHookSetupStatus, LocalSourceIntegrationReport,
+};
 use agents_router::local_open_bridge;
 #[cfg(target_os = "macos")]
 use agents_router::paths::pid_file_path;
@@ -320,6 +323,11 @@ async fn run_start_service(
     let i18n = I18n::new(loaded.config.cli.language);
     ensure_sources_supported_on_current_platform(&loaded.config)?;
     build_providers(&loaded.config).context("provider setup failed")?;
+    let guided_setup = loaded.guided_setup.is_some();
+    let integration_report = local_integrations::ensure_local_source_integrations(&loaded.config)?;
+    if guided_setup || integration_report.has_changes() {
+        print_local_source_integration_report(&integration_report, i18n);
+    }
     if loaded.guided_setup.is_some() {
         println!();
     }
@@ -863,15 +871,15 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
                 println!("Agents Router 会监听这台电脑上的 Codex Desktop 完成事件。");
             }
             setup::AgentSelection::CodexCli => {
-                println!("Agents Router 已准备接收 Codex CLI hook event。");
+                println!("Agents Router 已配置 Codex CLI Stop hook，用来接收完成事件。");
                 println!(
-                    "让 Codex CLI Stop hook 调用：`agents-router ingest --source codex_cli --format codex_cli_stop`。"
+                    "setup 不会覆盖现有 `notify`；如果你手动改配置，请保持 Stop hook 指向 Agents Router。"
                 );
             }
             setup::AgentSelection::ClaudeCode => {
-                println!("Agents Router 已准备接收 Claude Code hook event。");
+                println!("Agents Router 已配置 Claude Code hooks，用来接收完成事件和任务耗时。");
                 println!(
-                    "让 Claude Code hook 调用：`agents-router ingest --source claude_code --format claude_code_hook`。"
+                    "如果你手动改 Claude Code settings，请保留 SessionStart、UserPromptSubmit、Stop 和 Notification hooks 指向 Agents Router。"
                 );
             }
             setup::AgentSelection::CursorCli => {
@@ -925,15 +933,17 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
             println!("Agents Router will watch Codex Desktop completed jobs on this computer.");
         }
         setup::AgentSelection::CodexCli => {
-            println!("Agents Router is ready for Codex CLI hook events.");
+            println!("Agents Router configured the Codex CLI Stop hook for completion events.");
             println!(
-                "Configure your Codex CLI Stop hook to call `agents-router ingest --source codex_cli --format codex_cli_stop`."
+                "Setup does not overwrite existing `notify`; if you edit config manually, keep the Stop hook pointed at Agents Router."
             );
         }
         setup::AgentSelection::ClaudeCode => {
-            println!("Agents Router is ready for Claude Code hook events.");
             println!(
-                "Configure your Claude Code hook to call `agents-router ingest --source claude_code --format claude_code_hook`."
+                "Agents Router configured Claude Code hooks for completion events and task duration."
+            );
+            println!(
+                "If you edit Claude Code settings manually, keep SessionStart, UserPromptSubmit, Stop, and Notification hooks pointed at Agents Router."
             );
         }
         setup::AgentSelection::CursorCli => {
@@ -1012,6 +1022,101 @@ fn can_send_test_notification(config: &Config) -> bool {
             route.sources.iter().any(|source| source == "agents_router")
                 && !route.providers.is_empty()
         })
+}
+
+fn print_local_source_integration_report(report: &LocalSourceIntegrationReport, i18n: I18n) {
+    if let Some(setup) = &report.codex_cli_stop_hook {
+        match i18n.language() {
+            CliLanguage::English => match setup.status {
+                CodexCliStopHookSetupStatus::CreatedConfig => {
+                    println!(
+                        "Created Codex CLI config at `{}` and added the Agents Router Stop hook.",
+                        setup.path.display()
+                    );
+                    println!("Existing `notify` settings were left unchanged.");
+                }
+                CodexCliStopHookSetupStatus::UpdatedConfig => {
+                    println!(
+                        "Updated Codex CLI config at `{}` with the Agents Router Stop hook.",
+                        setup.path.display()
+                    );
+                    println!("Existing `notify` settings were left unchanged.");
+                }
+                CodexCliStopHookSetupStatus::AlreadyConfigured => {
+                    println!(
+                        "Codex CLI Stop hook is already configured at `{}`.",
+                        setup.path.display()
+                    );
+                    println!("Existing `notify` settings were left unchanged.");
+                }
+            },
+            CliLanguage::SimplifiedChinese => match setup.status {
+                CodexCliStopHookSetupStatus::CreatedConfig => {
+                    println!(
+                        "已创建 Codex CLI config：`{}`，并写入 Agents Router Stop hook。",
+                        setup.path.display()
+                    );
+                    println!("已有 `notify` 设置保持不变。");
+                }
+                CodexCliStopHookSetupStatus::UpdatedConfig => {
+                    println!(
+                        "已更新 Codex CLI config：`{}`，写入 Agents Router Stop hook。",
+                        setup.path.display()
+                    );
+                    println!("已有 `notify` 设置保持不变。");
+                }
+                CodexCliStopHookSetupStatus::AlreadyConfigured => {
+                    println!(
+                        "Codex CLI Stop hook 已经配置在：`{}`。",
+                        setup.path.display()
+                    );
+                    println!("已有 `notify` 设置保持不变。");
+                }
+            },
+        }
+    }
+
+    if let Some(setup) = &report.claude_code_hooks {
+        match i18n.language() {
+            CliLanguage::English => match setup.status {
+                ClaudeCodeHooksSetupStatus::CreatedSettings => {
+                    println!(
+                        "Created Claude Code settings at `{}` and added Agents Router hooks.",
+                        setup.path.display()
+                    );
+                }
+                ClaudeCodeHooksSetupStatus::UpdatedSettings => {
+                    println!(
+                        "Updated Claude Code settings at `{}` with Agents Router hooks.",
+                        setup.path.display()
+                    );
+                }
+                ClaudeCodeHooksSetupStatus::AlreadyConfigured => {
+                    println!(
+                        "Claude Code hooks are already configured at `{}`.",
+                        setup.path.display()
+                    );
+                }
+            },
+            CliLanguage::SimplifiedChinese => match setup.status {
+                ClaudeCodeHooksSetupStatus::CreatedSettings => {
+                    println!(
+                        "已创建 Claude Code settings：`{}`，并写入 Agents Router hooks。",
+                        setup.path.display()
+                    );
+                }
+                ClaudeCodeHooksSetupStatus::UpdatedSettings => {
+                    println!(
+                        "已更新 Claude Code settings：`{}`，写入 Agents Router hooks。",
+                        setup.path.display()
+                    );
+                }
+                ClaudeCodeHooksSetupStatus::AlreadyConfigured => {
+                    println!("Claude Code hooks 已经配置在：`{}`。", setup.path.display());
+                }
+            },
+        }
+    }
 }
 
 async fn send_test_notification() -> anyhow::Result<()> {
@@ -1167,6 +1272,7 @@ fn cleanup_ingress_endpoint_if_exists() -> anyhow::Result<()> {
 }
 
 async fn run_watch(config_path: &Path, config: Config) -> anyhow::Result<()> {
+    local_integrations::ensure_local_source_integrations(&config)?;
     let runtime = RuntimeState::new(config)?;
     let endpoint = ingress_endpoint()?;
     run_service_tasks(config_path.to_path_buf(), runtime, endpoint).await

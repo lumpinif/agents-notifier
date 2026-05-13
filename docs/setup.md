@@ -53,6 +53,18 @@ Choose the agent Agents Router should watch:
 
 Codex Desktop is offered on macOS and Windows. On Linux, setup starts at Codex CLI and offers the hook-based CLI sources.
 
+When the active config includes Codex CLI, Agents Router ensures the Stop hook in
+`~/.codex/config.toml` during setup, start, watch, and successful hot reloads. It leaves any
+existing Codex CLI `notify` command unchanged because `notify` is a single command slot and may
+already belong to another local integration. Manual configs must use `id = "codex_cli"` for this
+source. See [Codex CLI](agents/codex-cli.md) for manual hook and `notify` fallback details.
+
+When the active config includes Claude Code, Agents Router ensures the required hooks in
+`~/.claude/settings.json` during setup, start, watch, and successful hot reloads. It adds
+`SessionStart`, `UserPromptSubmit`, `Stop`, and `Notification` hooks and preserves existing Claude
+Code settings. Manual configs must use `id = "claude_code"` for this source. See
+[Claude Code](agents/claude-code.md) for the hook shape.
+
 ## Provider
 
 Choose where notifications should go:
@@ -134,8 +146,8 @@ Default behavior:
 - `Every completed task` writes no `minimum_task_duration_minutes` field.
 - `Tasks 5 minutes or longer` writes `minimum_task_duration_minutes = 5`.
 - `Custom minimum duration` writes the positive integer number of minutes you enter.
-- If a route has `minimum_task_duration_minutes`, a signal without `lifecycle.duration_ms` does not match that route.
-- Setup only asks for this preference when the selected integration can reliably provide task duration. For wrapper-based integrations, configure the route manually and pass duration through `agents-router emit --duration-ms` or the structured hook `lifecycle.duration_ms` field.
+- If a route has `minimum_task_duration_minutes`, a signal without `lifecycle.duration_ms` still matches. Agents Router only filters known durations that are shorter than the threshold, so a missing duration does not silently drop a completion notification.
+- Setup only asks for this preference when the selected integration can reliably provide task duration, currently Codex Desktop and Claude Code with `UserPromptSubmit` plus `Stop` hooks. For wrapper-based integrations, configure the route manually and pass duration through `agents-router emit --duration-ms` or the structured hook `lifecycle.duration_ms` field.
 
 Manual config:
 

@@ -52,6 +52,18 @@ Setup 的问题和完成提示会使用你选择的语言。
 
 Codex Desktop 当前在 macOS 和 Windows 上提供。Linux 上，setup 会从 Codex CLI 开始，提供这些 hook-based CLI sources。
 
+当当前生效的 config 包含 Codex CLI 时，Agents Router 会在 setup、start、watch 和成功的
+hot reload 里确保 `~/.codex/config.toml` 有 Stop hook。它不会改已有的 Codex CLI
+`notify` 命令，因为 `notify` 是单个命令槽位，可能已经属于其他本地集成。手动 config
+必须使用 `id = "codex_cli"`。手动 hook 和 `notify` fallback 的细节见
+[Codex CLI](agents/codex-cli.zh-CN.md)。
+
+当当前生效的 config 包含 Claude Code 时，Agents Router 会在 setup、start、watch 和成功的
+hot reload 里确保 `~/.claude/settings.json` 有所需 hooks。它会添加 `SessionStart`、
+`UserPromptSubmit`、`Stop` 和 `Notification` hooks，并保留已有 Claude Code settings。
+手动 config 必须使用 `id = "claude_code"`。hook 结构见
+[Claude Code](agents/claude-code.zh-CN.md)。
+
 ## Provider
 
 选择通知要发到哪里：
@@ -132,8 +144,8 @@ type = "feishu_lark"
 - 选择 `Every completed task` 时，不会写入 `minimum_task_duration_minutes` 字段。
 - 选择 `Tasks 5 minutes or longer` 时，会写入 `minimum_task_duration_minutes = 5`。
 - 选择 `Custom minimum duration` 时，会写入你输入的正整数分钟数。
-- 如果某条 route 设置了 `minimum_task_duration_minutes`，但某个 Signal 没有 `lifecycle.duration_ms`，这条 route 不会匹配。
-- setup 只会在所选集成能可靠提供任务耗时时询问这个偏好。如果你用 wrapper 接入 agent，需要手动配置 route，并通过 `agents-router emit --duration-ms` 或 structured hook 的 `lifecycle.duration_ms` 字段传入真实耗时。
+- 如果某条 route 设置了 `minimum_task_duration_minutes`，但某个 Signal 没有 `lifecycle.duration_ms`，这条 route 仍然会匹配。Agents Router 只会过滤已知耗时且低于阈值的任务，避免因为耗时缺失而静默漏掉完成通知。
+- setup 只会在所选集成能可靠提供任务耗时时询问这个偏好，目前包括 Codex Desktop，以及同时配置了 `UserPromptSubmit` 和 `Stop` hooks 的 Claude Code。如果你用 wrapper 接入 agent，需要手动配置 route，并通过 `agents-router emit --duration-ms` 或 structured hook 的 `lifecycle.duration_ms` 字段传入真实耗时。
 
 手动配置：
 

@@ -68,7 +68,7 @@ fn setup_defaults_preserve_existing_config_answers() {
     assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
     assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
     assert_eq!(defaults.prompt_detail, Some(PromptDetail::On));
-    assert_eq!(defaults.minimum_task_duration_minutes, None);
+    assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
     assert_eq!(
         defaults.only_forward_from_project_paths,
         vec!["/Users/tester/projects/agents-router".to_string()]
@@ -108,21 +108,21 @@ fn setup_defaults_preserve_duration_filter_for_codex_desktop() {
 #[test]
 fn setup_defaults_drop_duration_filter_for_agents_without_duration_support() {
     let mut config = setup::build_ntfy_config(
-        setup::AgentSelection::ClaudeCode,
+        setup::AgentSelection::Aider,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
     );
     setup::apply_agent_route_filters(
         &mut config,
-        setup::AgentSelection::ClaudeCode,
+        setup::AgentSelection::Aider,
         Some(12),
         Vec::new(),
     );
 
     let defaults = SetupDefaults::from_config(&config);
 
-    assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
+    assert_eq!(defaults.agent, Some(setup::AgentSelection::Aider));
     assert_eq!(defaults.minimum_task_duration_minutes, None);
 }
 

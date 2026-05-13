@@ -6,7 +6,12 @@ English documentation: [codex-cli.md](codex-cli.md)
 
 ## Agents Router 需要什么
 
-结构化通知建议让 Codex CLI 把 Stop hook 的 JSON 通过 stdin 传给：
+Agents Router 把 Codex CLI Stop hook 作为主接入路径。
+
+只要当前生效的 Agents Router config 里包含 canonical 的 `codex_cli` source，Agents Router
+就会自动配置这条链路。`agents-router setup`、`agents-router start`、`agents-router watch`
+以及成功的 config hot reload，都会确保 `~/.codex/config.toml` 开启 Codex hooks，并有一个
+Stop hook，把 hook JSON 通过 stdin 传给：
 
 ```bash
 agents-router ingest --source codex_cli --format codex_cli_stop
@@ -14,16 +19,9 @@ agents-router ingest --source codex_cli --format codex_cli_stop
 
 `ingest` 会读取 hook payload，并保留 Codex CLI 明确暴露的字段，包括 project path、session id、turn id、model 和最后一条 assistant message。
 
-如果只需要一条简单自定义消息，也可以让 Codex CLI 运行：
+`ingest` 不会直接发通知。它只把事件提交给本机正在运行的 Agents Router service，然后由 service 按你的配置转发到 provider。
 
-```bash
-agents-router emit \
-  --source codex_cli \
-  --title "Codex CLI" \
-  --body "Codex CLI finished a task."
-```
-
-`ingest` 和 `emit` 都不会直接发通知。它们只把事件提交给本机正在运行的 Agents Router service，然后由 service 按你的配置转发到 provider。
+Agents Router 不会覆盖 Codex CLI 的 `notify`。`notify` 是单个命令槽位，可能已经被 Codex Computer Use 或其他本地集成占用。Stop hook 可以和现有 `notify` 共存，所以它是默认、优先、长期更稳的方案。
 
 ## 1. 设置 service
 
@@ -41,15 +39,67 @@ Codex CLI
 
 然后选择 provider。
 
-## 2. 连接 Codex CLI
+setup 写完 Agents Router route 后，会自动添加 Codex CLI Stop hook。
 
-把上面的 `agents-router ingest` 命令配置到 Codex CLI 的 Stop hook 里，并把 hook JSON 传入 stdin。
+如果你手动修改 Agents Router config，source id 必须使用 canonical 值：
 
-如果当前 Codex CLI 配置入口拿不到结构化 hook stdin，可以先用 notify 的简单 `emit` 路径。
+```toml
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+```
 
-这条命令应该由 Codex CLI runtime 自动触发，不要让模型在对话里手动运行它。
+Codex CLI 只有一个全局 Stop hook，所以这个 source 不接受 `my_codex` 这类自定义 source id。
+正在运行的 service hot reload 到包含 `codex_cli` 的有效 config 时，会先确保 Stop hook 已经写好，再使用新的 runtime config。如果 Stop hook 写不进去，这次 reload 会失败，service 继续使用上一份有效 runtime config。
 
-## 3. 测试链路
+## 2. 手动配置 Stop hook
+
+如果你直接修改 `~/.codex/config.toml`，应该使用这个形状：
+
+```toml
+[features]
+codex_hooks = true
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "agents-router ingest --source codex_cli --format codex_cli_stop"
+timeout = 10
+statusMessage = "Forwarding completion to Agents Router"
+```
+
+这条命令应该由 Codex CLI runtime hook 自动触发，不要让模型在对话里手动运行它。
+
+## 3. `notify` fallback
+
+只有在你明确想替换当前 Codex CLI notify 命令，或者当前 Codex CLI 环境不能使用 Stop hook 时，才使用 `notify`。
+
+修改 `notify` 前，先看当前值：
+
+```bash
+rg -n 'codex_hooks|hooks\.Stop|notify' ~/.codex/config.toml
+```
+
+如果 `notify` 已经指向其他程序，不要直接覆盖，除非你确认要断开那个程序。更推荐添加上面的 Stop hook。
+
+如果你明确选择简单 notify fallback，就让 `notify` 指向 Agents Router：
+
+```toml
+notify = [
+  "agents-router",
+  "emit",
+  "--source",
+  "codex_cli",
+  "--title",
+  "Codex CLI",
+  "--body",
+  "Codex CLI finished a task.",
+]
+```
+
+这个 fallback 通过 `emit` 发送固定消息。它不会包含 Stop hook 里的结构化字段，例如 session id、turn id、model 或最后一条 assistant message。
+
+## 4. 测试链路
 
 service 运行后，用同一条本机 ingress 路径测试：
 
@@ -74,4 +124,7 @@ agents-router status
 
 - 配置里是否有 `codex_cli` source。
 - route 里是否包含 `codex_cli`。
-- hook 命令是否使用了 `--source codex_cli`。
+- `~/.codex/config.toml` 里是否有 `codex_hooks = true`。
+- Stop hook 命令是否是 `agents-router ingest --source codex_cli --format codex_cli_stop`。
+- 如果你使用 `notify` fallback，`notify` 是否指向 `agents-router emit --source codex_cli`。
+- Codex CLI 运行 hooks 的 shell 环境里是否能找到 `agents-router`。

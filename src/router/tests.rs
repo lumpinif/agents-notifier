@@ -188,7 +188,7 @@ async fn duration_filter_matches_tasks_at_or_above_threshold() {
 }
 
 #[tokio::test]
-async fn duration_filter_rejects_short_or_missing_duration() {
+async fn duration_filter_rejects_short_duration_but_allows_missing_duration() {
     let mut route = RouteConfig::new(vec!["codex_cli".to_string()], vec!["phone".to_string()]);
     route.minimum_task_duration_minutes = Some(5);
     let config = test_config(vec![route]);
@@ -202,11 +202,12 @@ async fn duration_filter_rejects_short_or_missing_duration() {
     let missing_report = Router::new(&config)
         .route(&test_signal("codex_cli"), &[&phone])
         .await
-        .expect("filtered route is not an error");
+        .expect("missing duration should not drop a completion notification");
 
     assert_eq!(short_report.matched_routes, 0);
-    assert_eq!(missing_report.matched_routes, 0);
-    assert!(calls.lock().unwrap().is_empty());
+    assert_eq!(missing_report.matched_routes, 1);
+    assert_eq!(missing_report.attempted, 1);
+    assert_eq!(calls.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]

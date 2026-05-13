@@ -46,7 +46,7 @@ impl AgentSelection {
     }
 
     pub fn supports_duration_filter(self) -> bool {
-        matches!(self, Self::CodexDesktop)
+        matches!(self, Self::CodexDesktop | Self::ClaudeCode)
     }
 
     pub fn from_hook_source_id(source_id: &str) -> Option<Self> {

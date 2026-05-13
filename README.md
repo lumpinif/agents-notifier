@@ -205,13 +205,11 @@ agents-router uninstall # remove service, config, logs, and state
 agents-router watch    # foreground debug worker
 ```
 
-CLI agent hooks can submit events with:
+For Codex CLI, Agents Router installs the recommended Stop hook automatically when the active config includes `codex_cli`.
+Manual CLI hooks can submit events with:
 
 ```bash
-agents-router emit \
-  --source codex_cli \
-  --title "Codex" \
-  --body "Ready for review."
+agents-router ingest --source codex_cli --format codex_cli_stop
 ```
 
 ```bash

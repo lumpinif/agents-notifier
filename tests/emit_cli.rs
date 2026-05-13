@@ -274,6 +274,73 @@ async fn ingest_submits_claude_code_session_start_context_to_local_service_socke
 }
 
 #[tokio::test]
+async fn ingest_submits_claude_code_user_prompt_submit_context_to_local_service_socket() {
+    let home = short_home();
+    let socket_path = socket_path_for_home(home.path());
+    create_parent(&socket_path);
+    let listener = UnixListener::bind(&socket_path).expect("test socket should bind");
+
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("client should connect");
+        let mut raw_request = Vec::new();
+        stream
+            .read_to_end(&mut raw_request)
+            .await
+            .expect("request should be readable");
+        stream
+            .write_all(br#"{"ok":true,"error":null}"#)
+            .await
+            .expect("response should be writable");
+        serde_json::from_slice::<Value>(&raw_request).expect("request should be JSON")
+    });
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_agents-router"))
+        .env("HOME", home.path())
+        .args([
+            "ingest",
+            "--source",
+            "claude_code",
+            "--format",
+            "claude_code_hook",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("command should spawn");
+
+    let input = include_bytes!("fixtures/sources/claude_code/user_prompt_submit.json");
+    let mut stdin = child.stdin.take().expect("stdin should be piped");
+    stdin
+        .write_all(input)
+        .await
+        .expect("hook input should be writable");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .expect("command should finish");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let request = server.await.expect("server task should finish");
+    assert_eq!(request["source_id"], "claude_code");
+    assert_eq!(request["action"], "store_turn_start");
+    assert_eq!(request["event"]["raw_name"], "UserPromptSubmit");
+    assert_eq!(request["workspace"]["project_name"], "agents-router");
+    assert_eq!(request["conversation"]["session_id"], "claude-session-1");
+    assert_eq!(request["conversation"]["prompt"], Value::Null);
+    assert_eq!(request["lifecycle"]["started_at"].is_string(), true);
+    assert_eq!(request["metadata"]["permission_mode"], "default");
+    assert_eq!(request["metadata"]["transcript_path"], Value::Null);
+}
+
+#[tokio::test]
 async fn ingest_submits_structured_gemini_cli_after_agent_event_to_local_service_socket() {
     let home = short_home();
     let socket_path = socket_path_for_home(home.path());

@@ -162,7 +162,7 @@ impl Text {
             Self::RecommendedSuffix => "Recommended",
             Self::SetupTitle => "Set up agent notifications",
             Self::SetupDoesNotChangeAgentSettings => {
-                "It does not change Codex or other agent settings."
+                "Setup changes Agents Router config. If you choose Codex CLI or Claude Code, it also adds the required hooks and preserves existing settings."
             }
             Self::SetupInteractiveRequired => {
                 "`agents-router setup` must be run in an interactive terminal so you can choose an agent and a provider."
@@ -347,7 +347,9 @@ impl Text {
             Self::CurrentSuffix => "当前",
             Self::RecommendedSuffix => "推荐",
             Self::SetupTitle => "设置 agent 通知",
-            Self::SetupDoesNotChangeAgentSettings => "不会修改 Codex 或其他 agent 的设置。",
+            Self::SetupDoesNotChangeAgentSettings => {
+                "setup 会修改 Agents Router config。如果选择 Codex CLI 或 Claude Code，还会写入所需 hooks，并保留已有设置。"
+            }
             Self::SetupInteractiveRequired => {
                 "`agents-router setup` 必须在可交互终端里运行，用来选择 agent 和通知 provider。"
             }
