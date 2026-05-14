@@ -359,6 +359,9 @@ fn format_signal_card_elements(card_body: FeishuLarkCardBody) -> Vec<FeishuLarkC
     if let Some(timing_row) = card_body.timing_row() {
         elements.push(timing_row);
     }
+    if let Some(session_row) = card_body.session_row() {
+        elements.push(session_row);
+    }
     if !card_body.other_details.is_empty() {
         elements.push(FeishuLarkCardElement::Markdown {
             content: card_body.other_details.join("\n"),
@@ -416,8 +419,8 @@ fn format_header_title(computer_name: &str, title: &str, card_body: &FeishuLarkC
     let mut parts = Vec::new();
     parts.push(title.to_string());
 
-    if let Some(session) = &card_body.session {
-        parts.push(session.clone());
+    if let Some(display_title) = card_body.display_title() {
+        parts.push(display_title.to_string());
     }
     if !computer_name.is_empty() {
         parts.push(computer_name.to_string());
@@ -430,7 +433,8 @@ fn format_header_title(computer_name: &str, title: &str, card_body: &FeishuLarkC
 struct FeishuLarkCardBody {
     project: Option<String>,
     project_path: Option<String>,
-    session: Option<String>,
+    session_title: Option<String>,
+    session_id: Option<String>,
     model: Option<String>,
     duration: Option<String>,
     branch: Option<String>,
@@ -468,11 +472,12 @@ impl FeishuLarkCardBody {
         Self {
             project: workspace.and_then(|workspace| workspace.project_name.clone()),
             project_path: workspace.and_then(|workspace| workspace.project_path.clone()),
-            session: conversation.and_then(|conversation| {
-                present(conversation.session_title.as_deref())
-                    .or_else(|| present(conversation.session_id.as_deref()))
-                    .map(ToOwned::to_owned)
-            }),
+            session_title: conversation
+                .and_then(|conversation| present(conversation.session_title.as_deref()))
+                .map(ToOwned::to_owned),
+            session_id: conversation
+                .and_then(|conversation| present(conversation.session_id.as_deref()))
+                .map(ToOwned::to_owned),
             model: conversation.and_then(|conversation| conversation.model.clone()),
             duration: lifecycle
                 .and_then(|lifecycle| lifecycle.duration_ms)
@@ -492,7 +497,7 @@ impl FeishuLarkCardBody {
     }
 
     fn display_title(&self) -> Option<&str> {
-        self.session.as_deref().or(self.project.as_deref())
+        self.session_title.as_deref().or(self.project.as_deref())
     }
 
     fn project_row(&self) -> Option<FeishuLarkCardElement> {
@@ -530,6 +535,12 @@ impl FeishuLarkCardBody {
         } else {
             Some(column_set(columns))
         }
+    }
+
+    fn session_row(&self) -> Option<FeishuLarkCardElement> {
+        self.session_id
+            .as_deref()
+            .map(|session_id| column_set(vec![metric_column("Session ID", session_id, None)]))
     }
 }
 

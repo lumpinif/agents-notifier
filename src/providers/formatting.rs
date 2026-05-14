@@ -29,10 +29,7 @@ pub(super) fn format_signal_body(signal: &Signal, formatted_time: &str) -> Strin
         push_labeled(
             &mut details,
             "Session",
-            session_label(
-                conversation.session_title.as_deref(),
-                conversation.session_id.as_deref(),
-            ),
+            conversation.session_title.as_deref(),
         );
         push_labeled(&mut details, "Model", conversation.model.as_deref());
     }
@@ -52,6 +49,13 @@ pub(super) fn format_signal_body(signal: &Signal, formatted_time: &str) -> Strin
     }
 
     details.push(format!("Time: {formatted_time}"));
+    if let Some(conversation) = &signal.conversation {
+        push_labeled(
+            &mut details,
+            "Session ID",
+            conversation.session_id.as_deref(),
+        );
+    }
 
     let mut sections = Vec::new();
     sections.push(details.join("\n"));
@@ -121,13 +125,6 @@ fn push_present(lines: &mut Vec<String>, value: String) {
 
 fn present(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn session_label<'a>(
-    session_title: Option<&'a str>,
-    session_id: Option<&'a str>,
-) -> Option<&'a str> {
-    present(session_title).or_else(|| present(session_id))
 }
 
 fn present_answer(answer: Option<&SignalAnswer>) -> Option<&SignalAnswer> {
@@ -230,12 +227,12 @@ mod tests {
 
         assert_eq!(
             format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
-            "Project: agents-router\nProject Path: /Users/tester/projects/agents-router\nSession: agents-router sync report\nModel: gpt-5.2-codex\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\n\nPrompt: Please fix the route.\n\nPreview: Fixed the route."
+            "Project: agents-router\nProject Path: /Users/tester/projects/agents-router\nSession: agents-router sync report\nModel: gpt-5.2-codex\nOpen in Codex: codex://threads/session-1\nDuration: 1m 32s\nBranch: main\nTime: 2026-05-10 10:31:43 +08:00\nSession ID: session-1\n\nPrompt: Please fix the route.\n\nPreview: Fixed the route."
         );
     }
 
     #[test]
-    fn formats_session_id_when_session_title_is_absent() {
+    fn formats_session_id_with_explicit_label_when_session_title_is_absent() {
         let mut signal = Signal::new_with_timestamp(
             "signal-1",
             "claude_code",
@@ -256,7 +253,7 @@ mod tests {
 
         assert_eq!(
             format_signal_body(&signal, "2026-05-10 10:31:43 +08:00"),
-            "Session: session-1\nModel: claude-sonnet-4-6\nTime: 2026-05-10 10:31:43 +08:00"
+            "Model: claude-sonnet-4-6\nTime: 2026-05-10 10:31:43 +08:00\nSession ID: session-1"
         );
     }
 

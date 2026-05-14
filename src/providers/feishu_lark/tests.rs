@@ -188,6 +188,11 @@ fn formats_codex_desktop_message_with_clickable_open_link() {
                     metric_column("Time", "2026-05-10 01:35:42", None)
                 ]
             },
+            FeishuLarkCardElement::ColumnSet {
+                flex_mode: "bisect",
+                background_style: "default",
+                columns: vec![metric_column("Session ID", "session-1", None)]
+            },
             FeishuLarkCardElement::Action {
                 actions: vec![FeishuLarkCardAction {
                     tag: "button",
@@ -223,7 +228,8 @@ fn builds_card_body_from_structured_signal() {
         FeishuLarkCardBody {
             project: Some("agents-router".to_string()),
             project_path: Some("/Users/tester/projects/agents-router".to_string()),
-            session: Some("session-1".to_string()),
+            session_title: None,
+            session_id: Some("session-1".to_string()),
             model: Some("gpt-5.2-codex".to_string()),
             duration: Some("1m 32s".to_string()),
             branch: Some("main".to_string()),
@@ -267,7 +273,8 @@ fn builds_card_body_with_summary_when_simple_signal_only_adds_duration() {
         FeishuLarkCardBody {
             project: None,
             project_path: None,
-            session: None,
+            session_title: None,
+            session_id: None,
             model: None,
             duration: Some("7m 0s".to_string()),
             branch: None,
@@ -318,7 +325,8 @@ fn builds_card_body_with_prompt_before_answer() {
         FeishuLarkCardBody {
             project: Some("agents-router".to_string()),
             project_path: Some("/Users/tester/projects/agents-router".to_string()),
-            session: Some("session-1".to_string()),
+            session_title: None,
+            session_id: Some("session-1".to_string()),
             model: Some("gpt-5.2-codex".to_string()),
             duration: Some("1m 32s".to_string()),
             branch: Some("main".to_string()),
@@ -391,21 +399,21 @@ fn serializes_card_with_header_action_and_preview() {
     assert_eq!(body["msg_type"], "interactive");
     assert_eq!(
         body["card"]["header"]["title"]["content"],
-        "Codex Desktop · session-1 · Test Mac"
+        "Codex Desktop · agents-router · Test Mac"
     );
     assert_eq!(body["card"]["header"]["template"], "purple");
     assert_eq!(
-        body["card"]["elements"][3]["actions"][0]["url"],
+        body["card"]["elements"][4]["actions"][0]["url"],
         "http://127.0.0.1:17674/open/codex/thread/session-1"
     );
     assert_eq!(
-        body["card"]["elements"][4],
+        body["card"]["elements"][5],
         json!({
             "tag": "hr"
         })
     );
     assert_eq!(
-        body["card"]["elements"][5],
+        body["card"]["elements"][6],
         json!({
             "tag": "markdown",
             "content": "**Preview**\ndone"
@@ -423,6 +431,27 @@ fn formats_codex_desktop_header_with_machine_source_and_session() {
     assert_eq!(
         body["card"]["header"]["title"]["content"],
         "Codex Desktop · 为 Codex 桌面转发加 deeplink · Felix’s MacBook Pro"
+    );
+}
+
+#[test]
+fn formats_codex_desktop_session_name_as_card_title_and_session_id_as_metric() {
+    let signal = structured_codex_signal(Some("Upgrade Wrangler and typegen"), None, None);
+
+    let request = FeishuLarkInteractiveRequest::from_signal(&signal, None, "Felix’s MacBook Pro");
+    let body = serde_json::to_value(request).expect("request should serialize");
+
+    assert_eq!(
+        body["card"]["header"]["title"]["content"],
+        "Codex Desktop · Upgrade Wrangler and typegen · Felix’s MacBook Pro"
+    );
+    assert_eq!(
+        body["card"]["elements"][0]["text"]["content"],
+        "**Upgrade Wrangler and typegen**"
+    );
+    assert_eq!(
+        body["card"]["elements"][3]["columns"][0]["elements"][0]["text"]["content"],
+        "**Session ID**\nsession-1"
     );
 }
 
