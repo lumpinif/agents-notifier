@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/lumpinif/agents-router/compare/v0.10.0...v0.10.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* show session id after notification time ([3d53e1b](https://github.com/lumpinif/agents-router/commit/3d53e1b6ec166bd0a555ced8dc1e9362fbaaa1dd))
+
 ## [0.10.0](https://github.com/lumpinif/agents-router/compare/v0.9.1...v0.10.0) (2026-05-14)
 
 
