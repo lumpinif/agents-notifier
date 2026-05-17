@@ -9,8 +9,8 @@ GitHub Copilot CLI supports hooks loaded from `.github/hooks/*.json` in the curr
 Official GitHub Copilot CLI references:
 
 - <https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks>
-- <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-hooks-reference>
-- <https://docs.github.com/copilot/reference/cli-command-reference>
+- <https://docs.github.com/en/copilot/reference/hooks-reference>
+- <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference>
 
 ## What Agents Router Needs
 

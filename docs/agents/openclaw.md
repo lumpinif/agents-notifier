@@ -4,10 +4,11 @@ Use OpenClaw integration when you want OpenClaw agent completion events to submi
 
 Official OpenClaw references:
 
-- <https://docs.openclaw.ai/plugins/hooks>
+- <https://docs.openclaw.ai/plugins>
+- <https://docs.openclaw.ai/plugins/sdk-entrypoints>
 - <https://docs.openclaw.ai/automation/hooks>
 
-OpenClaw has internal hooks and plugin hooks. For task completion, use the typed plugin hook `agent_end`. The internal `command:stop` event only means a user issued `/stop`; it is not a natural agent completion signal.
+OpenClaw has internal hooks and plugin hooks. For task completion, use the current native plugin entry shape with `register(api)` and the typed plugin hook `agent_end`. Do not use the legacy `activate(api)` alias or the internal `command:stop` event for this integration; `command:stop` only means a user issued `/stop`, not that an agent naturally completed a task.
 
 ## What Agents Router Needs
 
@@ -60,6 +61,7 @@ function emitNotification() {
 export default definePluginEntry({
   id: "agents-router",
   name: "Agents Router",
+  description: "Forward OpenClaw task completion events to Agents Router.",
   register(api) {
     api.on("agent_end", async () => {
       emitNotification();

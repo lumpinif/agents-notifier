@@ -68,7 +68,7 @@ Codex Desktop session 时，Agents Router 才会忽略这次 hook。
 
 ```toml
 [features]
-codex_hooks = true
+hooks = true
 
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
@@ -87,7 +87,7 @@ statusMessage = "Forwarding completion to Agents Router"
 修改 `notify` 前，先看当前值：
 
 ```bash
-rg -n 'codex_hooks|hooks\.Stop|notify' ~/.codex/config.toml
+rg -n '(^\s*hooks\s*=|hooks\.Stop|notify)' ~/.codex/config.toml
 ```
 
 如果 `notify` 已经指向其他程序，不要直接覆盖，除非你确认要断开那个程序。更推荐添加上面的 Stop hook。
@@ -134,7 +134,7 @@ agents-router status
 
 - 配置里是否有 `codex_cli` source。
 - route 里是否包含 `codex_cli`。
-- `~/.codex/config.toml` 里是否有 `codex_hooks = true`。
+- `~/.codex/config.toml` 的 `[features]` 下面是否有 `hooks = true`。
 - Stop hook 命令是否是 `agents-router ingest --source codex_cli --format codex_cli_stop`。
 - 如果你同时使用 Codex Desktop，是否已经配置了 `codex_desktop`，让 Desktop 完成通知由
   Desktop watcher 处理，而不是共享 Stop hook。

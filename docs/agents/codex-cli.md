@@ -76,7 +76,7 @@ If you edit `~/.codex/config.toml` directly, use this shape:
 
 ```toml
 [features]
-codex_hooks = true
+hooks = true
 
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
@@ -95,7 +95,7 @@ Only use `notify` when you explicitly want to replace the current Codex CLI noti
 Before changing `notify`, inspect the existing value:
 
 ```bash
-rg -n 'codex_hooks|hooks\.Stop|notify' ~/.codex/config.toml
+rg -n '(^\s*hooks\s*=|hooks\.Stop|notify)' ~/.codex/config.toml
 ```
 
 If `notify` already points to another program, do not overwrite it unless you want to disconnect that program. Add the Stop hook above instead.
@@ -142,7 +142,7 @@ agents-router status
 
 - Your config includes the `codex_cli` source.
 - The route includes `codex_cli`.
-- `~/.codex/config.toml` has `codex_hooks = true`.
+- `~/.codex/config.toml` has `hooks = true` under `[features]`.
 - The Stop hook command uses `agents-router ingest --source codex_cli --format codex_cli_stop`.
 - If you also use Codex Desktop, `codex_desktop` is configured when you expect Desktop completions
   to come from the Desktop watcher instead of the shared Stop hook.

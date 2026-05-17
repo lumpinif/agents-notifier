@@ -284,7 +284,7 @@ pub fn ensure_codex_cli_stop_hook(path: &Path) -> anyhow::Result<CodexCliStopHoo
     let existed = original.is_some();
     let mut document = parse_codex_config(path, original.as_deref())?;
 
-    ensure_codex_hooks_feature_enabled(&mut document)?;
+    ensure_codex_lifecycle_hooks_feature_enabled(&mut document)?;
     if !has_agents_router_stop_hook(&document) {
         append_agents_router_stop_hook(&mut document)?;
     }
@@ -328,7 +328,7 @@ fn parse_codex_config(path: &Path, raw: Option<&str>) -> anyhow::Result<Document
         .with_context(|| format!("failed to parse Codex CLI config `{}`", path.display()))
 }
 
-fn ensure_codex_hooks_feature_enabled(document: &mut DocumentMut) -> anyhow::Result<()> {
+fn ensure_codex_lifecycle_hooks_feature_enabled(document: &mut DocumentMut) -> anyhow::Result<()> {
     let features_item = document
         .as_table_mut()
         .entry("features")
@@ -337,15 +337,17 @@ fn ensure_codex_hooks_feature_enabled(document: &mut DocumentMut) -> anyhow::Res
         .as_table_like_mut()
         .context("Codex CLI config `features` must be a TOML table")?;
 
+    features.remove("codex_hooks");
+
     if features
-        .get("codex_hooks")
+        .get("hooks")
         .and_then(Item::as_bool)
         .is_some_and(|enabled| enabled)
     {
         return Ok(());
     }
 
-    features.insert("codex_hooks", value(true));
+    features.insert("hooks", value(true));
     Ok(())
 }
 
@@ -811,7 +813,8 @@ mod tests {
         assert_eq!(setup.status, CodexCliStopHookSetupStatus::CreatedConfig);
         let raw = fs::read_to_string(path).expect("config should be written");
         assert!(raw.contains("[features]"));
-        assert!(raw.contains("codex_hooks = true"));
+        assert!(raw.contains("hooks = true"));
+        assert!(!raw.contains("codex_hooks"));
         assert!(raw.contains("[[hooks.Stop]]"));
         assert!(raw.contains("[[hooks.Stop.hooks]]"));
         assert!(raw.contains(CODEX_CLI_STOP_HOOK_COMMAND));
@@ -859,6 +862,8 @@ command = "echo existing"
 
         let raw = fs::read_to_string(path).expect("config should be written");
         assert!(raw.contains("echo existing"));
+        assert!(raw.contains("hooks = true"));
+        assert!(!raw.contains("codex_hooks"));
         assert!(raw.contains(CODEX_CLI_STOP_HOOK_COMMAND));
     }
 
@@ -879,14 +884,14 @@ command = "echo existing"
     }
 
     #[test]
-    fn enables_codex_hooks_when_existing_hook_is_present_but_feature_is_off() {
+    fn enables_hooks_when_existing_hook_is_present_but_feature_is_off() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
         fs::write(
             &path,
             format!(
                 r#"[features]
-codex_hooks = false
+hooks = false
 
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
@@ -901,7 +906,35 @@ command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
 
         assert_eq!(setup.status, CodexCliStopHookSetupStatus::UpdatedConfig);
         let raw = fs::read_to_string(path).expect("config should be written");
-        assert!(raw.contains("codex_hooks = true"));
+        assert!(raw.contains("hooks = true"));
+        assert_eq!(raw.matches(CODEX_CLI_STOP_HOOK_COMMAND).count(), 1);
+    }
+
+    #[test]
+    fn removes_deprecated_codex_hooks_feature_when_config_is_migrated() {
+        let dir = tempdir().expect("tempdir should be created");
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            format!(
+                r#"[features]
+codex_hooks = true
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
+"#
+            ),
+        )
+        .expect("existing config should be written");
+
+        let setup = ensure_codex_cli_stop_hook(&path).expect("hook should be configured");
+
+        assert_eq!(setup.status, CodexCliStopHookSetupStatus::UpdatedConfig);
+        let raw = fs::read_to_string(path).expect("config should be written");
+        assert!(raw.contains("hooks = true"));
+        assert!(!raw.contains("codex_hooks"));
         assert_eq!(raw.matches(CODEX_CLI_STOP_HOOK_COMMAND).count(), 1);
     }
 
