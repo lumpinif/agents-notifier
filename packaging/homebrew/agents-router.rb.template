@@ -1,5 +1,5 @@
 class AgentsRouter < Formula
-  desc "Local-only notifications for AI coding agents"
+  desc "Local-only AI agent updates; 10+ agents and 10+ platforms supported"
   homepage "https://github.com/lumpinif/agents-router"
   version "0.1.4"
 

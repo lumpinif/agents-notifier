@@ -2,7 +2,7 @@
 
 English documentation: [ntfy.md](ntfy.md)
 
-两分钟。选一个 topic。手机订阅它。Agents Router 就能把本地 coding agents 的消息发到你的手机上。
+1 分钟。选一个 topic。手机订阅它。Agents Router 就能把本地 coding agents 的消息发到你的手机上。
 
 ## ntfy 是什么？
 

@@ -159,7 +159,8 @@ function mainPackageJson(version) {
   return {
     name: "agents-router",
     version,
-    description: "Local-first signal routing for AI coding agents",
+    description:
+      "Fast, local-only AI agent updates across platforms, built in Rust. 10+ agents and 10+ platforms supported.",
     homepage: "https://github.com/lumpinif/agents-router",
     repository: {
       type: "git",

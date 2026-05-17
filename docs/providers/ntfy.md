@@ -2,7 +2,7 @@
 
 中文文档：[ntfy.zh-CN.md](ntfy.zh-CN.md)
 
-2 minutes. Pick a topic. Subscribe on your phone. Agents Router sends updates there.
+1 minute. Pick a topic. Subscribe on your phone. Agents Router sends updates there.
 
 ## What Is ntfy?
 

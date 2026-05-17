@@ -1,6 +1,6 @@
 # agents-router
 
-两三分钟就能 setup 好。
+1 分钟就能 setup 好。
 然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、微信、Microsoft Teams、Email、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
 
 ---
