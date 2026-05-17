@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/lumpinif/agents-router/compare/v0.10.1...v0.10.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* remove deprecated hooks usage ([de8d91d](https://github.com/lumpinif/agents-router/commit/de8d91d9807ece369d110c4762ec3c3a843c1ce5))
+
 ## [0.10.1](https://github.com/lumpinif/agents-router/compare/v0.10.0...v0.10.1) (2026-05-14)
 
 
