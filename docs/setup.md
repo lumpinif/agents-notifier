@@ -75,42 +75,44 @@ Code settings. Manual configs must use `id = "claude_code"` for this source. See
 Choose where notifications should go:
 
 ```text
-1. ntfy
-2. Slack
-3. Discord
-4. Pushover
-5. Feishu/Lark custom bot
-6. Webhook
-7. Telegram
-8. WhatsApp
-9. WeChat
-10. Microsoft Teams
-11. Email SMTP
+1. Slack
+2. Discord
+3. Telegram
+4. Microsoft Teams
+5. Email SMTP
+6. ntfy
+7. Pushover
+8. Feishu/Lark custom bot
+9. Webhook
+10. WhatsApp
+11. WeChat
 ```
+
+Slack is the recommended default when no provider is already configured.
 
 Provider guides:
 
-- [Feishu/Lark Custom Bot](providers/feishu-lark-custom-bot.md)
-- [ntfy](providers/ntfy.md)
-- [Pushover](providers/pushover.md)
 - [Slack](providers/slack.md)
 - [Discord](providers/discord.md)
 - [Telegram](providers/telegram.md)
-- [WhatsApp](providers/whatsapp.md)
-- [WeChat](providers/wechat.md)
 - [Microsoft Teams](providers/microsoft-teams.md)
 - [Email SMTP](providers/email-smtp.md)
+- [ntfy](providers/ntfy.md)
+- [Pushover](providers/pushover.md)
+- [Feishu/Lark Custom Bot](providers/feishu-lark-custom-bot.md)
 - [Webhook](providers/webhook.md)
+- [WhatsApp](providers/whatsapp.md)
+- [WeChat](providers/wechat.md)
 
 ## Provider IDs
 
 Setup uses the provider type as the default provider id. For example, the default
-Feishu/Lark provider is:
+Slack provider is:
 
 ```toml
 [[providers]]
-id = "feishu_lark"
-type = "feishu_lark"
+id = "slack"
+type = "slack"
 ```
 
 Routes reference provider ids:
@@ -118,19 +120,19 @@ Routes reference provider ids:
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 ```
 
 If you need two providers of the same type, give each provider a clear unique id:
 
 ```toml
 [[providers]]
-id = "feishu_lark_engineering"
-type = "feishu_lark"
+id = "slack_engineering"
+type = "slack"
 
 [[providers]]
-id = "feishu_lark_personal"
-type = "feishu_lark"
+id = "slack_personal"
+type = "slack"
 ```
 
 ## Notification Preference
@@ -159,12 +161,12 @@ Manual config:
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 minimum_task_duration_minutes = 5
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 ```
 
 Wrapper example:
@@ -285,7 +287,7 @@ route:
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 only_forward_from_project_paths = [
   "/Users/felix/Desktop/felix-projects/agents-router",
   "/Users/felix/Desktop/felix-projects/another-project",
@@ -293,7 +295,7 @@ only_forward_from_project_paths = [
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 ```
 
 When this filter is set, Agents Router forwards a signal only when its `workspace.project_path`

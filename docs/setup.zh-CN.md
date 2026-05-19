@@ -74,41 +74,43 @@ hot reload 里确保 `~/.claude/settings.json` 有所需 hooks。它会添加 `S
 选择通知要发到哪里：
 
 ```text
-1. ntfy
-2. Slack
-3. Discord
-4. Pushover
-5. Feishu/Lark custom bot
-6. Webhook
-7. Telegram
-8. WhatsApp
-9. 微信
-10. Microsoft Teams
-11. Email SMTP
+1. Slack
+2. Discord
+3. Telegram
+4. Microsoft Teams
+5. Email SMTP
+6. ntfy
+7. Pushover
+8. Feishu/Lark custom bot
+9. Webhook
+10. WhatsApp
+11. 微信
 ```
+
+如果还没有已配置 provider，setup 会默认推荐 Slack。
 
 Provider 教程：
 
-- [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
-- [ntfy](providers/ntfy.zh-CN.md)
-- [Pushover](providers/pushover.zh-CN.md)
 - [Slack](providers/slack.zh-CN.md)
 - [Discord](providers/discord.zh-CN.md)
 - [Telegram](providers/telegram.zh-CN.md)
-- [WhatsApp](providers/whatsapp.zh-CN.md)
-- [微信](providers/wechat.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
 - [Email SMTP](providers/email-smtp.zh-CN.md)
+- [ntfy](providers/ntfy.zh-CN.md)
+- [Pushover](providers/pushover.zh-CN.md)
+- [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
+- [WhatsApp](providers/whatsapp.zh-CN.md)
+- [微信](providers/wechat.zh-CN.md)
 
 ## Provider ID
 
-Setup 默认使用 provider type 作为 provider id。例如默认的 Feishu/Lark provider 是：
+Setup 默认使用 provider type 作为 provider id。例如默认的 Slack provider 是：
 
 ```toml
 [[providers]]
-id = "feishu_lark"
-type = "feishu_lark"
+id = "slack"
+type = "slack"
 ```
 
 Route 引用的是 provider id：
@@ -116,19 +118,19 @@ Route 引用的是 provider id：
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 ```
 
 如果需要两个同类型 provider，就给每个 provider 一个清晰且唯一的 id：
 
 ```toml
 [[providers]]
-id = "feishu_lark_engineering"
-type = "feishu_lark"
+id = "slack_engineering"
+type = "slack"
 
 [[providers]]
-id = "feishu_lark_personal"
-type = "feishu_lark"
+id = "slack_personal"
+type = "slack"
 ```
 
 ## 通知偏好
@@ -157,12 +159,12 @@ type = "feishu_lark"
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 minimum_task_duration_minutes = 5
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 ```
 
 Wrapper 示例：
@@ -277,7 +279,7 @@ agents-router start
 ```toml
 [[routes]]
 sources = ["codex_desktop"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 only_forward_from_project_paths = [
   "/Users/felix/Desktop/felix-projects/agents-router",
   "/Users/felix/Desktop/felix-projects/another-project",
@@ -285,7 +287,7 @@ only_forward_from_project_paths = [
 
 [[routes]]
 sources = ["agents_router"]
-providers = ["feishu_lark"]
+providers = ["slack"]
 ```
 
 设置这个过滤后，只有当 Signal 的 `workspace.project_path` 等于这些路径之一，或位于这些路径之下时，

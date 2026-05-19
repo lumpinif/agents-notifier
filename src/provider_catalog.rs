@@ -128,17 +128,9 @@ const MICROSOFT_TEAMS_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] =
 
 const PROVIDER_DESCRIPTORS: &[ProviderDescriptor] = &[
     ProviderDescriptor {
-        provider_type: ProviderType::Ntfy,
-        display_name: "ntfy",
-        setup_order: 10,
-        capabilities: ProviderCapabilities {
-            message_constraints: NTFY_MESSAGE_CONSTRAINTS,
-        },
-    },
-    ProviderDescriptor {
         provider_type: ProviderType::Slack,
         display_name: "Slack",
-        setup_order: 20,
+        setup_order: 10,
         capabilities: ProviderCapabilities {
             message_constraints: SLACK_MESSAGE_CONSTRAINTS,
         },
@@ -146,63 +138,23 @@ const PROVIDER_DESCRIPTORS: &[ProviderDescriptor] = &[
     ProviderDescriptor {
         provider_type: ProviderType::Discord,
         display_name: "Discord",
-        setup_order: 30,
+        setup_order: 20,
         capabilities: ProviderCapabilities {
             message_constraints: DISCORD_MESSAGE_CONSTRAINTS,
         },
     },
     ProviderDescriptor {
-        provider_type: ProviderType::Pushover,
-        display_name: "Pushover",
-        setup_order: 40,
-        capabilities: ProviderCapabilities {
-            message_constraints: PUSHOVER_MESSAGE_CONSTRAINTS,
-        },
-    },
-    ProviderDescriptor {
-        provider_type: ProviderType::FeishuLark,
-        display_name: "Feishu/Lark custom bot",
-        setup_order: 50,
-        capabilities: ProviderCapabilities {
-            message_constraints: NO_MESSAGE_CONSTRAINTS,
-        },
-    },
-    ProviderDescriptor {
-        provider_type: ProviderType::Webhook,
-        display_name: "Webhook",
-        setup_order: 60,
-        capabilities: ProviderCapabilities {
-            message_constraints: NO_MESSAGE_CONSTRAINTS,
-        },
-    },
-    ProviderDescriptor {
         provider_type: ProviderType::Telegram,
         display_name: "Telegram",
-        setup_order: 70,
+        setup_order: 30,
         capabilities: ProviderCapabilities {
             message_constraints: TELEGRAM_MESSAGE_CONSTRAINTS,
         },
     },
     ProviderDescriptor {
-        provider_type: ProviderType::Whatsapp,
-        display_name: "WhatsApp",
-        setup_order: 80,
-        capabilities: ProviderCapabilities {
-            message_constraints: WHATSAPP_MESSAGE_CONSTRAINTS,
-        },
-    },
-    ProviderDescriptor {
-        provider_type: ProviderType::Wechat,
-        display_name: "WeChat",
-        setup_order: 90,
-        capabilities: ProviderCapabilities {
-            message_constraints: WECHAT_MESSAGE_CONSTRAINTS,
-        },
-    },
-    ProviderDescriptor {
         provider_type: ProviderType::MicrosoftTeams,
         display_name: "Microsoft Teams",
-        setup_order: 100,
+        setup_order: 40,
         capabilities: ProviderCapabilities {
             message_constraints: MICROSOFT_TEAMS_MESSAGE_CONSTRAINTS,
         },
@@ -210,9 +162,57 @@ const PROVIDER_DESCRIPTORS: &[ProviderDescriptor] = &[
     ProviderDescriptor {
         provider_type: ProviderType::EmailSmtp,
         display_name: "Email SMTP",
-        setup_order: 110,
+        setup_order: 50,
         capabilities: ProviderCapabilities {
             message_constraints: NO_MESSAGE_CONSTRAINTS,
+        },
+    },
+    ProviderDescriptor {
+        provider_type: ProviderType::Ntfy,
+        display_name: "ntfy",
+        setup_order: 60,
+        capabilities: ProviderCapabilities {
+            message_constraints: NTFY_MESSAGE_CONSTRAINTS,
+        },
+    },
+    ProviderDescriptor {
+        provider_type: ProviderType::Pushover,
+        display_name: "Pushover",
+        setup_order: 70,
+        capabilities: ProviderCapabilities {
+            message_constraints: PUSHOVER_MESSAGE_CONSTRAINTS,
+        },
+    },
+    ProviderDescriptor {
+        provider_type: ProviderType::FeishuLark,
+        display_name: "Feishu/Lark custom bot",
+        setup_order: 80,
+        capabilities: ProviderCapabilities {
+            message_constraints: NO_MESSAGE_CONSTRAINTS,
+        },
+    },
+    ProviderDescriptor {
+        provider_type: ProviderType::Webhook,
+        display_name: "Webhook",
+        setup_order: 90,
+        capabilities: ProviderCapabilities {
+            message_constraints: NO_MESSAGE_CONSTRAINTS,
+        },
+    },
+    ProviderDescriptor {
+        provider_type: ProviderType::Whatsapp,
+        display_name: "WhatsApp",
+        setup_order: 100,
+        capabilities: ProviderCapabilities {
+            message_constraints: WHATSAPP_MESSAGE_CONSTRAINTS,
+        },
+    },
+    ProviderDescriptor {
+        provider_type: ProviderType::Wechat,
+        display_name: "WeChat",
+        setup_order: 110,
+        capabilities: ProviderCapabilities {
+            message_constraints: WECHAT_MESSAGE_CONSTRAINTS,
         },
     },
 ];
@@ -235,7 +235,7 @@ pub fn setup_provider_descriptors() -> impl Iterator<Item = &'static ProviderDes
 }
 
 pub fn default_setup_provider_type() -> ProviderType {
-    ProviderType::Ntfy
+    ProviderType::Slack
 }
 
 pub fn default_setup_provider_descriptor() -> &'static ProviderDescriptor {
@@ -320,17 +320,17 @@ mod tests {
         assert_eq!(
             provider_ids,
             vec![
-                "ntfy",
                 "slack",
                 "discord",
+                "telegram",
+                "microsoft_teams",
+                "email_smtp",
+                "ntfy",
                 "pushover",
                 "feishu_lark",
                 "webhook",
-                "telegram",
                 "whatsapp",
                 "wechat",
-                "microsoft_teams",
-                "email_smtp",
             ]
         );
     }
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn default_setup_provider_is_cataloged() {
-        assert_eq!(default_setup_provider_type(), ProviderType::Ntfy);
+        assert_eq!(default_setup_provider_type(), ProviderType::Slack);
         assert_eq!(
             default_setup_provider_descriptor().provider_type,
             default_setup_provider_type()

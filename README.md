@@ -1,6 +1,6 @@
 # agents-router
 
-Set it up in 2-3 minutes and get local coding agent updates on your phone, Slack, Discord, Telegram, WhatsApp, WeChat, Microsoft Teams, email, Feishu/Lark, Pushover, or webhook.
+Set it up in 2-3 minutes and get local coding agent updates in Slack, Discord, Telegram, Microsoft Teams, email, ntfy, Pushover, Feishu/Lark, webhook, WhatsApp, or WeChat.
 
 ---
 
@@ -41,17 +41,17 @@ Agents:
 
 Providers (Where do you want to get the notification?):
 
-- [ntfy](https://ntfy.sh/)
 - [Slack](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
 - [Discord](https://docs.discord.com/developers/resources/webhook)
 - [Telegram](https://core.telegram.org/bots/api)
-- [WhatsApp](https://developers.facebook.com/docs/whatsapp)
-- WeChat personal chat through iLink
 - [Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook)
 - [Email SMTP](https://www.rfc-editor.org/rfc/rfc6409)
-- Feishu/Lark Custom Bot ([Feishu](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot), [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot))
+- [ntfy](https://ntfy.sh/)
 - [Pushover](https://pushover.net/api)
+- Feishu/Lark Custom Bot ([Feishu](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot), [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot))
 - Webhook
+- [WhatsApp](https://developers.facebook.com/docs/whatsapp)
+- WeChat personal chat through iLink
 
 ## 🔒 Privacy
 
@@ -155,17 +155,17 @@ To stop using the service, run `agents-router stop`.
 
 Provider setup guides:
 
-- [Feishu/Lark Custom Bot](docs/providers/feishu-lark-custom-bot.md)
-- [ntfy](docs/providers/ntfy.md)
-- [Pushover](docs/providers/pushover.md)
 - [Slack](docs/providers/slack.md)
 - [Discord](docs/providers/discord.md)
 - [Telegram](docs/providers/telegram.md)
-- [WhatsApp](docs/providers/whatsapp.md)
-- [WeChat](docs/providers/wechat.md)
 - [Microsoft Teams](docs/providers/microsoft-teams.md)
 - [Email SMTP](docs/providers/email-smtp.md)
+- [ntfy](docs/providers/ntfy.md)
+- [Pushover](docs/providers/pushover.md)
+- [Feishu/Lark Custom Bot](docs/providers/feishu-lark-custom-bot.md)
 - [Webhook](docs/providers/webhook.md)
+- [WhatsApp](docs/providers/whatsapp.md)
+- [WeChat](docs/providers/wechat.md)
 
 Agent setup guides:
 

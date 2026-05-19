@@ -1,7 +1,7 @@
 # agents-router
 
 两三分钟就能 setup 好。
-然后你就可以在手机、Slack、Discord、Telegram、WhatsApp、微信、Microsoft Teams、Email、飞书、Lark、Pushover 或 Webhook 上收到本地 coding agents 的消息。
+然后你就可以在 Slack、Discord、Telegram、Microsoft Teams、Email、ntfy、Pushover、飞书、Lark、Webhook、WhatsApp 或微信里收到本地 coding agents 的消息。
 
 ---
 
@@ -42,17 +42,17 @@ Agents：
 
 Providers（你想在哪里收到通知？）：
 
-- [ntfy](https://ntfy.sh/)
 - [Slack](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
 - [Discord](https://docs.discord.com/developers/resources/webhook)
 - [Telegram](https://core.telegram.org/bots/api)
-- [WhatsApp](https://developers.facebook.com/docs/whatsapp)
-- 微信（个人微信 iLink）
 - [Microsoft Teams](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook)
 - [Email SMTP](https://www.rfc-editor.org/rfc/rfc6409)
-- Feishu/Lark Custom Bot（[飞书](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot) / [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot)）
+- [ntfy](https://ntfy.sh/)
 - [Pushover](https://pushover.net/api)
+- Feishu/Lark Custom Bot（[飞书](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot) / [Lark](https://open.larksuite.com/document/client-docs/bot-v3/add-custom-bot)）
 - Webhook
+- [WhatsApp](https://developers.facebook.com/docs/whatsapp)
+- 微信（个人微信 iLink）
 
 ## 🔒 隐私
 
@@ -155,17 +155,17 @@ Answer detail、是否包含 prompt、高级项目过滤等设置见 [Setup](set
 
 Provider 设置教程：
 
-- [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
-- [ntfy](providers/ntfy.zh-CN.md)
-- [Pushover](providers/pushover.zh-CN.md)
 - [Slack](providers/slack.zh-CN.md)
 - [Discord](providers/discord.zh-CN.md)
 - [Telegram](providers/telegram.zh-CN.md)
-- [WhatsApp](providers/whatsapp.zh-CN.md)
-- [微信](providers/wechat.zh-CN.md)
 - [Microsoft Teams](providers/microsoft-teams.zh-CN.md)
 - [Email SMTP](providers/email-smtp.zh-CN.md)
+- [ntfy](providers/ntfy.zh-CN.md)
+- [Pushover](providers/pushover.zh-CN.md)
+- [飞书/Lark Custom Bot](providers/feishu-lark-custom-bot.zh-CN.md)
 - [Webhook](providers/webhook.zh-CN.md)
+- [WhatsApp](providers/whatsapp.zh-CN.md)
+- [微信](providers/wechat.zh-CN.md)
 
 Agent 设置教程：
 
