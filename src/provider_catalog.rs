@@ -234,6 +234,14 @@ pub fn setup_provider_descriptors() -> impl Iterator<Item = &'static ProviderDes
     descriptors.into_iter()
 }
 
+pub fn default_setup_provider_type() -> ProviderType {
+    ProviderType::Ntfy
+}
+
+pub fn default_setup_provider_descriptor() -> &'static ProviderDescriptor {
+    provider_descriptor(default_setup_provider_type())
+}
+
 pub fn provider_message_constraints(
     provider_type: ProviderType,
 ) -> &'static [ProviderMessageConstraint] {
@@ -341,6 +349,15 @@ mod tests {
             .map(|descriptor| descriptor.setup_order)
             .collect::<Vec<_>>();
         assert!(sorted_setup_orders.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn default_setup_provider_is_cataloged() {
+        assert_eq!(default_setup_provider_type(), ProviderType::Ntfy);
+        assert_eq!(
+            default_setup_provider_descriptor().provider_type,
+            default_setup_provider_type()
+        );
     }
 
     #[test]

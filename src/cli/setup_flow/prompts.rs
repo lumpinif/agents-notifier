@@ -252,7 +252,8 @@ pub(in crate::cli) fn prompt_for_initial_provider(
     default: Option<ProviderType>,
     i18n: I18n,
 ) -> anyhow::Result<ProviderType> {
-    let effective_default = default.unwrap_or(ProviderType::Ntfy);
+    let setup_default_provider = default_setup_provider_type();
+    let effective_default = default.unwrap_or(setup_default_provider);
     let options = setup_provider_descriptors()
         .map(|descriptor| descriptor.provider_type)
         .collect::<Vec<_>>();
@@ -266,7 +267,7 @@ pub(in crate::cli) fn prompt_for_initial_provider(
             let mut label = localized_provider_display_name(*provider, i18n).to_string();
             if Some(*provider) == default {
                 label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
-            } else if default.is_none() && *provider == ProviderType::Ntfy {
+            } else if default.is_none() && *provider == setup_default_provider {
                 label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label

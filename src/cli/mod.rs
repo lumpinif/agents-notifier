@@ -38,8 +38,8 @@ use agents_router::paths::{
 #[cfg(target_os = "macos")]
 use agents_router::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_router::provider_catalog::{
-    MessageLimitUnit, MessageSurface, ProviderMessageConstraint, provider_descriptor,
-    setup_provider_descriptors,
+    MessageLimitUnit, MessageSurface, ProviderMessageConstraint, default_setup_provider_type,
+    provider_descriptor, setup_provider_descriptors,
 };
 use agents_router::providers::build_providers;
 use agents_router::runtime::{
@@ -52,7 +52,7 @@ use agents_router::service::{
 use agents_router::setup;
 use agents_router::signal::{SignalLifecycle, SignalLifecycleStatus};
 use agents_router::source_integration_catalog::{
-    HookCommandTemplate, RuntimePlatform, SourceIngestFormat,
+    HookCommandTemplate, RuntimePlatform, SetupIntegrationKind, SourceIngestFormat,
     default_source_integration_for_platform, setup_source_integration_descriptors_for_platform,
     source_integration_descriptor, source_integration_for_source,
 };
@@ -923,144 +923,57 @@ async fn finish_guided_setup(setup: GuidedSetup, i18n: I18n) -> anyhow::Result<(
 
 fn print_source_integration_setup_note(source_integration: setup::SourceIntegrationId, i18n: I18n) {
     let descriptor = source_integration_descriptor(source_integration);
-    let hook_command = descriptor.hook_command;
 
-    if i18n.language() == CliLanguage::SimplifiedChinese {
-        match source_integration {
-            setup::SourceIntegrationId::CodexDesktop => {
+    match descriptor.setup_integration {
+        SetupIntegrationKind::CodexDesktopWatch => {
+            if i18n.language() == CliLanguage::SimplifiedChinese {
                 println!("Agents Router 会监听这台电脑上的 Codex Desktop 完成事件。");
+            } else {
+                println!("Agents Router will watch Codex Desktop completed jobs on this computer.");
             }
-            setup::SourceIntegrationId::CodexCli => {
+        }
+        SetupIntegrationKind::CodexCliStopHook => {
+            if i18n.language() == CliLanguage::SimplifiedChinese {
                 println!("Agents Router 已配置 Codex CLI Stop hook，用来接收完成事件。");
                 println!(
                     "setup 不会覆盖现有 `notify`；如果你手动改配置，请保持 Stop hook 指向 Agents Router。"
                 );
+            } else {
+                println!("Agents Router configured the Codex CLI Stop hook for completion events.");
+                println!(
+                    "Setup does not overwrite existing `notify`; if you edit config manually, keep the Stop hook pointed at Agents Router."
+                );
             }
-            setup::SourceIntegrationId::ClaudeCode => {
+        }
+        SetupIntegrationKind::ClaudeCodeHooks => {
+            if i18n.language() == CliLanguage::SimplifiedChinese {
                 println!("Agents Router 已配置 Claude Code hooks，用来接收完成事件和任务耗时。");
                 println!(
                     "如果你手动改 Claude Code settings，请保留 SessionStart、UserPromptSubmit、Stop 和 Notification hooks 指向 Agents Router。"
                 );
-            }
-            setup::SourceIntegrationId::CursorCli => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "wrapper 在 CLI 成功退出后",
-                    hook_command,
+            } else {
+                println!(
+                    "Agents Router configured Claude Code hooks for completion events and task duration."
                 );
-            }
-            setup::SourceIntegrationId::OpenCodeCli => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "plugin 在 session idle 时",
-                    hook_command,
-                );
-            }
-            setup::SourceIntegrationId::OpenClaw => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "plugin hook 在 agent_end",
-                    hook_command,
-                );
-            }
-            setup::SourceIntegrationId::HermesAgentCli => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "plugin hook 在 post_llm_call",
-                    hook_command,
-                );
-            }
-            setup::SourceIntegrationId::GithubCopilotCli => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "notification hook",
-                    hook_command,
-                );
-            }
-            setup::SourceIntegrationId::GeminiCli => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "AfterAgent 或 Notification hook",
-                    hook_command,
-                );
-            }
-            setup::SourceIntegrationId::Aider => {
-                print_chinese_hook_command_note(
-                    descriptor.display_name,
-                    "notifications-command",
-                    hook_command,
+                println!(
+                    "If you edit Claude Code settings manually, keep SessionStart, UserPromptSubmit, Stop, and Notification hooks pointed at Agents Router."
                 );
             }
         }
-        return;
-    }
-
-    match source_integration {
-        setup::SourceIntegrationId::CodexDesktop => {
-            println!("Agents Router will watch Codex Desktop completed jobs on this computer.");
-        }
-        setup::SourceIntegrationId::CodexCli => {
-            println!("Agents Router configured the Codex CLI Stop hook for completion events.");
-            println!(
-                "Setup does not overwrite existing `notify`; if you edit config manually, keep the Stop hook pointed at Agents Router."
-            );
-        }
-        setup::SourceIntegrationId::ClaudeCode => {
-            println!(
-                "Agents Router configured Claude Code hooks for completion events and task duration."
-            );
-            println!(
-                "If you edit Claude Code settings manually, keep SessionStart, UserPromptSubmit, Stop, and Notification hooks pointed at Agents Router."
-            );
-        }
-        setup::SourceIntegrationId::CursorCli => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "wrapper after the CLI exits successfully",
-                hook_command,
-            );
-        }
-        setup::SourceIntegrationId::OpenCodeCli => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "plugin when the session becomes idle",
-                hook_command,
-            );
-        }
-        setup::SourceIntegrationId::OpenClaw => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "plugin hook from agent_end",
-                hook_command,
-            );
-        }
-        setup::SourceIntegrationId::HermesAgentCli => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "plugin hook from post_llm_call",
-                hook_command,
-            );
-        }
-        setup::SourceIntegrationId::GithubCopilotCli => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "notification hook",
-                hook_command,
-            );
-        }
-        setup::SourceIntegrationId::GeminiCli => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "AfterAgent or Notification hook",
-                hook_command,
-            );
-        }
-        setup::SourceIntegrationId::Aider => {
-            print_english_hook_command_note(
-                descriptor.display_name,
-                "notifications-command",
-                hook_command,
-            );
+        SetupIntegrationKind::ManualHookCommand { integration_point } => {
+            if i18n.language() == CliLanguage::SimplifiedChinese {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    integration_point.simplified_chinese(),
+                    descriptor.hook_command,
+                );
+            } else {
+                print_english_hook_command_note(
+                    descriptor.display_name,
+                    integration_point.english(),
+                    descriptor.hook_command,
+                );
+            }
         }
     }
 }

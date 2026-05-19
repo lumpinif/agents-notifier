@@ -56,6 +56,7 @@ pub struct SourceIntegrationDescriptor {
     pub ingest_format: Option<SourceIngestFormat>,
     pub hook_command: Option<HookCommandTemplate>,
     pub local_integration: LocalIntegrationKind,
+    pub setup_integration: SetupIntegrationKind,
 }
 
 impl SourceIntegrationDescriptor {
@@ -121,6 +122,32 @@ pub enum LocalIntegrationKind {
     None,
     CodexCliStopHook,
     ClaudeCodeHooks,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalizedSetupText {
+    pub english: &'static str,
+    pub simplified_chinese: &'static str,
+}
+
+impl LocalizedSetupText {
+    pub fn english(self) -> &'static str {
+        self.english
+    }
+
+    pub fn simplified_chinese(self) -> &'static str {
+        self.simplified_chinese
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetupIntegrationKind {
+    CodexDesktopWatch,
+    CodexCliStopHook,
+    ClaudeCodeHooks,
+    ManualHookCommand {
+        integration_point: LocalizedSetupText,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -211,6 +238,7 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
         ingest_format: None,
         hook_command: None,
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::CodexDesktopWatch,
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::CodexCli,
@@ -226,6 +254,7 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             format: SourceIngestFormat::CodexCliStop,
         }),
         local_integration: LocalIntegrationKind::CodexCliStopHook,
+        setup_integration: SetupIntegrationKind::CodexCliStopHook,
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::ClaudeCode,
@@ -241,6 +270,7 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             format: SourceIngestFormat::ClaudeCodeHook,
         }),
         local_integration: LocalIntegrationKind::ClaudeCodeHooks,
+        setup_integration: SetupIntegrationKind::ClaudeCodeHooks,
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::CursorCli,
@@ -255,6 +285,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             source_id: "cursor_cli",
         }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "wrapper after the CLI exits successfully",
+                simplified_chinese: "wrapper 在 CLI 成功退出后",
+            },
+        },
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::OpenCodeCli,
@@ -270,6 +306,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             format: SourceIngestFormat::OpencodeCliSession,
         }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "plugin when the session becomes idle",
+                simplified_chinese: "plugin 在 session idle 时",
+            },
+        },
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::OpenClaw,
@@ -284,6 +326,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             source_id: "openclaw",
         }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "plugin hook from agent_end",
+                simplified_chinese: "plugin hook 在 agent_end",
+            },
+        },
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::HermesAgentCli,
@@ -298,6 +346,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             source_id: "hermes_agent_cli",
         }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "plugin hook from post_llm_call",
+                simplified_chinese: "plugin hook 在 post_llm_call",
+            },
+        },
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::GithubCopilotCli,
@@ -313,6 +367,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             format: SourceIngestFormat::GithubCopilotCliNotification,
         }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "notification hook",
+                simplified_chinese: "notification hook",
+            },
+        },
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::GeminiCli,
@@ -328,6 +388,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
             format: SourceIngestFormat::GeminiCliHook,
         }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "AfterAgent or Notification hook",
+                simplified_chinese: "AfterAgent 或 Notification hook",
+            },
+        },
     },
     SourceIntegrationDescriptor {
         id: SourceIntegrationId::Aider,
@@ -340,6 +406,12 @@ const SOURCE_INTEGRATION_DESCRIPTORS: &[SourceIntegrationDescriptor] = &[
         ingest_format: None,
         hook_command: Some(HookCommandTemplate::Emit { source_id: "aider" }),
         local_integration: LocalIntegrationKind::None,
+        setup_integration: SetupIntegrationKind::ManualHookCommand {
+            integration_point: LocalizedSetupText {
+                english: "notifications-command",
+                simplified_chinese: "notifications-command",
+            },
+        },
     },
 ];
 
@@ -571,6 +643,46 @@ mod tests {
             assert_eq!(descriptor.duration_support, duration_support);
             assert_eq!(descriptor.ingest_format, ingest_format);
             assert_eq!(descriptor.local_integration, local_integration);
+        }
+    }
+
+    #[test]
+    fn setup_integration_facts_are_cataloged() {
+        assert_eq!(
+            source_integration_descriptor(SourceIntegrationId::CodexDesktop).setup_integration,
+            SetupIntegrationKind::CodexDesktopWatch
+        );
+        assert_eq!(
+            source_integration_descriptor(SourceIntegrationId::CodexCli).setup_integration,
+            SetupIntegrationKind::CodexCliStopHook
+        );
+        assert_eq!(
+            source_integration_descriptor(SourceIntegrationId::ClaudeCode).setup_integration,
+            SetupIntegrationKind::ClaudeCodeHooks
+        );
+
+        let gemini = source_integration_descriptor(SourceIntegrationId::GeminiCli);
+        assert_eq!(
+            gemini.setup_integration,
+            SetupIntegrationKind::ManualHookCommand {
+                integration_point: LocalizedSetupText {
+                    english: "AfterAgent or Notification hook",
+                    simplified_chinese: "AfterAgent 或 Notification hook",
+                },
+            }
+        );
+
+        for descriptor in all_source_integration_descriptors() {
+            if matches!(
+                descriptor.setup_integration,
+                SetupIntegrationKind::ManualHookCommand { .. }
+            ) {
+                assert!(
+                    descriptor.hook_command.is_some(),
+                    "{} manual setup integration should expose a hook command",
+                    descriptor.source_id
+                );
+            }
         }
     }
 
