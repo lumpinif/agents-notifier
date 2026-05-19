@@ -1,9 +1,9 @@
 use super::*;
 
 pub(in crate::cli) fn prompt_for_agent(
-    default: Option<setup::AgentSelection>,
+    default: Option<setup::SourceIntegrationId>,
     i18n: I18n,
-) -> anyhow::Result<setup::AgentSelection> {
+) -> anyhow::Result<setup::SourceIntegrationId> {
     let options = supported_agent_options();
     let supported_default =
         default.filter(|agent| options.iter().any(|(_, candidate)| candidate == agent));
@@ -35,84 +35,27 @@ pub(in crate::cli) fn prompt_for_agent(
     Ok(options[selection].1)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "non-host platform variants keep setup platform rules testable on every OS"
-    )
-)]
-pub(in crate::cli) enum RuntimePlatform {
-    Macos,
-    Linux,
-    Windows,
-}
-
-impl RuntimePlatform {
-    fn current() -> Self {
-        #[cfg(target_os = "macos")]
-        return Self::Macos;
-
-        #[cfg(target_os = "linux")]
-        return Self::Linux;
-
-        #[cfg(windows)]
-        return Self::Windows;
-    }
-
-    fn supports_codex_desktop(self) -> bool {
-        matches!(self, Self::Macos | Self::Windows)
-    }
-}
-
-pub(in crate::cli) fn supported_agent_options() -> Vec<(&'static str, setup::AgentSelection)> {
+pub(in crate::cli) fn supported_agent_options() -> Vec<(String, setup::SourceIntegrationId)> {
     supported_agent_options_for_platform(RuntimePlatform::current())
 }
 
 pub(in crate::cli) fn supported_agent_options_for_platform(
     platform: RuntimePlatform,
-) -> Vec<(&'static str, setup::AgentSelection)> {
-    if platform.supports_codex_desktop() {
-        return vec![
-            ("1", setup::AgentSelection::CodexDesktop),
-            ("2", setup::AgentSelection::CodexCli),
-            ("3", setup::AgentSelection::ClaudeCode),
-            ("4", setup::AgentSelection::CursorCli),
-            ("5", setup::AgentSelection::OpenCodeCli),
-            ("6", setup::AgentSelection::OpenClaw),
-            ("7", setup::AgentSelection::HermesAgentCli),
-            ("8", setup::AgentSelection::GithubCopilotCli),
-            ("9", setup::AgentSelection::GeminiCli),
-            ("10", setup::AgentSelection::Aider),
-        ];
-    }
-
-    vec![
-        ("1", setup::AgentSelection::CodexCli),
-        ("2", setup::AgentSelection::ClaudeCode),
-        ("3", setup::AgentSelection::CursorCli),
-        ("4", setup::AgentSelection::OpenCodeCli),
-        ("5", setup::AgentSelection::OpenClaw),
-        ("6", setup::AgentSelection::HermesAgentCli),
-        ("7", setup::AgentSelection::GithubCopilotCli),
-        ("8", setup::AgentSelection::GeminiCli),
-        ("9", setup::AgentSelection::Aider),
-    ]
+) -> Vec<(String, setup::SourceIntegrationId)> {
+    setup_source_integration_descriptors_for_platform(platform)
+        .enumerate()
+        .map(|(index, descriptor)| ((index + 1).to_string(), descriptor.id))
+        .collect()
 }
 
-pub(in crate::cli) fn default_agent_for_platform() -> setup::AgentSelection {
+pub(in crate::cli) fn default_agent_for_platform() -> setup::SourceIntegrationId {
     default_agent_for_runtime_platform(RuntimePlatform::current())
 }
 
 pub(in crate::cli) fn default_agent_for_runtime_platform(
     platform: RuntimePlatform,
-) -> setup::AgentSelection {
-    if platform.supports_codex_desktop() {
-        setup::AgentSelection::CodexDesktop
-    } else {
-        setup::AgentSelection::CodexCli
-    }
+) -> setup::SourceIntegrationId {
+    default_source_integration_for_platform(platform).id
 }
 
 pub(in crate::cli) fn prompt_for_answer_detail(
@@ -306,23 +249,13 @@ fn prompt_for_custom_minimum_task_duration_minutes(
 }
 
 pub(in crate::cli) fn prompt_for_initial_provider(
-    default: Option<InitialProvider>,
+    default: Option<ProviderType>,
     i18n: I18n,
-) -> anyhow::Result<InitialProvider> {
-    let effective_default = default.unwrap_or(InitialProvider::Ntfy);
-    let options = [
-        InitialProvider::Ntfy,
-        InitialProvider::Slack,
-        InitialProvider::Discord,
-        InitialProvider::Pushover,
-        InitialProvider::FeishuLark,
-        InitialProvider::Webhook,
-        InitialProvider::Telegram,
-        InitialProvider::Whatsapp,
-        InitialProvider::Wechat,
-        InitialProvider::MicrosoftTeams,
-        InitialProvider::EmailSmtp,
-    ];
+) -> anyhow::Result<ProviderType> {
+    let effective_default = default.unwrap_or(ProviderType::Ntfy);
+    let options = setup_provider_descriptors()
+        .map(|descriptor| descriptor.provider_type)
+        .collect::<Vec<_>>();
     let default_index = options
         .iter()
         .position(|provider| *provider == effective_default)
@@ -333,7 +266,7 @@ pub(in crate::cli) fn prompt_for_initial_provider(
             let mut label = localized_provider_display_name(*provider, i18n).to_string();
             if Some(*provider) == default {
                 label.push_str(&format!(" ({})", i18n.text(Text::CurrentSuffix)));
-            } else if default.is_none() && *provider == InitialProvider::Ntfy {
+            } else if default.is_none() && *provider == ProviderType::Ntfy {
                 label.push_str(&format!(" ({})", i18n.text(Text::RecommendedSuffix)));
             }
             label
@@ -350,11 +283,11 @@ pub(in crate::cli) fn prompt_for_initial_provider(
     Ok(options[selection])
 }
 
-fn localized_provider_display_name(provider: InitialProvider, i18n: I18n) -> &'static str {
-    if provider == InitialProvider::Wechat && i18n.language() == CliLanguage::SimplifiedChinese {
+fn localized_provider_display_name(provider: ProviderType, i18n: I18n) -> &'static str {
+    if provider == ProviderType::Wechat && i18n.language() == CliLanguage::SimplifiedChinese {
         "微信"
     } else {
-        provider.display_name()
+        provider_descriptor(provider).display_name
     }
 }
 

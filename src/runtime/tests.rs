@@ -4,7 +4,7 @@ use crate::config::{
     CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
     SourceConfig, SourceType,
 };
-use crate::local_integrations::{CODEX_CLI_STOP_HOOK_COMMAND, LocalSourceIntegrationPaths};
+use crate::local_integrations::{LocalSourceIntegrationPaths, codex_cli_stop_hook_command};
 use crate::setup;
 
 use super::*;
@@ -98,7 +98,7 @@ fn reload_with_local_integrations_applies_before_replacing_snapshot() {
     assert!(
         std::fs::read_to_string(codex_config_path)
             .expect("Codex CLI config should be written")
-            .contains(CODEX_CLI_STOP_HOOK_COMMAND)
+            .contains(codex_cli_stop_hook_command().as_str())
     );
     assert_eq!(
         runtime

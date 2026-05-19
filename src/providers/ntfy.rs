@@ -126,6 +126,7 @@ mod tests {
     use super::*;
     use crate::config::ProviderType;
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
+    use crate::provider_catalog::{MessageSurface, provider_message_limit};
 
     #[tokio::test]
     async fn sends_ntfy_request_with_title_and_body() {
@@ -260,6 +261,75 @@ mod tests {
         assert_eq!(err.http_status, Some(500));
         assert_eq!(err.provider_code, None);
         assert!(err.retriable);
+    }
+
+    #[tokio::test]
+    async fn sends_ntfy_body_even_when_cataloged_default_limit_is_exceeded() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/topic"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let provider = NtfyProvider::from_config(&ProviderConfig {
+            id: "phone".to_string(),
+            provider_type: ProviderType::Ntfy,
+            base_url: None,
+            server: Some(server.uri()),
+            topic: Some("topic".to_string()),
+            url: None,
+            url_env: None,
+            secret: None,
+            secret_env: None,
+            app_token: None,
+            app_token_env: None,
+            user_key: None,
+            user_key_env: None,
+            device: None,
+            sound: None,
+            bot_token: None,
+            bot_token_env: None,
+            chat_id: None,
+            access_token: None,
+            access_token_env: None,
+            phone_number_id: None,
+            recipient_phone_number: None,
+            host: None,
+            port: None,
+            security: None,
+            username: None,
+            username_env: None,
+            password: None,
+            password_env: None,
+            from: None,
+            to: None,
+            reply_to: None,
+            token: None,
+            token_env: None,
+            recipient_user_id: None,
+            context_token: None,
+            context_token_env: None,
+            route_tag: None,
+        })
+        .expect("provider config should be valid");
+        let limit = provider_message_limit(ProviderType::Ntfy, MessageSurface::MessageBody);
+        let signal = Signal::new_with_timestamp(
+            "signal-1",
+            "codex_cli",
+            "codex_cli",
+            "Codex",
+            "x".repeat(limit + 1),
+            test_timestamp(),
+            BTreeMap::new(),
+        );
+
+        let result = provider
+            .send(&signal)
+            .await
+            .expect("ntfy send behavior should remain unchanged");
+
+        assert_eq!(result.status, ProviderSendStatus::Sent);
     }
 
     fn test_signal() -> Signal {

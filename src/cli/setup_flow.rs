@@ -26,7 +26,7 @@ pub(super) struct SetupRouteFilters {
 pub(super) struct ProviderSetupContext<'a> {
     path: &'a Path,
     mode: ConfigWriteMode,
-    agent: setup::AgentSelection,
+    agent: setup::SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     route_filters: &'a SetupRouteFilters,
@@ -36,54 +36,39 @@ pub(super) struct ProviderSetupContext<'a> {
 
 pub(super) enum GuidedSetup {
     Ntfy {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
         topic: String,
     },
     FeishuLark {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Webhook {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Pushover {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Slack {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Discord {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Telegram {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Whatsapp {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     Wechat {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     MicrosoftTeams {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
     EmailSmtp {
-        agent: setup::AgentSelection,
+        agent: setup::SourceIntegrationId,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum InitialProvider {
-    Ntfy,
-    FeishuLark,
-    Webhook,
-    Pushover,
-    Slack,
-    Discord,
-    Telegram,
-    Whatsapp,
-    Wechat,
-    MicrosoftTeams,
-    EmailSmtp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,12 +93,12 @@ pub(super) enum NotificationPreference {
 #[derive(Debug, Clone, Default)]
 pub(super) struct SetupDefaults {
     pub(super) language: Option<CliLanguage>,
-    pub(super) agent: Option<setup::AgentSelection>,
+    pub(super) source_integration: Option<setup::SourceIntegrationId>,
     pub(super) answer_detail: Option<AnswerDetail>,
     pub(super) prompt_detail: Option<PromptDetail>,
     pub(super) minimum_task_duration_minutes: Option<u64>,
     pub(super) only_forward_from_project_paths: Vec<String>,
-    pub(super) provider: Option<InitialProvider>,
+    pub(super) provider_type: Option<ProviderType>,
     pub(super) ntfy_topic: Option<String>,
     pub(super) feishu_lark_webhook_url: Option<String>,
     pub(super) feishu_lark_secret: Option<String>,
@@ -148,12 +133,12 @@ pub(super) struct SetupDefaults {
 impl SetupDefaults {
     pub(super) fn from_config(config: &Config) -> Self {
         let agent_route = first_agent_route(config);
-        let agent = first_configured_agent(config);
+        let source_integration = first_configured_agent(config);
         let supports_duration_filter =
-            agent.is_some_and(setup::AgentSelection::supports_duration_filter);
+            source_integration.is_some_and(setup::SourceIntegrationId::supports_duration_filter);
         Self {
             language: Some(config.cli.language),
-            agent,
+            source_integration,
             answer_detail: Some(config.notification.answer_detail),
             prompt_detail: Some(config.notification.prompt_detail),
             minimum_task_duration_minutes: if supports_duration_filter {
@@ -164,7 +149,7 @@ impl SetupDefaults {
             only_forward_from_project_paths: agent_route
                 .map(|route| route.only_forward_from_project_paths.clone())
                 .unwrap_or_default(),
-            provider: first_configured_provider(config),
+            provider_type: first_configured_provider(config),
             ntfy_topic: first_provider_of_type(config, ProviderType::Ntfy)
                 .and_then(|provider| provider.topic.clone()),
             feishu_lark_webhook_url: first_provider_of_type(config, ProviderType::FeishuLark)
@@ -259,24 +244,6 @@ impl ConfigWriteMode {
         match self {
             Self::Created => i18n.text(Text::ConfigCreated),
             Self::Updated => i18n.text(Text::ConfigUpdated),
-        }
-    }
-}
-
-impl InitialProvider {
-    fn display_name(self) -> &'static str {
-        match self {
-            Self::Ntfy => "ntfy",
-            Self::FeishuLark => "Feishu/Lark custom bot",
-            Self::Webhook => "Webhook",
-            Self::Pushover => "Pushover",
-            Self::Slack => "Slack",
-            Self::Discord => "Discord",
-            Self::Telegram => "Telegram",
-            Self::Whatsapp => "WhatsApp",
-            Self::Wechat => "WeChat",
-            Self::MicrosoftTeams => "Microsoft Teams",
-            Self::EmailSmtp => "Email SMTP",
         }
     }
 }
@@ -428,7 +395,7 @@ fn write_setup_config_with_route_filters(
     path: &Path,
     config: &mut Config,
     language: CliLanguage,
-    agent: setup::AgentSelection,
+    agent: setup::SourceIntegrationId,
     route_filters: &SetupRouteFilters,
 ) -> anyhow::Result<()> {
     setup::apply_agent_route_filters(
@@ -516,8 +483,8 @@ pub(super) async fn run_guided_provider_setup(
     defaults: SetupDefaults,
     i18n: I18n,
 ) -> anyhow::Result<LoadedConfig> {
-    let agent = prompt_for_agent(defaults.agent, i18n)?;
-    let provider = prompt_for_initial_provider(defaults.provider, i18n)?;
+    let agent = prompt_for_agent(defaults.source_integration, i18n)?;
+    let provider = prompt_for_initial_provider(defaults.provider_type, i18n)?;
     let answer_detail = answer_detail_for_provider(provider, defaults.answer_detail, i18n)?;
     let prompt_detail = prompt_detail_for_provider(provider, defaults.prompt_detail, i18n)?;
     let minimum_task_duration_minutes = if agent.supports_duration_filter() {
@@ -541,249 +508,169 @@ pub(super) async fn run_guided_provider_setup(
     };
 
     match provider {
-        InitialProvider::Ntfy => run_ntfy_setup(context),
-        InitialProvider::FeishuLark => run_feishu_lark_setup(context),
-        InitialProvider::Webhook => run_webhook_setup(context),
-        InitialProvider::Pushover => run_pushover_setup(context),
-        InitialProvider::Slack => run_slack_setup(context),
-        InitialProvider::Discord => run_discord_setup(context),
-        InitialProvider::Telegram => run_telegram_setup(context),
-        InitialProvider::Whatsapp => run_whatsapp_setup(context),
-        InitialProvider::Wechat => run_wechat_setup(context).await,
-        InitialProvider::MicrosoftTeams => run_microsoft_teams_setup(context),
-        InitialProvider::EmailSmtp => run_email_smtp_setup(context),
+        ProviderType::Ntfy => run_ntfy_setup(context),
+        ProviderType::FeishuLark => run_feishu_lark_setup(context),
+        ProviderType::Webhook => run_webhook_setup(context),
+        ProviderType::Pushover => run_pushover_setup(context),
+        ProviderType::Slack => run_slack_setup(context),
+        ProviderType::Discord => run_discord_setup(context),
+        ProviderType::Telegram => run_telegram_setup(context),
+        ProviderType::Whatsapp => run_whatsapp_setup(context),
+        ProviderType::Wechat => run_wechat_setup(context).await,
+        ProviderType::MicrosoftTeams => run_microsoft_teams_setup(context),
+        ProviderType::EmailSmtp => run_email_smtp_setup(context),
     }
 }
 
 pub(super) fn answer_detail_for_provider(
-    provider: InitialProvider,
+    provider: ProviderType,
     default: Option<AnswerDetail>,
     i18n: I18n,
 ) -> anyhow::Result<AnswerDetail> {
-    match provider {
-        InitialProvider::Ntfy => {
+    match answer_detail_support(provider) {
+        NotificationDetailSupport::Configurable => prompt_for_answer_detail(default, i18n),
+        NotificationDetailSupport::FixedPreview { constraints } => {
             println!();
             println!(
                 "{}",
                 fixed_answer_detail_message(
                     i18n,
-                    "ntfy",
-                    "ntfy has a documented message size limit",
-                    "ntfy 有明确的消息长度限制"
+                    localized_setup_provider_display_name(provider, i18n),
+                    &message_constraints_reason(constraints, CliLanguage::English),
+                    &message_constraints_reason(constraints, CliLanguage::SimplifiedChinese),
                 )
             );
             Ok(AnswerDetail::Preview)
         }
-        InitialProvider::Pushover => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    "Pushover",
-                    "Pushover messages are limited to 1024 characters",
-                    "Pushover 消息最多 1024 字符"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::Slack => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    "Slack",
-                    "Slack has documented message length and truncation limits",
-                    "Slack 有明确的消息长度和截断限制"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::Discord => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    "Discord",
-                    "Discord webhook content is limited to 2000 characters",
-                    "Discord webhook 内容最多 2000 字符"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::Telegram => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    "Telegram",
-                    "Telegram Bot API text messages are limited to 4096 characters",
-                    "Telegram Bot API 文本消息最多 4096 字符"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::Whatsapp => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    "WhatsApp",
-                    "Agents Router uses a 4096-character delivery guard for WhatsApp text bodies",
-                    "Agents Router 对 WhatsApp 文本使用 4096 字符发送保护线"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::Wechat => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    localized(i18n, "WeChat", "微信"),
-                    "Agents Router uses a 3800-character delivery guard for WeChat iLink text messages",
-                    "Agents Router 对微信 iLink 文本消息使用 3800 字符发送保护线"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::MicrosoftTeams => {
-            println!();
-            println!(
-                "{}",
-                fixed_answer_detail_message(
-                    i18n,
-                    "Microsoft Teams",
-                    "incoming webhook messages have a 28 KB size limit",
-                    "incoming webhook 消息有 28 KB 大小限制"
-                )
-            );
-            Ok(AnswerDetail::Preview)
-        }
-        InitialProvider::FeishuLark | InitialProvider::Webhook | InitialProvider::EmailSmtp => {
-            prompt_for_answer_detail(default, i18n)
+        NotificationDetailSupport::FixedOff { .. } => {
+            unreachable!("answer detail policy never returns FixedOff")
         }
     }
 }
 
 pub(super) fn prompt_detail_for_provider(
-    provider: InitialProvider,
+    provider: ProviderType,
     default: Option<PromptDetail>,
     i18n: I18n,
 ) -> anyhow::Result<PromptDetail> {
-    match provider {
-        InitialProvider::Ntfy => {
+    match prompt_detail_support(provider) {
+        NotificationDetailSupport::Configurable => prompt_for_prompt_detail(default, i18n),
+        NotificationDetailSupport::FixedOff { constraints } => {
             println!();
             println!(
                 "{}",
                 fixed_prompt_detail_message(
                     i18n,
-                    "ntfy",
-                    "ntfy has a documented message size limit",
-                    "ntfy 有明确的消息长度限制"
+                    localized_setup_provider_display_name(provider, i18n),
+                    &message_constraints_reason(constraints, CliLanguage::English),
+                    &message_constraints_reason(constraints, CliLanguage::SimplifiedChinese),
                 )
             );
             Ok(PromptDetail::Off)
         }
-        InitialProvider::Pushover => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    "Pushover",
-                    "Pushover messages are limited to 1024 characters",
-                    "Pushover 消息最多 1024 字符"
-                )
-            );
-            Ok(PromptDetail::Off)
+        NotificationDetailSupport::FixedPreview { .. } => {
+            unreachable!("prompt detail policy never returns FixedPreview")
         }
-        InitialProvider::Slack => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    "Slack",
-                    "Slack has documented message length and truncation limits",
-                    "Slack 有明确的消息长度和截断限制"
-                )
-            );
-            Ok(PromptDetail::Off)
-        }
-        InitialProvider::Discord => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    "Discord",
-                    "Discord webhook content is limited to 2000 characters",
-                    "Discord webhook 内容最多 2000 字符"
-                )
-            );
-            Ok(PromptDetail::Off)
-        }
-        InitialProvider::Telegram => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    "Telegram",
-                    "Telegram Bot API text messages are limited to 4096 characters",
-                    "Telegram Bot API 文本消息最多 4096 字符"
-                )
-            );
-            Ok(PromptDetail::Off)
-        }
-        InitialProvider::Whatsapp => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    "WhatsApp",
-                    "Agents Router uses a 4096-character delivery guard for WhatsApp text bodies",
-                    "Agents Router 对 WhatsApp 文本使用 4096 字符发送保护线"
-                )
-            );
-            Ok(PromptDetail::Off)
-        }
-        InitialProvider::Wechat => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    localized(i18n, "WeChat", "微信"),
-                    "Agents Router uses a 3800-character delivery guard for WeChat iLink text messages",
-                    "Agents Router 对微信 iLink 文本消息使用 3800 字符发送保护线"
-                )
-            );
-            Ok(PromptDetail::Off)
-        }
-        InitialProvider::MicrosoftTeams => {
-            println!();
-            println!(
-                "{}",
-                fixed_prompt_detail_message(
-                    i18n,
-                    "Microsoft Teams",
-                    "incoming webhook messages have a 28 KB size limit",
-                    "incoming webhook 消息有 28 KB 大小限制"
-                )
-            );
-            Ok(PromptDetail::Off)
-        }
-        InitialProvider::FeishuLark | InitialProvider::Webhook | InitialProvider::EmailSmtp => {
-            prompt_for_prompt_detail(default, i18n)
-        }
+    }
+}
+
+fn localized_setup_provider_display_name(provider: ProviderType, i18n: I18n) -> &'static str {
+    if provider == ProviderType::Wechat && i18n.language() == CliLanguage::SimplifiedChinese {
+        "微信"
+    } else {
+        provider_descriptor(provider).display_name
+    }
+}
+
+fn message_constraints_reason(
+    constraints: &[ProviderMessageConstraint],
+    language: CliLanguage,
+) -> String {
+    let parts = constraints
+        .iter()
+        .map(|constraint| message_constraint_reason(*constraint, language))
+        .collect::<Vec<_>>();
+
+    match language {
+        CliLanguage::English => parts.join("; "),
+        CliLanguage::SimplifiedChinese => parts.join("；"),
+    }
+}
+
+fn message_constraint_reason(
+    constraint: ProviderMessageConstraint,
+    language: CliLanguage,
+) -> String {
+    let limit = constraint
+        .limit
+        .map(|limit| limit.to_string())
+        .unwrap_or_else(|| match language {
+            CliLanguage::English => "a provider limit".to_string(),
+            CliLanguage::SimplifiedChinese => "平台限制".to_string(),
+        });
+    match language {
+        CliLanguage::English => format!(
+            "{} is limited to {limit} {} by {}",
+            message_surface_label(constraint.surface, language),
+            message_limit_unit_label(constraint.unit, language),
+            message_constraint_source_label(constraint.source, language)
+        ),
+        CliLanguage::SimplifiedChinese => format!(
+            "{}由{}限制为 {limit} {}",
+            message_surface_label(constraint.surface, language),
+            message_constraint_source_label(constraint.source, language),
+            message_limit_unit_label(constraint.unit, language)
+        ),
+    }
+}
+
+fn message_surface_label(surface: MessageSurface, language: CliLanguage) -> &'static str {
+    match language {
+        CliLanguage::English => match surface {
+            MessageSurface::Title => "title",
+            MessageSurface::MessageBody => "message body",
+            MessageSurface::TextBody => "text body",
+            MessageSurface::WebhookContent => "webhook content",
+            MessageSurface::Payload => "payload",
+        },
+        CliLanguage::SimplifiedChinese => match surface {
+            MessageSurface::Title => "标题",
+            MessageSurface::MessageBody => "消息正文",
+            MessageSurface::TextBody => "文本正文",
+            MessageSurface::WebhookContent => "webhook 内容",
+            MessageSurface::Payload => "payload",
+        },
+    }
+}
+
+fn message_limit_unit_label(unit: MessageLimitUnit, language: CliLanguage) -> &'static str {
+    match language {
+        CliLanguage::English => match unit {
+            MessageLimitUnit::Characters => "characters",
+            MessageLimitUnit::Bytes => "bytes",
+        },
+        CliLanguage::SimplifiedChinese => match unit {
+            MessageLimitUnit::Characters => "字符",
+            MessageLimitUnit::Bytes => "字节",
+        },
+    }
+}
+
+fn message_constraint_source_label(
+    source: MessageConstraintSource,
+    language: CliLanguage,
+) -> &'static str {
+    match language {
+        CliLanguage::English => match source {
+            MessageConstraintSource::ProviderDocumented => "the provider documentation",
+            MessageConstraintSource::ProviderDocumentedDefault => "the provider default",
+            MessageConstraintSource::LocalDeliveryGuard => "the local delivery guard",
+        },
+        CliLanguage::SimplifiedChinese => match source {
+            MessageConstraintSource::ProviderDocumented => "平台文档",
+            MessageConstraintSource::ProviderDocumentedDefault => "平台默认值",
+            MessageConstraintSource::LocalDeliveryGuard => "本地发送保护线",
+        },
     }
 }
 

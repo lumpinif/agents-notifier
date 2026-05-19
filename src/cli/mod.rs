@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use console::style;
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -26,6 +26,9 @@ use agents_router::local_integrations::{
     self, ClaudeCodeHooksSetupStatus, CodexCliStopHookSetupStatus, LocalSourceIntegrationReport,
 };
 use agents_router::local_open_bridge;
+use agents_router::notification_detail_policy::{
+    NotificationDetailSupport, answer_detail_support, prompt_detail_support,
+};
 #[cfg(target_os = "macos")]
 use agents_router::paths::pid_file_path;
 use agents_router::paths::{
@@ -34,6 +37,10 @@ use agents_router::paths::{
 };
 #[cfg(target_os = "macos")]
 use agents_router::process::{StopOutcome, SystemProcessManager, stop_with_manager};
+use agents_router::provider_catalog::{
+    MessageConstraintSource, MessageLimitUnit, MessageSurface, ProviderMessageConstraint,
+    provider_descriptor, setup_provider_descriptors,
+};
 use agents_router::providers::build_providers;
 use agents_router::runtime::{
     RuntimeState, ensure_sources_supported_on_current_platform, reload_config_on_change,
@@ -44,6 +51,11 @@ use agents_router::service::{
 };
 use agents_router::setup;
 use agents_router::signal::{SignalLifecycle, SignalLifecycleStatus};
+use agents_router::source_integration_catalog::{
+    HookCommandTemplate, RuntimePlatform, SourceIngestFormat,
+    default_source_integration_for_platform, setup_source_integration_descriptors_for_platform,
+    source_integration_descriptor, source_integration_for_source,
+};
 use agents_router::sources::{
     agent_hook, claude_code, codex_cli, codex_desktop, gemini_cli, github_copilot_cli, opencode_cli,
 };
@@ -191,8 +203,8 @@ enum Command {
     Ingest {
         #[arg(long, help = "Configured source id for this event")]
         source: String,
-        #[arg(long, value_enum, help = "Structured hook input format")]
-        format: IngestFormat,
+        #[arg(long, value_parser = parse_source_ingest_format, help = "Structured hook input format")]
+        format: SourceIngestFormat,
     },
     #[command(hide = true)]
     MigrateLegacy {
@@ -201,21 +213,14 @@ enum Command {
     },
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
-#[clap(rename_all = "snake_case")]
-enum IngestFormat {
-    AgentHookEvent,
-    ClaudeCodeHook,
-    CodexCliStop,
-    GeminiCliHook,
-    GithubCopilotCliNotification,
-    OpencodeCliSession,
-}
-
 #[derive(Debug, Subcommand)]
 enum SafetyCommand {
     #[command(about = "Clear the delivery safety pause state")]
     Reset,
+}
+
+fn parse_source_ingest_format(value: &str) -> Result<SourceIngestFormat, String> {
+    value.parse()
 }
 
 pub async fn run() -> anyhow::Result<()> {
@@ -614,12 +619,24 @@ fn configured_agents(config: &Config) -> Vec<String> {
         .sources
         .iter()
         .filter_map(|source| match source.source_type {
-            SourceType::CodexDesktop => Some("Codex Desktop".to_string()),
-            SourceType::CodexCli => Some("Codex CLI".to_string()),
-            SourceType::ClaudeCode => Some("Claude Code".to_string()),
+            SourceType::CodexDesktop => Some(
+                source_integration_descriptor(setup::SourceIntegrationId::CodexDesktop)
+                    .display_name
+                    .to_string(),
+            ),
+            SourceType::CodexCli => Some(
+                source_integration_descriptor(setup::SourceIntegrationId::CodexCli)
+                    .display_name
+                    .to_string(),
+            ),
+            SourceType::ClaudeCode => Some(
+                source_integration_descriptor(setup::SourceIntegrationId::ClaudeCode)
+                    .display_name
+                    .to_string(),
+            ),
             SourceType::AgentHook => Some(
-                setup::AgentSelection::from_hook_source_id(&source.id)
-                    .map(|agent| agent.display_name().to_string())
+                source_integration_for_source(&source.id, source.source_type)
+                    .map(|descriptor| descriptor.display_name.to_string())
                     .unwrap_or_else(|| format!("Agent hook ({})", source.id)),
             ),
             SourceType::AgentsRouter => None,
@@ -627,36 +644,25 @@ fn configured_agents(config: &Config) -> Vec<String> {
         .collect()
 }
 
-fn first_configured_agent(config: &Config) -> Option<setup::AgentSelection> {
+fn first_configured_agent(config: &Config) -> Option<setup::SourceIntegrationId> {
     config
         .sources
         .iter()
-        .find_map(|source| match &source.source_type {
-            SourceType::CodexDesktop => Some(setup::AgentSelection::CodexDesktop),
-            SourceType::CodexCli => Some(setup::AgentSelection::CodexCli),
-            SourceType::ClaudeCode => Some(setup::AgentSelection::ClaudeCode),
-            SourceType::AgentHook => setup::AgentSelection::from_hook_source_id(&source.id),
+        .find_map(|source| match source.source_type {
+            SourceType::CodexDesktop => Some(setup::SourceIntegrationId::CodexDesktop),
+            SourceType::CodexCli => Some(setup::SourceIntegrationId::CodexCli),
+            SourceType::ClaudeCode => Some(setup::SourceIntegrationId::ClaudeCode),
+            SourceType::AgentHook => source_integration_for_source(&source.id, source.source_type)
+                .map(|descriptor| descriptor.id),
             SourceType::AgentsRouter => None,
         })
 }
 
-fn first_configured_provider(config: &Config) -> Option<InitialProvider> {
+fn first_configured_provider(config: &Config) -> Option<ProviderType> {
     config
         .providers
         .first()
-        .map(|provider| match &provider.provider_type {
-            ProviderType::Ntfy => InitialProvider::Ntfy,
-            ProviderType::FeishuLark => InitialProvider::FeishuLark,
-            ProviderType::Webhook => InitialProvider::Webhook,
-            ProviderType::Pushover => InitialProvider::Pushover,
-            ProviderType::Slack => InitialProvider::Slack,
-            ProviderType::Discord => InitialProvider::Discord,
-            ProviderType::Telegram => InitialProvider::Telegram,
-            ProviderType::Whatsapp => InitialProvider::Whatsapp,
-            ProviderType::Wechat => InitialProvider::Wechat,
-            ProviderType::MicrosoftTeams => InitialProvider::MicrosoftTeams,
-            ProviderType::EmailSmtp => InitialProvider::EmailSmtp,
-        })
+        .map(|provider| provider.provider_type)
 }
 
 fn first_provider_of_type(config: &Config, provider_type: ProviderType) -> Option<&ProviderConfig> {
@@ -835,67 +841,67 @@ async fn finish_guided_setup(setup: GuidedSetup, i18n: I18n) -> anyhow::Result<(
             println!("4. Topic: {topic}");
             println!();
             wait_for_enter(i18n.text(Text::SendTestPromptNtfy))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::FeishuLark { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextFeishuLark));
             wait_for_enter(i18n.text(Text::SendTestPromptFeishuLark))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Webhook { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextWebhook));
             wait_for_enter(i18n.text(Text::SendTestPromptWebhook))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Pushover { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextPushover));
             wait_for_enter(i18n.text(Text::SendTestPromptPushover))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Slack { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextSlack));
             wait_for_enter(i18n.text(Text::SendTestPromptSlack))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Discord { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextDiscord));
             wait_for_enter(i18n.text(Text::SendTestPromptDiscord))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Telegram { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextTelegram));
             wait_for_enter(i18n.text(Text::SendTestPromptTelegram))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Whatsapp { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextWhatsapp));
             wait_for_enter(i18n.text(Text::SendTestPromptWhatsapp))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::Wechat { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextWechat));
             wait_for_enter(i18n.text(Text::SendTestPromptWechat))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::MicrosoftTeams { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextTeams));
             wait_for_enter(i18n.text(Text::SendTestPromptTeams))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
         GuidedSetup::EmailSmtp { agent } => {
             println!();
             println!("{}", i18n.text(Text::NextEmail));
             wait_for_enter(i18n.text(Text::SendTestPromptEmail))?;
-            print_agent_setup_note(agent, i18n);
+            print_source_integration_setup_note(agent, i18n);
         }
     }
 
@@ -915,81 +921,91 @@ async fn finish_guided_setup(setup: GuidedSetup, i18n: I18n) -> anyhow::Result<(
     Ok(())
 }
 
-fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
+fn print_source_integration_setup_note(source_integration: setup::SourceIntegrationId, i18n: I18n) {
+    let descriptor = source_integration_descriptor(source_integration);
+    let hook_command = descriptor.hook_command;
+
     if i18n.language() == CliLanguage::SimplifiedChinese {
-        match agent {
-            setup::AgentSelection::CodexDesktop => {
+        match source_integration {
+            setup::SourceIntegrationId::CodexDesktop => {
                 println!("Agents Router 会监听这台电脑上的 Codex Desktop 完成事件。");
             }
-            setup::AgentSelection::CodexCli => {
+            setup::SourceIntegrationId::CodexCli => {
                 println!("Agents Router 已配置 Codex CLI Stop hook，用来接收完成事件。");
                 println!(
                     "setup 不会覆盖现有 `notify`；如果你手动改配置，请保持 Stop hook 指向 Agents Router。"
                 );
             }
-            setup::AgentSelection::ClaudeCode => {
+            setup::SourceIntegrationId::ClaudeCode => {
                 println!("Agents Router 已配置 Claude Code hooks，用来接收完成事件和任务耗时。");
                 println!(
                     "如果你手动改 Claude Code settings，请保留 SessionStart、UserPromptSubmit、Stop 和 Notification hooks 指向 Agents Router。"
                 );
             }
-            setup::AgentSelection::CursorCli => {
-                println!("Agents Router 已准备接收 Cursor CLI hook event。");
-                println!(
-                    "让 Cursor CLI wrapper 在 CLI 成功退出后调用：`agents-router emit --source cursor_cli`。"
+            setup::SourceIntegrationId::CursorCli => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "wrapper 在 CLI 成功退出后",
+                    hook_command,
                 );
             }
-            setup::AgentSelection::OpenCodeCli => {
-                println!("Agents Router 已准备接收 OpenCode CLI hook event。");
-                println!(
-                    "让 OpenCode plugin 在 session idle 时调用：`agents-router ingest --source opencode_cli --format opencode_cli_session`。"
+            setup::SourceIntegrationId::OpenCodeCli => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "plugin 在 session idle 时",
+                    hook_command,
                 );
             }
-            setup::AgentSelection::OpenClaw => {
-                println!("Agents Router 已准备接收 OpenClaw hook event。");
-                println!(
-                    "让 OpenClaw plugin hook 在 agent_end 调用：`agents-router emit --source openclaw`。"
+            setup::SourceIntegrationId::OpenClaw => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "plugin hook 在 agent_end",
+                    hook_command,
                 );
             }
-            setup::AgentSelection::HermesAgentCli => {
-                println!("Agents Router 已准备接收 Hermes Agent CLI hook event。");
-                println!(
-                    "让 Hermes plugin hook 在 post_llm_call 调用：`agents-router emit --source hermes_agent_cli`。"
+            setup::SourceIntegrationId::HermesAgentCli => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "plugin hook 在 post_llm_call",
+                    hook_command,
                 );
             }
-            setup::AgentSelection::GithubCopilotCli => {
-                println!("Agents Router 已准备接收 GitHub Copilot CLI hook event。");
-                println!(
-                    "让 GitHub Copilot CLI notification hook 调用：`agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification`。"
+            setup::SourceIntegrationId::GithubCopilotCli => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "notification hook",
+                    hook_command,
                 );
             }
-            setup::AgentSelection::GeminiCli => {
-                println!("Agents Router 已准备接收 Gemini CLI hook event。");
-                println!(
-                    "让 Gemini CLI AfterAgent 或 Notification hook 调用：`agents-router ingest --source gemini_cli --format gemini_cli_hook`。"
+            setup::SourceIntegrationId::GeminiCli => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "AfterAgent 或 Notification hook",
+                    hook_command,
                 );
             }
-            setup::AgentSelection::Aider => {
-                println!("Agents Router 已准备接收 Aider notification event。");
-                println!(
-                    "让 Aider notifications-command 调用：`agents-router emit --source aider`。"
+            setup::SourceIntegrationId::Aider => {
+                print_chinese_hook_command_note(
+                    descriptor.display_name,
+                    "notifications-command",
+                    hook_command,
                 );
             }
         }
         return;
     }
 
-    match agent {
-        setup::AgentSelection::CodexDesktop => {
+    match source_integration {
+        setup::SourceIntegrationId::CodexDesktop => {
             println!("Agents Router will watch Codex Desktop completed jobs on this computer.");
         }
-        setup::AgentSelection::CodexCli => {
+        setup::SourceIntegrationId::CodexCli => {
             println!("Agents Router configured the Codex CLI Stop hook for completion events.");
             println!(
                 "Setup does not overwrite existing `notify`; if you edit config manually, keep the Stop hook pointed at Agents Router."
             );
         }
-        setup::AgentSelection::ClaudeCode => {
+        setup::SourceIntegrationId::ClaudeCode => {
             println!(
                 "Agents Router configured Claude Code hooks for completion events and task duration."
             );
@@ -997,46 +1013,95 @@ fn print_agent_setup_note(agent: setup::AgentSelection, i18n: I18n) {
                 "If you edit Claude Code settings manually, keep SessionStart, UserPromptSubmit, Stop, and Notification hooks pointed at Agents Router."
             );
         }
-        setup::AgentSelection::CursorCli => {
-            println!("Agents Router is ready for Cursor CLI hook events.");
-            println!(
-                "Configure your Cursor CLI wrapper to call `agents-router emit --source cursor_cli` after the CLI exits successfully."
+        setup::SourceIntegrationId::CursorCli => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "wrapper after the CLI exits successfully",
+                hook_command,
             );
         }
-        setup::AgentSelection::OpenCodeCli => {
-            println!("Agents Router is ready for OpenCode CLI hook events.");
-            println!(
-                "Configure your OpenCode plugin to call `agents-router ingest --source opencode_cli --format opencode_cli_session` when the session becomes idle."
+        setup::SourceIntegrationId::OpenCodeCli => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "plugin when the session becomes idle",
+                hook_command,
             );
         }
-        setup::AgentSelection::OpenClaw => {
-            println!("Agents Router is ready for OpenClaw hook events.");
-            println!(
-                "Configure your OpenClaw plugin hook to call `agents-router emit --source openclaw` from agent_end."
+        setup::SourceIntegrationId::OpenClaw => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "plugin hook from agent_end",
+                hook_command,
             );
         }
-        setup::AgentSelection::HermesAgentCli => {
-            println!("Agents Router is ready for Hermes Agent CLI hook events.");
-            println!(
-                "Configure your Hermes plugin hook to call `agents-router emit --source hermes_agent_cli` from post_llm_call."
+        setup::SourceIntegrationId::HermesAgentCli => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "plugin hook from post_llm_call",
+                hook_command,
             );
         }
-        setup::AgentSelection::GithubCopilotCli => {
-            println!("Agents Router is ready for GitHub Copilot CLI hook events.");
-            println!(
-                "Configure your GitHub Copilot CLI notification hook to call `agents-router ingest --source github_copilot_cli --format github_copilot_cli_notification`."
+        setup::SourceIntegrationId::GithubCopilotCli => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "notification hook",
+                hook_command,
             );
         }
-        setup::AgentSelection::GeminiCli => {
-            println!("Agents Router is ready for Gemini CLI hook events.");
-            println!(
-                "Configure your Gemini CLI AfterAgent or Notification hook to call `agents-router ingest --source gemini_cli --format gemini_cli_hook`."
+        setup::SourceIntegrationId::GeminiCli => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "AfterAgent or Notification hook",
+                hook_command,
             );
         }
-        setup::AgentSelection::Aider => {
-            println!("Agents Router is ready for Aider notification events.");
+        setup::SourceIntegrationId::Aider => {
+            print_english_hook_command_note(
+                descriptor.display_name,
+                "notifications-command",
+                hook_command,
+            );
+        }
+    }
+}
+
+fn print_english_hook_command_note(
+    display_name: &str,
+    integration_point: &str,
+    command: Option<HookCommandTemplate>,
+) {
+    println!("Agents Router is ready for {display_name} hook events.");
+    if let Some(command) = command {
+        if command.requires_emit_fields() {
             println!(
-                "Configure Aider notifications-command to call `agents-router emit --source aider`."
+                "Configure your {display_name} {integration_point} to call `{}` with `--title` and `--body` from the wrapper.",
+                command.command()
+            );
+        } else {
+            println!(
+                "Configure your {display_name} {integration_point} to call `{}`.",
+                command.command()
+            );
+        }
+    }
+}
+
+fn print_chinese_hook_command_note(
+    display_name: &str,
+    integration_point: &str,
+    command: Option<HookCommandTemplate>,
+) {
+    println!("Agents Router 已准备接收 {display_name} hook event。");
+    if let Some(command) = command {
+        if command.requires_emit_fields() {
+            println!(
+                "让 {display_name} {integration_point} 调用 `{}`，并由 wrapper 传入 `--title` 和 `--body`。",
+                command.command()
+            );
+        } else {
+            println!(
+                "让 {display_name} {integration_point} 调用：`{}`。",
+                command.command()
             );
         }
     }
@@ -1403,24 +1468,24 @@ fn local_event_from_emit(
     event
 }
 
-async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()> {
+async fn run_ingest(source_id: &str, format: SourceIngestFormat) -> anyhow::Result<()> {
     let mut raw = String::new();
     io::stdin()
         .read_to_string(&mut raw)
         .context("failed to read hook event from stdin")?;
 
     let event = match format {
-        IngestFormat::AgentHookEvent => {
+        SourceIngestFormat::AgentHookEvent => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse agent_hook event JSON")?;
             agent_hook::local_event_from_structured_hook(source_id, input)?
         }
-        IngestFormat::ClaudeCodeHook => {
+        SourceIngestFormat::ClaudeCodeHook => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse claude_code hook JSON")?;
             claude_code::local_event_from_hook(source_id, input)?
         }
-        IngestFormat::CodexCliStop => {
+        SourceIngestFormat::CodexCliStop => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse codex_cli stop hook JSON")?;
             if codex_cli_stop_hook_is_shadowed_by_codex_desktop(source_id, &input) {
@@ -1428,17 +1493,17 @@ async fn run_ingest(source_id: &str, format: IngestFormat) -> anyhow::Result<()>
             }
             codex_cli::local_event_from_stop_hook(source_id, input)?
         }
-        IngestFormat::GeminiCliHook => {
+        SourceIngestFormat::GeminiCliHook => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse gemini_cli hook JSON")?;
             gemini_cli::local_event_from_hook(source_id, input)?
         }
-        IngestFormat::GithubCopilotCliNotification => {
+        SourceIngestFormat::GithubCopilotCliNotification => {
             let input = serde_json::from_str(&raw)
                 .context("failed to parse github_copilot_cli notification hook JSON")?;
             github_copilot_cli::local_event_from_notification_hook(source_id, input)?
         }
-        IngestFormat::OpencodeCliSession => {
+        SourceIngestFormat::OpencodeCliSession => {
             let input =
                 serde_json::from_str(&raw).context("failed to parse opencode_cli session JSON")?;
             opencode_cli::local_event_from_session_input(source_id, input)?

@@ -23,7 +23,7 @@ fn writes_parseable_ntfy_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_ntfy_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
@@ -53,7 +53,7 @@ fn writes_parseable_full_answer_detail_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_webhook_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Full,
         PromptDetail::Off,
         "https://example.com/hook",
@@ -70,7 +70,7 @@ fn writes_parseable_on_prompt_detail_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_webhook_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::On,
         "https://example.com/hook",
@@ -87,7 +87,7 @@ fn writes_parseable_codex_cli_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_ntfy_config(
-        AgentSelection::CodexCli,
+        SourceIntegrationId::CodexCli,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
@@ -108,7 +108,7 @@ fn writes_parseable_claude_code_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_ntfy_config(
-        AgentSelection::ClaudeCode,
+        SourceIntegrationId::ClaudeCode,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
@@ -130,7 +130,7 @@ fn writes_parseable_agent_hook_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_ntfy_config(
-        AgentSelection::OpenCodeCli,
+        SourceIntegrationId::OpenCodeCli,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
@@ -155,7 +155,7 @@ fn applies_agent_route_filters_without_filtering_setup_test_route() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let mut config = build_ntfy_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
@@ -163,7 +163,7 @@ fn applies_agent_route_filters_without_filtering_setup_test_route() {
 
     apply_agent_route_filters(
         &mut config,
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         Some(12),
         vec!["/Users/tester/projects/agents-router".to_string()],
     );
@@ -187,7 +187,7 @@ fn writes_parseable_feishu_lark_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_feishu_lark_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://open.larksuite.com/open-apis/bot/v2/hook/test",
@@ -219,7 +219,7 @@ fn writes_parseable_webhook_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_webhook_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://example.com/hook",
@@ -244,7 +244,7 @@ fn writes_parseable_pushover_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_pushover_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456789012345678901234567890",
@@ -278,7 +278,7 @@ fn writes_parseable_slack_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_slack_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         &slack_test_url(),
@@ -303,7 +303,7 @@ fn writes_parseable_discord_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_discord_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://discord.com/api/webhooks/123456789012345678/token",
@@ -328,7 +328,7 @@ fn writes_parseable_telegram_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_telegram_config(
-        AgentSelection::GithubCopilotCli,
+        SourceIntegrationId::GithubCopilotCli,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456:test-token",
@@ -361,7 +361,7 @@ fn writes_parseable_whatsapp_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_whatsapp_config(
-        AgentSelection::GeminiCli,
+        SourceIntegrationId::GeminiCli,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "test-access-token",
@@ -395,7 +395,7 @@ fn writes_parseable_wechat_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_wechat_config(
-        AgentSelection::Aider,
+        SourceIntegrationId::Aider,
         AnswerDetail::Preview,
         PromptDetail::Off,
         DEFAULT_WECHAT_BASE_URL,
@@ -431,7 +431,7 @@ fn writes_parseable_microsoft_teams_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_microsoft_teams_config(
-        AgentSelection::Aider,
+        SourceIntegrationId::Aider,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://example.com/workflow?sig=secret",
@@ -457,7 +457,7 @@ fn writes_parseable_email_smtp_config() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
     let config = build_email_smtp_config(
-        AgentSelection::CodexCli,
+        SourceIntegrationId::CodexCli,
         AnswerDetail::Full,
         PromptDetail::On,
         "smtp.example.com",
@@ -680,7 +680,7 @@ fn rejects_webhook_url_with_basic_auth() {
 #[test]
 fn extracts_ntfy_subscriptions_from_config() {
     let config = build_ntfy_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
@@ -701,7 +701,7 @@ fn extracts_ntfy_subscriptions_from_config() {
 #[test]
 fn extracts_feishu_lark_targets_without_printing_webhook_token() {
     let config = build_feishu_lark_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
@@ -723,7 +723,7 @@ fn extracts_feishu_lark_targets_without_printing_webhook_token() {
 #[test]
 fn extracts_webhook_targets_without_printing_full_url() {
     let config = build_webhook_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://example.com/secret-token",
@@ -743,7 +743,7 @@ fn extracts_webhook_targets_without_printing_full_url() {
 #[test]
 fn extracts_pushover_targets_without_printing_private_keys() {
     let config = build_pushover_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456789012345678901234567890",
@@ -767,13 +767,13 @@ fn extracts_pushover_targets_without_printing_private_keys() {
 #[test]
 fn extracts_slack_and_discord_targets_without_printing_webhook_tokens() {
     let slack_config = build_slack_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         &slack_test_url(),
     );
     let discord_config = build_discord_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://discord.com/api/webhooks/123456789012345678/token",
@@ -798,14 +798,14 @@ fn extracts_slack_and_discord_targets_without_printing_webhook_tokens() {
 #[test]
 fn extracts_new_provider_targets_without_printing_private_tokens() {
     let telegram_config = build_telegram_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456:test-token",
         "@agents_router",
     );
     let whatsapp_config = build_whatsapp_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "test-access-token",
@@ -813,7 +813,7 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
         "15551234567",
     );
     let wechat_config = build_wechat_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         DEFAULT_WECHAT_BASE_URL,
@@ -823,13 +823,13 @@ fn extracts_new_provider_targets_without_printing_private_tokens() {
         None,
     );
     let teams_config = build_microsoft_teams_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://example.com/workflow?sig=secret",
     );
     let email_config = build_email_smtp_config(
-        AgentSelection::CodexDesktop,
+        SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "smtp.example.com",

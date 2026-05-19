@@ -48,7 +48,7 @@ fn uninstall_keeps_npm_managed_binary_paths() {
 #[test]
 fn setup_defaults_preserve_existing_config_answers() {
     let mut config = setup::build_feishu_lark_config(
-        setup::AgentSelection::ClaudeCode,
+        setup::SourceIntegrationId::ClaudeCode,
         AnswerDetail::Full,
         PromptDetail::On,
         "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
@@ -56,7 +56,7 @@ fn setup_defaults_preserve_existing_config_answers() {
     );
     setup::apply_agent_route_filters(
         &mut config,
-        setup::AgentSelection::ClaudeCode,
+        setup::SourceIntegrationId::ClaudeCode,
         Some(12),
         vec!["/Users/tester/projects/agents-router".to_string()],
     );
@@ -65,7 +65,10 @@ fn setup_defaults_preserve_existing_config_answers() {
     let defaults = SetupDefaults::from_config(&config);
 
     assert_eq!(defaults.language, Some(CliLanguage::SimplifiedChinese));
-    assert_eq!(defaults.agent, Some(setup::AgentSelection::ClaudeCode));
+    assert_eq!(
+        defaults.source_integration,
+        Some(setup::SourceIntegrationId::ClaudeCode)
+    );
     assert_eq!(defaults.answer_detail, Some(AnswerDetail::Full));
     assert_eq!(defaults.prompt_detail, Some(PromptDetail::On));
     assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
@@ -73,7 +76,7 @@ fn setup_defaults_preserve_existing_config_answers() {
         defaults.only_forward_from_project_paths,
         vec!["/Users/tester/projects/agents-router".to_string()]
     );
-    assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
+    assert_eq!(defaults.provider_type, Some(ProviderType::FeishuLark));
     assert_eq!(
         defaults.feishu_lark_webhook_url.as_deref(),
         Some("https://open.larksuite.com/open-apis/bot/v2/hook/secret-token")
@@ -87,43 +90,126 @@ fn setup_defaults_preserve_existing_config_answers() {
 #[test]
 fn setup_defaults_preserve_duration_filter_for_codex_desktop() {
     let mut config = setup::build_ntfy_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
     );
     setup::apply_agent_route_filters(
         &mut config,
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         Some(12),
         Vec::new(),
     );
 
     let defaults = SetupDefaults::from_config(&config);
 
-    assert_eq!(defaults.agent, Some(setup::AgentSelection::CodexDesktop));
+    assert_eq!(
+        defaults.source_integration,
+        Some(setup::SourceIntegrationId::CodexDesktop)
+    );
     assert_eq!(defaults.minimum_task_duration_minutes, Some(12));
 }
 
 #[test]
 fn setup_defaults_drop_duration_filter_for_agents_without_duration_support() {
     let mut config = setup::build_ntfy_config(
-        setup::AgentSelection::Aider,
+        setup::SourceIntegrationId::Aider,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "agents-router-test",
     );
     setup::apply_agent_route_filters(
         &mut config,
-        setup::AgentSelection::Aider,
+        setup::SourceIntegrationId::Aider,
         Some(12),
         Vec::new(),
     );
 
     let defaults = SetupDefaults::from_config(&config);
 
-    assert_eq!(defaults.agent, Some(setup::AgentSelection::Aider));
+    assert_eq!(
+        defaults.source_integration,
+        Some(setup::SourceIntegrationId::Aider)
+    );
     assert_eq!(defaults.minimum_task_duration_minutes, None);
+}
+
+#[test]
+fn setup_defaults_require_source_id_and_type_to_match_catalog_integration() {
+    let mut config = setup::build_ntfy_config(
+        setup::SourceIntegrationId::CodexCli,
+        AnswerDetail::Preview,
+        PromptDetail::Off,
+        "agents-router-test",
+    );
+    config.sources[0].source_type = SourceType::AgentHook;
+
+    let defaults = SetupDefaults::from_config(&config);
+
+    assert_eq!(defaults.source_integration, None);
+    assert_eq!(
+        configured_agents(&config),
+        vec!["Agent hook (codex_cli)".to_string()]
+    );
+}
+
+#[test]
+fn setup_defaults_keep_codex_desktop_selection_for_custom_source_id() {
+    let mut config = setup::build_ntfy_config(
+        setup::SourceIntegrationId::CodexDesktop,
+        AnswerDetail::Preview,
+        PromptDetail::Off,
+        "agents-router-test",
+    );
+    config.sources[0].id = "my_desktop".to_string();
+    config.routes[0].sources = vec!["my_desktop".to_string()];
+
+    let defaults = SetupDefaults::from_config(&config);
+
+    assert_eq!(
+        defaults.source_integration,
+        Some(setup::SourceIntegrationId::CodexDesktop)
+    );
+    assert_eq!(
+        configured_agents(&config),
+        vec!["Codex Desktop".to_string()]
+    );
+}
+
+#[test]
+fn catalog_ingest_hook_commands_parse_as_cli_commands() {
+    for descriptor in
+        agents_router::source_integration_catalog::all_source_integration_descriptors()
+    {
+        let Some(command) = descriptor.hook_command else {
+            continue;
+        };
+        if command.requires_emit_fields() {
+            continue;
+        }
+
+        Cli::try_parse_from(command.command().split_whitespace())
+            .expect("catalog ingest hook command should parse as a CLI command");
+    }
+}
+
+#[test]
+fn catalog_emit_hook_commands_are_explicit_prefixes() {
+    for descriptor in
+        agents_router::source_integration_catalog::all_source_integration_descriptors()
+    {
+        let Some(command) = descriptor.hook_command else {
+            continue;
+        };
+        if !command.requires_emit_fields() {
+            continue;
+        }
+
+        let err = Cli::try_parse_from(command.command().split_whitespace())
+            .expect_err("emit command prefix should still require title and body");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
 }
 
 #[test]
@@ -218,7 +304,7 @@ providers = ["work_chat"]
 
     let defaults = SetupDefaults::from_config(&config);
 
-    assert_eq!(defaults.provider, Some(InitialProvider::FeishuLark));
+    assert_eq!(defaults.provider_type, Some(ProviderType::FeishuLark));
     assert_eq!(defaults.feishu_lark_webhook_url, None);
     assert_eq!(defaults.feishu_lark_secret, None);
 }
@@ -226,7 +312,7 @@ providers = ["work_chat"]
 #[test]
 fn setup_defaults_preserve_existing_pushover_config() {
     let config = setup::build_pushover_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456789012345678901234567890",
@@ -237,7 +323,7 @@ fn setup_defaults_preserve_existing_pushover_config() {
 
     let defaults = SetupDefaults::from_config(&config);
 
-    assert_eq!(defaults.provider, Some(InitialProvider::Pushover));
+    assert_eq!(defaults.provider_type, Some(ProviderType::Pushover));
     assert_eq!(
         defaults.pushover_app_token.as_deref(),
         Some("123456789012345678901234567890")
@@ -253,28 +339,28 @@ fn setup_defaults_preserve_existing_pushover_config() {
 #[test]
 fn setup_defaults_preserve_existing_slack_and_discord_config() {
     let slack_config = setup::build_slack_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         &slack_test_url(),
     );
     let slack_defaults = SetupDefaults::from_config(&slack_config);
 
-    assert_eq!(slack_defaults.provider, Some(InitialProvider::Slack));
+    assert_eq!(slack_defaults.provider_type, Some(ProviderType::Slack));
     assert_eq!(
         slack_defaults.slack_webhook_url.as_deref(),
         Some(slack_test_url().as_str())
     );
 
     let discord_config = setup::build_discord_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "https://discord.com/api/webhooks/123456789012345678/token",
     );
     let discord_defaults = SetupDefaults::from_config(&discord_config);
 
-    assert_eq!(discord_defaults.provider, Some(InitialProvider::Discord));
+    assert_eq!(discord_defaults.provider_type, Some(ProviderType::Discord));
     assert_eq!(
         discord_defaults.discord_webhook_url.as_deref(),
         Some("https://discord.com/api/webhooks/123456789012345678/token")
@@ -285,27 +371,27 @@ fn setup_defaults_preserve_existing_slack_and_discord_config() {
 fn prompt_detail_is_forced_off_for_length_limited_providers() {
     let i18n = I18n::default();
     assert_eq!(
-        prompt_detail_for_provider(InitialProvider::Ntfy, Some(PromptDetail::On), i18n)
+        prompt_detail_for_provider(ProviderType::Ntfy, Some(PromptDetail::On), i18n)
             .expect("ntfy prompt detail should resolve"),
         PromptDetail::Off
     );
     assert_eq!(
-        prompt_detail_for_provider(InitialProvider::Pushover, Some(PromptDetail::On), i18n)
+        prompt_detail_for_provider(ProviderType::Pushover, Some(PromptDetail::On), i18n)
             .expect("Pushover prompt detail should resolve"),
         PromptDetail::Off
     );
     assert_eq!(
-        prompt_detail_for_provider(InitialProvider::Slack, Some(PromptDetail::On), i18n)
+        prompt_detail_for_provider(ProviderType::Slack, Some(PromptDetail::On), i18n)
             .expect("Slack prompt detail should resolve"),
         PromptDetail::Off
     );
     assert_eq!(
-        prompt_detail_for_provider(InitialProvider::Discord, Some(PromptDetail::On), i18n)
+        prompt_detail_for_provider(ProviderType::Discord, Some(PromptDetail::On), i18n)
             .expect("Discord prompt detail should resolve"),
         PromptDetail::Off
     );
     assert_eq!(
-        prompt_detail_for_provider(InitialProvider::Wechat, Some(PromptDetail::On), i18n)
+        prompt_detail_for_provider(ProviderType::Wechat, Some(PromptDetail::On), i18n)
             .expect("WeChat prompt detail should resolve"),
         PromptDetail::Off
     );
@@ -315,27 +401,27 @@ fn prompt_detail_is_forced_off_for_length_limited_providers() {
 fn answer_detail_is_forced_to_preview_for_length_limited_providers() {
     let i18n = I18n::default();
     assert_eq!(
-        answer_detail_for_provider(InitialProvider::Ntfy, Some(AnswerDetail::Full), i18n)
+        answer_detail_for_provider(ProviderType::Ntfy, Some(AnswerDetail::Full), i18n)
             .expect("ntfy answer detail should resolve"),
         AnswerDetail::Preview
     );
     assert_eq!(
-        answer_detail_for_provider(InitialProvider::Pushover, Some(AnswerDetail::Full), i18n)
+        answer_detail_for_provider(ProviderType::Pushover, Some(AnswerDetail::Full), i18n)
             .expect("Pushover answer detail should resolve"),
         AnswerDetail::Preview
     );
     assert_eq!(
-        answer_detail_for_provider(InitialProvider::Slack, Some(AnswerDetail::Full), i18n)
+        answer_detail_for_provider(ProviderType::Slack, Some(AnswerDetail::Full), i18n)
             .expect("Slack answer detail should resolve"),
         AnswerDetail::Preview
     );
     assert_eq!(
-        answer_detail_for_provider(InitialProvider::Discord, Some(AnswerDetail::Full), i18n)
+        answer_detail_for_provider(ProviderType::Discord, Some(AnswerDetail::Full), i18n)
             .expect("Discord answer detail should resolve"),
         AnswerDetail::Preview
     );
     assert_eq!(
-        answer_detail_for_provider(InitialProvider::Wechat, Some(AnswerDetail::Full), i18n)
+        answer_detail_for_provider(ProviderType::Wechat, Some(AnswerDetail::Full), i18n)
             .expect("WeChat answer detail should resolve"),
         AnswerDetail::Preview
     );
@@ -345,23 +431,23 @@ fn answer_detail_is_forced_to_preview_for_length_limited_providers() {
 fn macos_and_windows_offer_codex_desktop_as_default_agent() {
     assert_eq!(
         default_agent_for_runtime_platform(RuntimePlatform::Macos),
-        setup::AgentSelection::CodexDesktop
+        setup::SourceIntegrationId::CodexDesktop
     );
     assert_eq!(
         default_agent_for_runtime_platform(RuntimePlatform::Windows),
-        setup::AgentSelection::CodexDesktop
+        setup::SourceIntegrationId::CodexDesktop
     );
 
     let macos_options = supported_agent_options_for_platform(RuntimePlatform::Macos);
     let windows_options = supported_agent_options_for_platform(RuntimePlatform::Windows);
 
     assert_eq!(
-        macos_options.first(),
-        Some(&("1", setup::AgentSelection::CodexDesktop))
+        macos_options.first().map(|(_, agent)| *agent),
+        Some(setup::SourceIntegrationId::CodexDesktop)
     );
     assert_eq!(
-        windows_options.first(),
-        Some(&("1", setup::AgentSelection::CodexDesktop))
+        windows_options.first().map(|(_, agent)| *agent),
+        Some(setup::SourceIntegrationId::CodexDesktop)
     );
 }
 
@@ -369,26 +455,26 @@ fn macos_and_windows_offer_codex_desktop_as_default_agent() {
 fn linux_starts_setup_at_codex_cli() {
     assert_eq!(
         default_agent_for_runtime_platform(RuntimePlatform::Linux),
-        setup::AgentSelection::CodexCli
+        setup::SourceIntegrationId::CodexCli
     );
 
     let options = supported_agent_options_for_platform(RuntimePlatform::Linux);
 
     assert_eq!(
-        options.first(),
-        Some(&("1", setup::AgentSelection::CodexCli))
+        options.first().map(|(_, agent)| *agent),
+        Some(setup::SourceIntegrationId::CodexCli)
     );
     assert!(
         !options
             .iter()
-            .any(|(_, agent)| *agent == setup::AgentSelection::CodexDesktop)
+            .any(|(_, agent)| *agent == setup::SourceIntegrationId::CodexDesktop)
     );
 }
 
 #[test]
 fn setup_provider_summary_reports_feishu_lark_without_exposing_webhook_token() {
     let config = setup::build_feishu_lark_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Full,
         PromptDetail::On,
         "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
@@ -417,7 +503,7 @@ fn setup_provider_summary_reports_feishu_lark_without_exposing_webhook_token() {
 #[test]
 fn setup_provider_summary_reports_signature_without_exposing_secret() {
     let config = setup::build_feishu_lark_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Full,
         PromptDetail::On,
         "https://open.larksuite.com/open-apis/bot/v2/hook/secret-token",
@@ -442,7 +528,7 @@ fn setup_provider_summary_reports_signature_without_exposing_secret() {
 #[test]
 fn setup_provider_summary_reports_hidden_credentials_without_printing_values() {
     let telegram_config = setup::build_telegram_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456:test-token",
@@ -464,7 +550,7 @@ fn setup_provider_summary_reports_hidden_credentials_without_printing_values() {
     assert!(!format!("{telegram:?}").contains("123456:test-token"));
 
     let pushover_config = setup::build_pushover_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Preview,
         PromptDetail::Off,
         "123456789012345678901234567890",
@@ -499,7 +585,7 @@ fn setup_provider_summary_reports_hidden_credentials_without_printing_values() {
 #[test]
 fn setup_provider_summary_reports_email_without_printing_password() {
     let config = setup::build_email_smtp_config(
-        setup::AgentSelection::CodexDesktop,
+        setup::SourceIntegrationId::CodexDesktop,
         AnswerDetail::Full,
         PromptDetail::On,
         "smtp.example.com",

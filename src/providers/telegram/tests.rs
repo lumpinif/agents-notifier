@@ -6,6 +6,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 
 #[tokio::test]
 async fn sends_message_to_telegram_bot_api() {
@@ -77,7 +78,7 @@ async fn rejects_telegram_text_that_exceeds_limit_before_sending() {
         "codex_cli",
         "codex_cli",
         "Codex",
-        "a".repeat(4100),
+        "a".repeat(provider_message_limit(ProviderType::Telegram, MessageSurface::TextBody) + 100),
         test_timestamp(),
         BTreeMap::new(),
     );
@@ -88,7 +89,10 @@ async fn rejects_telegram_text_that_exceeds_limit_before_sending() {
         .expect_err("oversized Telegram message should fail before network send");
 
     assert_eq!(err.kind, DeliveryErrorKind::Validation);
-    assert!(err.to_string().contains("text exceeds 4096"));
+    assert!(err.to_string().contains(&format!(
+        "text exceeds {}",
+        provider_message_limit(ProviderType::Telegram, MessageSurface::TextBody)
+    )));
     assert!(
         server
             .received_requests()

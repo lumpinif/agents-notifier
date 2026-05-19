@@ -7,13 +7,13 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
 const WHATSAPP_GRAPH_API_VERSION: &str = "v23.0";
-const WHATSAPP_TEXT_BODY_LIMIT: usize = 4096;
 
 #[derive(Debug)]
 pub struct WhatsappProvider {
@@ -288,11 +288,12 @@ fn validate_text_size(
     provider_type: &str,
     text: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    if text.chars().count() > WHATSAPP_TEXT_BODY_LIMIT {
+    let limit = provider_message_limit(ProviderType::Whatsapp, MessageSurface::TextBody);
+    if text.chars().count() > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
             DeliveryErrorContext::provider_send(signal, provider_id, provider_type),
-            format!("whatsapp provider `{provider_id}` text body exceeds 4096 characters"),
+            format!("whatsapp provider `{provider_id}` text body exceeds {limit} characters"),
         )));
     }
 

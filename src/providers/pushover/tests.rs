@@ -6,6 +6,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 
 #[tokio::test]
 async fn sends_form_request_to_pushover_message_api() {
@@ -128,7 +129,9 @@ async fn rejects_message_that_exceeds_pushover_limit_before_sending() {
         "codex_cli",
         "codex_cli",
         "Codex",
-        "a".repeat(1100),
+        "a".repeat(
+            provider_message_limit(ProviderType::Pushover, MessageSurface::MessageBody) + 100,
+        ),
         test_timestamp(),
         BTreeMap::new(),
     );
@@ -139,7 +142,10 @@ async fn rejects_message_that_exceeds_pushover_limit_before_sending() {
         .expect_err("oversized Pushover message should fail before network send");
 
     assert_eq!(err.kind, DeliveryErrorKind::Validation);
-    assert!(err.to_string().contains("message exceeds 1024"));
+    assert!(err.to_string().contains(&format!(
+        "message exceeds {}",
+        provider_message_limit(ProviderType::Pushover, MessageSurface::MessageBody)
+    )));
     assert!(
         server
             .received_requests()

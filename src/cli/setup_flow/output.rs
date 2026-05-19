@@ -32,7 +32,7 @@ pub(in crate::cli) fn print_bool_field(label: &str, value: bool) {
 pub(in crate::cli) fn print_setup_summary(
     mode: ConfigWriteMode,
     path: &Path,
-    agent: setup::AgentSelection,
+    agent: setup::SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     route_filters: &SetupRouteFilters,

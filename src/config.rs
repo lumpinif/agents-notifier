@@ -6,6 +6,7 @@ use std::path::{Component, Path};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::notification_detail_policy::{rejects_full_answer, rejects_prompt_detail};
 use crate::provider_urls::{
     validate_custom_webhook_url, validate_discord_webhook_url, validate_feishu_lark_webhook_url,
     validate_microsoft_teams_webhook_url, validate_slack_webhook_url,
@@ -162,7 +163,7 @@ pub struct SourceConfig {
     pub source_type: SourceType,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceType {
     #[serde(alias = "agents_notifier")]
@@ -280,7 +281,7 @@ impl EmailSmtpSecurity {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderType {
     Ntfy,
@@ -310,20 +311,6 @@ impl ProviderType {
             Self::Wechat => "wechat",
             Self::MicrosoftTeams => "microsoft_teams",
             Self::EmailSmtp => "email_smtp",
-        }
-    }
-
-    pub fn has_message_size_limit(&self) -> bool {
-        match self {
-            Self::Ntfy
-            | Self::Pushover
-            | Self::Slack
-            | Self::Discord
-            | Self::Telegram
-            | Self::Whatsapp
-            | Self::Wechat
-            | Self::MicrosoftTeams => true,
-            Self::Webhook | Self::FeishuLark | Self::EmailSmtp => false,
         }
     }
 }
@@ -544,14 +531,18 @@ impl Config {
                 let Some(provider) = self.provider(provider_id) else {
                     continue;
                 };
-                if provider.provider_type.has_message_size_limit() {
-                    if self.notification.answer_detail == AnswerDetail::Full {
-                        return Err(ConfigError::AnswerDetailNotSupportedForProvider {
-                            provider_id: provider.id.clone(),
-                            provider_type: provider.provider_type.as_str(),
-                        });
-                    }
+                if self.notification.answer_detail == AnswerDetail::Full
+                    && rejects_full_answer(provider.provider_type)
+                {
+                    return Err(ConfigError::AnswerDetailNotSupportedForProvider {
+                        provider_id: provider.id.clone(),
+                        provider_type: provider.provider_type.as_str(),
+                    });
+                }
 
+                if self.notification.prompt_detail == PromptDetail::On
+                    && rejects_prompt_detail(provider.provider_type)
+                {
                     return Err(ConfigError::PromptDetailNotSupportedForProvider {
                         provider_id: provider.id.clone(),
                         provider_type: provider.provider_type.as_str(),

@@ -10,11 +10,20 @@ use uuid::Uuid;
 
 use crate::config::{Config, SourceType};
 use crate::paths::{claude_code_settings_path, codex_cli_config_path};
+use crate::source_integration_catalog::{
+    LocalIntegrationKind, SourceIntegrationDescriptor, SourceIntegrationId,
+    claude_code_hook_command as catalog_claude_code_hook_command,
+    codex_cli_stop_hook_command as catalog_codex_cli_stop_hook_command,
+    source_integration_descriptor, source_integration_for_source,
+};
 
-pub const CODEX_CLI_STOP_HOOK_COMMAND: &str =
-    "agents-router ingest --source codex_cli --format codex_cli_stop";
-pub const CLAUDE_CODE_HOOK_COMMAND: &str =
-    "agents-router ingest --source claude_code --format claude_code_hook";
+pub fn codex_cli_stop_hook_command() -> String {
+    catalog_codex_cli_stop_hook_command()
+}
+
+pub fn claude_code_hook_command() -> String {
+    catalog_claude_code_hook_command()
+}
 
 const CODEX_CLI_STOP_HOOK_TIMEOUT_SECONDS: i64 = 10;
 const CODEX_CLI_STOP_HOOK_STATUS_MESSAGE: &str = "Forwarding completion to Agents Router";
@@ -114,37 +123,63 @@ pub fn ensure_local_source_integrations_with_paths(
     let mut report = LocalSourceIntegrationReport::default();
 
     for source in &config.sources {
-        if source.source_type != SourceType::CodexCli {
-            if source.source_type == SourceType::ClaudeCode {
-                if source.id != SourceType::ClaudeCode.as_str() {
-                    anyhow::bail!(
-                        "Claude Code source id must be `claude_code` because Claude Code has one global settings file; got `{}`",
-                        source.id
-                    );
-                }
+        let Some(descriptor) = local_integration_descriptor(source)? else {
+            continue;
+        };
 
+        match descriptor.local_integration {
+            LocalIntegrationKind::CodexCliStopHook => {
+                if report.codex_cli_stop_hook.is_none() {
+                    report.codex_cli_stop_hook =
+                        Some(ensure_codex_cli_stop_hook(&paths.codex_cli_config_path)?);
+                }
+            }
+            LocalIntegrationKind::ClaudeCodeHooks => {
                 if report.claude_code_hooks.is_none() {
                     report.claude_code_hooks =
                         Some(ensure_claude_code_hooks(&paths.claude_code_settings_path)?);
                 }
             }
-            continue;
-        }
-
-        if source.id != SourceType::CodexCli.as_str() {
-            anyhow::bail!(
-                "Codex CLI source id must be `codex_cli` because Codex CLI has one global Stop hook; got `{}`",
-                source.id
-            );
-        }
-
-        if report.codex_cli_stop_hook.is_none() {
-            report.codex_cli_stop_hook =
-                Some(ensure_codex_cli_stop_hook(&paths.codex_cli_config_path)?);
+            LocalIntegrationKind::None => {}
         }
     }
 
     Ok(report)
+}
+
+fn local_integration_descriptor(
+    source: &crate::config::SourceConfig,
+) -> anyhow::Result<Option<&'static SourceIntegrationDescriptor>> {
+    match source.source_type {
+        SourceType::CodexCli => {
+            let descriptor = source_integration_descriptor(SourceIntegrationId::CodexCli);
+            if source.id != descriptor.source_id {
+                anyhow::bail!(
+                    "Codex CLI source id must be `codex_cli` because Codex CLI has one global Stop hook; got `{}`",
+                    source.id
+                );
+            }
+            Ok(Some(descriptor))
+        }
+        SourceType::ClaudeCode => {
+            let descriptor = source_integration_descriptor(SourceIntegrationId::ClaudeCode);
+            if source.id != descriptor.source_id {
+                anyhow::bail!(
+                    "Claude Code source id must be `claude_code` because Claude Code has one global settings file; got `{}`",
+                    source.id
+                );
+            }
+            Ok(Some(descriptor))
+        }
+        SourceType::CodexDesktop => Ok(Some(source_integration_descriptor(
+            SourceIntegrationId::CodexDesktop,
+        ))),
+        SourceType::AgentHook => Ok(source_integration_for_source(
+            &source.id,
+            source.source_type,
+        )),
+        SourceType::AgentsRouter => Ok(None),
+    }
 }
 
 pub fn ensure_claude_code_hooks(path: &Path) -> anyhow::Result<ClaudeCodeHooksSetup> {
@@ -237,11 +272,12 @@ fn ensure_claude_code_hook_event(
         return Ok(());
     }
 
+    let command = claude_code_hook_command();
     event_hooks.push(json!({
         "hooks": [
             {
                 "type": "command",
-                "command": CLAUDE_CODE_HOOK_COMMAND,
+                "command": command,
                 "timeout": CLAUDE_CODE_HOOK_TIMEOUT_SECONDS
             }
         ]
@@ -250,6 +286,7 @@ fn ensure_claude_code_hook_event(
 }
 
 fn has_claude_code_hook_command(event_hooks: &[Value], event_name: &str) -> anyhow::Result<bool> {
+    let expected_command = claude_code_hook_command();
     for (hook_index, hook) in event_hooks.iter().enumerate() {
         let hook = hook.as_object().with_context(|| {
             format!("Claude Code settings `hooks.{event_name}[{hook_index}]` must be an object")
@@ -269,7 +306,7 @@ fn has_claude_code_hook_command(event_hooks: &[Value], event_name: &str) -> anyh
                 )
             })?;
             if command.get("type").and_then(Value::as_str) == Some("command")
-                && command.get("command").and_then(Value::as_str) == Some(CLAUDE_CODE_HOOK_COMMAND)
+                && command.get("command").and_then(Value::as_str) == Some(expected_command.as_str())
             {
                 return Ok(true);
             }
@@ -352,6 +389,7 @@ fn ensure_codex_lifecycle_hooks_feature_enabled(document: &mut DocumentMut) -> a
 }
 
 fn has_agents_router_stop_hook(document: &DocumentMut) -> bool {
+    let expected_command = codex_cli_stop_hook_command();
     document
         .get("hooks")
         .and_then(Item::as_table_like)
@@ -366,7 +404,7 @@ fn has_agents_router_stop_hook(document: &DocumentMut) -> bool {
                         commands.iter().any(|command| {
                             command.get("type").and_then(Item::as_str) == Some("command")
                                 && command.get("command").and_then(Item::as_str)
-                                    == Some(CODEX_CLI_STOP_HOOK_COMMAND)
+                                    == Some(expected_command.as_str())
                         })
                     })
             })
@@ -390,7 +428,7 @@ fn append_agents_router_stop_hook(document: &mut DocumentMut) -> anyhow::Result<
 
     let mut command_hook = Table::new();
     command_hook.insert("type", value("command"));
-    command_hook.insert("command", value(CODEX_CLI_STOP_HOOK_COMMAND));
+    command_hook.insert("command", value(codex_cli_stop_hook_command()));
     command_hook.insert("timeout", value(CODEX_CLI_STOP_HOOK_TIMEOUT_SECONDS));
     command_hook.insert("statusMessage", value(CODEX_CLI_STOP_HOOK_STATUS_MESSAGE));
 
@@ -494,6 +532,27 @@ mod tests {
     }
 
     #[test]
+    fn custom_codex_desktop_source_id_does_not_require_local_integration() {
+        let dir = tempdir().expect("tempdir should be created");
+        let codex_config_path = dir.path().join("config.toml");
+        let claude_settings_path = dir.path().join("settings.json");
+        let paths = LocalSourceIntegrationPaths {
+            codex_cli_config_path: codex_config_path,
+            claude_code_settings_path: claude_settings_path,
+        };
+
+        let report = ensure_local_source_integrations_with_paths(
+            &test_config("my_desktop", SourceType::CodexDesktop),
+            &paths,
+        )
+        .expect("Codex Desktop source id should not require local integration");
+
+        assert_eq!(report, LocalSourceIntegrationReport::default());
+        assert!(!paths.codex_cli_config_path.exists());
+        assert!(!paths.claude_code_settings_path.exists());
+    }
+
+    #[test]
     fn applies_codex_cli_stop_hook_for_canonical_source() {
         let dir = tempdir().expect("tempdir should be created");
         let codex_config_path = dir.path().join("config.toml");
@@ -520,7 +579,7 @@ mod tests {
         assert!(
             fs::read_to_string(codex_config_path)
                 .expect("config should be written")
-                .contains(CODEX_CLI_STOP_HOOK_COMMAND)
+                .contains(codex_cli_stop_hook_command().as_str())
         );
     }
 
@@ -545,6 +604,27 @@ mod tests {
                 .contains("Codex CLI source id must be `codex_cli`")
         );
         assert!(!paths.codex_cli_config_path.exists());
+    }
+
+    #[test]
+    fn agent_hook_with_codex_cli_source_id_does_not_mutate_codex_cli_config() {
+        let dir = tempdir().expect("tempdir should be created");
+        let codex_config_path = dir.path().join("config.toml");
+        let claude_settings_path = dir.path().join("settings.json");
+        let paths = LocalSourceIntegrationPaths {
+            codex_cli_config_path: codex_config_path,
+            claude_code_settings_path: claude_settings_path,
+        };
+
+        let report = ensure_local_source_integrations_with_paths(
+            &test_config("codex_cli", SourceType::AgentHook),
+            &paths,
+        )
+        .expect("generic agent_hook should not be treated as Codex CLI");
+
+        assert_eq!(report, LocalSourceIntegrationReport::default());
+        assert!(!paths.codex_cli_config_path.exists());
+        assert!(!paths.claude_code_settings_path.exists());
     }
 
     #[test]
@@ -581,7 +661,7 @@ mod tests {
                 claude_settings_event_command_timeout(
                     &settings,
                     event_name,
-                    CLAUDE_CODE_HOOK_COMMAND
+                    claude_code_hook_command().as_str()
                 ),
                 Some(CLAUDE_CODE_HOOK_TIMEOUT_SECONDS),
                 "{event_name} should set an explicit hook timeout"
@@ -609,6 +689,27 @@ mod tests {
             err.to_string()
                 .contains("Claude Code source id must be `claude_code`")
         );
+        assert!(!paths.claude_code_settings_path.exists());
+    }
+
+    #[test]
+    fn agent_hook_with_claude_code_source_id_does_not_mutate_claude_settings() {
+        let dir = tempdir().expect("tempdir should be created");
+        let codex_config_path = dir.path().join("config.toml");
+        let claude_settings_path = dir.path().join("settings.json");
+        let paths = LocalSourceIntegrationPaths {
+            codex_cli_config_path: codex_config_path,
+            claude_code_settings_path: claude_settings_path,
+        };
+
+        let report = ensure_local_source_integrations_with_paths(
+            &test_config("claude_code", SourceType::AgentHook),
+            &paths,
+        )
+        .expect("generic agent_hook should not be treated as Claude Code");
+
+        assert_eq!(report, LocalSourceIntegrationReport::default());
+        assert!(!paths.codex_cli_config_path.exists());
         assert!(!paths.claude_code_settings_path.exists());
     }
 
@@ -656,7 +757,7 @@ mod tests {
                 claude_settings_event_command_timeout(
                     &settings,
                     event_name,
-                    CLAUDE_CODE_HOOK_COMMAND
+                    claude_code_hook_command().as_str()
                 ),
                 Some(CLAUDE_CODE_HOOK_TIMEOUT_SECONDS)
             );
@@ -781,7 +882,10 @@ mod tests {
 
         assert_eq!(setup.status, ClaudeCodeHooksSetupStatus::AlreadyConfigured);
         assert_eq!(second, first);
-        assert_eq!(second.matches(CLAUDE_CODE_HOOK_COMMAND).count(), 4);
+        assert_eq!(
+            second.matches(claude_code_hook_command().as_str()).count(),
+            4
+        );
     }
 
     #[test]
@@ -817,7 +921,7 @@ mod tests {
         assert!(!raw.contains("codex_hooks"));
         assert!(raw.contains("[[hooks.Stop]]"));
         assert!(raw.contains("[[hooks.Stop.hooks]]"));
-        assert!(raw.contains(CODEX_CLI_STOP_HOOK_COMMAND));
+        assert!(raw.contains(codex_cli_stop_hook_command().as_str()));
     }
 
     #[test]
@@ -838,7 +942,7 @@ mod tests {
         assert!(raw.contains(
             r#"notify = ["/Applications/Existing.app/Contents/MacOS/helper", "turn-ended"]"#
         ));
-        assert!(raw.contains(CODEX_CLI_STOP_HOOK_COMMAND));
+        assert!(raw.contains(codex_cli_stop_hook_command().as_str()));
     }
 
     #[test]
@@ -864,7 +968,7 @@ command = "echo existing"
         assert!(raw.contains("echo existing"));
         assert!(raw.contains("hooks = true"));
         assert!(!raw.contains("codex_hooks"));
-        assert!(raw.contains(CODEX_CLI_STOP_HOOK_COMMAND));
+        assert!(raw.contains(codex_cli_stop_hook_command().as_str()));
     }
 
     #[test]
@@ -880,13 +984,19 @@ command = "echo existing"
 
         assert_eq!(setup.status, CodexCliStopHookSetupStatus::AlreadyConfigured);
         assert_eq!(second, first);
-        assert_eq!(second.matches(CODEX_CLI_STOP_HOOK_COMMAND).count(), 1);
+        assert_eq!(
+            second
+                .matches(codex_cli_stop_hook_command().as_str())
+                .count(),
+            1
+        );
     }
 
     #[test]
     fn enables_hooks_when_existing_hook_is_present_but_feature_is_off() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
+        let command = codex_cli_stop_hook_command();
         fs::write(
             &path,
             format!(
@@ -896,7 +1006,7 @@ hooks = false
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
 type = "command"
-command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
+command = "{command}"
 "#
             ),
         )
@@ -907,13 +1017,17 @@ command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
         assert_eq!(setup.status, CodexCliStopHookSetupStatus::UpdatedConfig);
         let raw = fs::read_to_string(path).expect("config should be written");
         assert!(raw.contains("hooks = true"));
-        assert_eq!(raw.matches(CODEX_CLI_STOP_HOOK_COMMAND).count(), 1);
+        assert_eq!(
+            raw.matches(codex_cli_stop_hook_command().as_str()).count(),
+            1
+        );
     }
 
     #[test]
     fn removes_deprecated_codex_hooks_feature_when_config_is_migrated() {
         let dir = tempdir().expect("tempdir should be created");
         let path = dir.path().join("config.toml");
+        let command = codex_cli_stop_hook_command();
         fs::write(
             &path,
             format!(
@@ -923,7 +1037,7 @@ codex_hooks = true
 [[hooks.Stop]]
 [[hooks.Stop.hooks]]
 type = "command"
-command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
+command = "{command}"
 "#
             ),
         )
@@ -935,7 +1049,10 @@ command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
         let raw = fs::read_to_string(path).expect("config should be written");
         assert!(raw.contains("hooks = true"));
         assert!(!raw.contains("codex_hooks"));
-        assert_eq!(raw.matches(CODEX_CLI_STOP_HOOK_COMMAND).count(), 1);
+        assert_eq!(
+            raw.matches(codex_cli_stop_hook_command().as_str()).count(),
+            1
+        );
     }
 
     #[test]
@@ -973,7 +1090,7 @@ command = "{CODEX_CLI_STOP_HOOK_COMMAND}"
     }
 
     fn claude_settings_has_command(settings: &Value, event_name: &str) -> bool {
-        claude_settings_event_has_command(settings, event_name, CLAUDE_CODE_HOOK_COMMAND)
+        claude_settings_event_has_command(settings, event_name, claude_code_hook_command().as_str())
     }
 
     fn claude_settings_event_has_command(

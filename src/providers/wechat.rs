@@ -10,13 +10,13 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
 
 const WECHAT_CHANNEL_VERSION: &str = "agents-router-wechat/1.0";
-const WECHAT_TEXT_LIMIT: usize = 3800;
 
 #[derive(Debug)]
 pub struct WechatProvider {
@@ -319,14 +319,15 @@ fn validate_text_size(
     provider_type: &str,
     text: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    if text.chars().count() <= WECHAT_TEXT_LIMIT {
+    let limit = provider_message_limit(ProviderType::Wechat, MessageSurface::TextBody);
+    if text.chars().count() <= limit {
         return Ok(());
     }
 
     Err(Box::new(DeliveryError::new(
         DeliveryErrorKind::Validation,
         DeliveryErrorContext::provider_send(signal, provider_id, provider_type),
-        format!("wechat provider `{provider_id}` text body exceeds 3800 characters"),
+        format!("wechat provider `{provider_id}` text body exceeds {limit} characters"),
     )))
 }
 

@@ -8,13 +8,12 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 use crate::provider_urls::validate_discord_webhook_url;
 use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
-
-const DISCORD_CONTENT_LIMIT: usize = 2000;
 
 #[derive(Debug)]
 pub struct DiscordProvider {
@@ -185,11 +184,12 @@ fn validate_content_size(
     provider_type: &str,
     content: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    if content.chars().count() > DISCORD_CONTENT_LIMIT {
+    let limit = provider_message_limit(ProviderType::Discord, MessageSurface::WebhookContent);
+    if content.chars().count() > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
             DeliveryErrorContext::provider_send(signal, provider_id, provider_type),
-            format!("discord provider `{provider_id}` content exceeds 2000 characters"),
+            format!("discord provider `{provider_id}` content exceeds {limit} characters"),
         )));
     }
 
@@ -262,6 +262,7 @@ mod tests {
 
     use super::*;
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
+    use crate::provider_catalog::{MessageSurface, provider_message_limit};
 
     #[tokio::test]
     async fn sends_content_payload_to_discord_webhook() {
@@ -377,7 +378,9 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "a".repeat(2100),
+            "a".repeat(
+                provider_message_limit(ProviderType::Discord, MessageSurface::WebhookContent) + 100,
+            ),
             test_timestamp(),
             BTreeMap::new(),
         );
@@ -388,7 +391,10 @@ mod tests {
             .expect_err("oversized Discord message should fail before network send");
 
         assert_eq!(err.kind, DeliveryErrorKind::Validation);
-        assert!(err.to_string().contains("content exceeds 2000"));
+        assert!(err.to_string().contains(&format!(
+            "content exceeds {}",
+            provider_message_limit(ProviderType::Discord, MessageSurface::WebhookContent)
+        )));
         assert!(
             server
                 .received_requests()

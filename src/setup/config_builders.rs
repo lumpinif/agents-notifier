@@ -1,12 +1,12 @@
 use super::*;
 
 pub fn build_ntfy_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     topic: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("ntfy", ProviderType::Ntfy);
+    let mut provider = ProviderConfig::new(ProviderType::Ntfy.as_str(), ProviderType::Ntfy);
     provider.server = Some(DEFAULT_NTFY_SERVER.to_string());
     provider.topic = Some(topic.to_string());
 
@@ -14,13 +14,14 @@ pub fn build_ntfy_config(
 }
 
 pub fn build_feishu_lark_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
     secret: Option<String>,
 ) -> Config {
-    let mut provider = ProviderConfig::new("feishu_lark", ProviderType::FeishuLark);
+    let mut provider =
+        ProviderConfig::new(ProviderType::FeishuLark.as_str(), ProviderType::FeishuLark);
     provider.url = Some(webhook_url.to_string());
     provider.secret = secret;
 
@@ -28,19 +29,19 @@ pub fn build_feishu_lark_config(
 }
 
 pub fn build_webhook_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("webhook", ProviderType::Webhook);
+    let mut provider = ProviderConfig::new(ProviderType::Webhook.as_str(), ProviderType::Webhook);
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
 }
 
 pub fn build_pushover_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     app_token: &str,
@@ -48,7 +49,7 @@ pub fn build_pushover_config(
     device: Option<String>,
     sound: Option<String>,
 ) -> Config {
-    let mut provider = ProviderConfig::new("pushover", ProviderType::Pushover);
+    let mut provider = ProviderConfig::new(ProviderType::Pushover.as_str(), ProviderType::Pushover);
     provider.app_token = Some(app_token.to_string());
     provider.user_key = Some(user_key.to_string());
     provider.device = device;
@@ -58,37 +59,37 @@ pub fn build_pushover_config(
 }
 
 pub fn build_slack_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("slack", ProviderType::Slack);
+    let mut provider = ProviderConfig::new(ProviderType::Slack.as_str(), ProviderType::Slack);
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
 }
 
 pub fn build_discord_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("discord", ProviderType::Discord);
+    let mut provider = ProviderConfig::new(ProviderType::Discord.as_str(), ProviderType::Discord);
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
 }
 
 pub fn build_telegram_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     bot_token: &str,
     chat_id: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("telegram", ProviderType::Telegram);
+    let mut provider = ProviderConfig::new(ProviderType::Telegram.as_str(), ProviderType::Telegram);
     provider.bot_token = Some(bot_token.to_string());
     provider.chat_id = Some(chat_id.to_string());
 
@@ -96,14 +97,14 @@ pub fn build_telegram_config(
 }
 
 pub fn build_whatsapp_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     access_token: &str,
     phone_number_id: &str,
     recipient_phone_number: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("whatsapp", ProviderType::Whatsapp);
+    let mut provider = ProviderConfig::new(ProviderType::Whatsapp.as_str(), ProviderType::Whatsapp);
     provider.access_token = Some(access_token.to_string());
     provider.phone_number_id = Some(phone_number_id.to_string());
     provider.recipient_phone_number = Some(recipient_phone_number.to_string());
@@ -113,7 +114,7 @@ pub fn build_whatsapp_config(
 
 #[allow(clippy::too_many_arguments)]
 pub fn build_wechat_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     base_url: &str,
@@ -122,7 +123,7 @@ pub fn build_wechat_config(
     context_token: &str,
     route_tag: Option<String>,
 ) -> Config {
-    let mut provider = ProviderConfig::new("wechat", ProviderType::Wechat);
+    let mut provider = ProviderConfig::new(ProviderType::Wechat.as_str(), ProviderType::Wechat);
     provider.base_url = Some(base_url.to_string());
     provider.token = Some(token.to_string());
     provider.recipient_user_id = Some(recipient_user_id.to_string());
@@ -133,12 +134,15 @@ pub fn build_wechat_config(
 }
 
 pub fn build_microsoft_teams_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
 ) -> Config {
-    let mut provider = ProviderConfig::new("microsoft_teams", ProviderType::MicrosoftTeams);
+    let mut provider = ProviderConfig::new(
+        ProviderType::MicrosoftTeams.as_str(),
+        ProviderType::MicrosoftTeams,
+    );
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
@@ -146,7 +150,7 @@ pub fn build_microsoft_teams_config(
 
 #[allow(clippy::too_many_arguments)]
 pub fn build_email_smtp_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     host: &str,
@@ -158,7 +162,8 @@ pub fn build_email_smtp_config(
     to: Vec<String>,
     reply_to: Option<String>,
 ) -> Config {
-    let mut provider = ProviderConfig::new("email_smtp", ProviderType::EmailSmtp);
+    let mut provider =
+        ProviderConfig::new(ProviderType::EmailSmtp.as_str(), ProviderType::EmailSmtp);
     provider.host = Some(host.to_string());
     provider.port = Some(port);
     provider.security = Some(security);
@@ -173,7 +178,7 @@ pub fn build_email_smtp_config(
 
 pub fn apply_agent_route_filters(
     config: &mut Config,
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     minimum_task_duration_minutes: Option<u64>,
     only_forward_from_project_paths: Vec<String>,
 ) {
@@ -194,7 +199,7 @@ pub fn apply_agent_route_filters(
 }
 
 fn build_config(
-    agent: AgentSelection,
+    agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     providers: Vec<ProviderConfig>,

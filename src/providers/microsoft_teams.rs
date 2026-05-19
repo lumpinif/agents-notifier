@@ -8,13 +8,12 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 use crate::provider_urls::validate_microsoft_teams_webhook_url;
 use crate::providers::formatting::format_signal_body;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
-
-const MICROSOFT_TEAMS_MESSAGE_LIMIT_BYTES: usize = 28 * 1024;
 
 #[derive(Debug)]
 pub struct MicrosoftTeamsProvider {
@@ -225,15 +224,27 @@ fn validate_request_size(
     provider_type: &str,
     request_size: usize,
 ) -> Result<(), Box<DeliveryError>> {
-    if request_size > MICROSOFT_TEAMS_MESSAGE_LIMIT_BYTES {
+    let limit = provider_message_limit(ProviderType::MicrosoftTeams, MessageSurface::Payload);
+    if request_size > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
             DeliveryErrorContext::provider_send(signal, provider_id, provider_type),
-            format!("microsoft_teams provider `{provider_id}` message exceeds 28 KB"),
+            format!(
+                "microsoft_teams provider `{provider_id}` message exceeds {}",
+                format_payload_limit(limit)
+            ),
         )));
     }
 
     Ok(())
+}
+
+fn format_payload_limit(limit: usize) -> String {
+    if limit % 1024 == 0 {
+        return format!("{} KB", limit / 1024);
+    }
+
+    format!("{limit} bytes")
 }
 
 fn format_microsoft_teams_body(signal: &Signal) -> String {
@@ -290,6 +301,7 @@ mod tests {
 
     use super::*;
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
+    use crate::provider_catalog::{MessageSurface, provider_message_limit};
 
     #[tokio::test]
     async fn sends_adaptive_card_to_microsoft_teams_webhook() {
@@ -376,7 +388,10 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "a".repeat(MICROSOFT_TEAMS_MESSAGE_LIMIT_BYTES),
+            "a".repeat(provider_message_limit(
+                ProviderType::MicrosoftTeams,
+                MessageSurface::Payload,
+            )),
             test_timestamp(),
             BTreeMap::new(),
         );
@@ -387,7 +402,13 @@ mod tests {
             .expect_err("oversized Microsoft Teams message should fail before network send");
 
         assert_eq!(err.kind, DeliveryErrorKind::Validation);
-        assert!(err.to_string().contains("message exceeds 28 KB"));
+        assert!(err.to_string().contains(&format!(
+            "message exceeds {}",
+            format_payload_limit(provider_message_limit(
+                ProviderType::MicrosoftTeams,
+                MessageSurface::Payload,
+            ))
+        )));
         assert!(
             server
                 .received_requests()

@@ -7,12 +7,11 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
+use crate::provider_catalog::{MessageSurface, provider_message_limit};
 use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
 use crate::signal::Signal;
-
-const TELEGRAM_TEXT_LIMIT: usize = 4096;
 
 #[derive(Debug)]
 pub struct TelegramProvider {
@@ -260,11 +259,12 @@ fn validate_text_size(
     provider_type: &str,
     text: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    if text.chars().count() > TELEGRAM_TEXT_LIMIT {
+    let limit = provider_message_limit(ProviderType::Telegram, MessageSurface::TextBody);
+    if text.chars().count() > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
             DeliveryErrorContext::provider_send(signal, provider_id, provider_type),
-            format!("telegram provider `{provider_id}` text exceeds 4096 characters"),
+            format!("telegram provider `{provider_id}` text exceeds {limit} characters"),
         )));
     }
 
