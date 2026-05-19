@@ -6,7 +6,7 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -33,15 +33,35 @@ pub struct FeishuLarkProvider {
 
 impl FeishuLarkProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::FeishuLark {
+        let ProviderConfigDetail::FeishuLark(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a feishu_lark provider",
                 config.id
             ));
-        }
+        };
 
-        let url = resolve_url(config)?;
-        let secret = resolve_secret(config)?;
+        let url = detail.url.resolve_runtime_value(
+            &config.id,
+            ProviderType::FeishuLark.as_str(),
+            "url_env",
+        )?;
+        let url = validate_feishu_lark_webhook_url(&url).with_context(|| {
+            format!(
+                "feishu_lark provider `{}` webhook URL is invalid",
+                config.id
+            )
+        })?;
+        let secret = detail
+            .secret
+            .as_ref()
+            .map(|secret| {
+                secret.resolve_runtime_value(
+                    &config.id,
+                    ProviderType::FeishuLark.as_str(),
+                    "secret_env",
+                )
+            })
+            .transpose()?;
         let computer_name = local_machine::computer_name()?;
 
         Ok(Self {
@@ -271,68 +291,6 @@ struct FeishuLarkCardAction {
 struct FeishuLarkResponse {
     code: i64,
     msg: Option<String>,
-}
-
-fn resolve_url(config: &ProviderConfig) -> anyhow::Result<String> {
-    let url = match (
-        present(config.url.as_deref()),
-        present(config.url_env.as_deref()),
-    ) {
-        (Some(url), None) => url.to_string(),
-        (None, Some(env_name)) => std::env::var(env_name).with_context(|| {
-            format!(
-                "feishu_lark provider `{}` webhook URL env var is not set",
-                config.id
-            )
-        })?,
-        _ => {
-            return Err(anyhow!(
-                "feishu_lark provider `{}` must set exactly one of `url` or `url_env`",
-                config.id
-            ));
-        }
-    };
-
-    validate_feishu_lark_webhook_url(&url).with_context(|| {
-        format!(
-            "feishu_lark provider `{}` webhook URL is invalid",
-            config.id
-        )
-    })
-}
-
-fn resolve_secret(config: &ProviderConfig) -> anyhow::Result<Option<String>> {
-    let secret = match (
-        present(config.secret.as_deref()),
-        present(config.secret_env.as_deref()),
-    ) {
-        (Some(secret), None) => Some(secret.to_string()),
-        (None, Some(env_name)) => Some(std::env::var(env_name).with_context(|| {
-            format!(
-                "feishu_lark provider `{}` secret env var is not set",
-                config.id
-            )
-        })?),
-        (None, None) => None,
-        (Some(_), Some(_)) => {
-            return Err(anyhow!(
-                "feishu_lark provider `{}` must set at most one of `secret` or `secret_env`",
-                config.id
-            ));
-        }
-    };
-
-    if secret
-        .as_ref()
-        .is_some_and(|secret| secret.trim().is_empty())
-    {
-        return Err(anyhow!(
-            "feishu_lark provider `{}` secret is empty",
-            config.id
-        ));
-    }
-
-    Ok(secret)
 }
 
 fn sign_request(timestamp: &str, secret: &str) -> String {

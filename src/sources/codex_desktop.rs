@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time;
 use tracing::{debug, info, warn};
 
-use crate::config::{AnswerDetail, Config, PromptDetail, SourceConfig, SourceType};
+use crate::config::{AnswerDetail, PromptDetail, SourceConfig, SourceType, ValidatedConfig};
 use crate::delivery_safety::DeliverySafetyGuard;
 use crate::paths::{
     codex_desktop_source_state_path, codex_session_index_path, codex_sessions_dir_path,
@@ -89,7 +89,7 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
 
 async fn route_and_checkpoint_batch(
     watcher: &mut CodexDesktopSessionWatcher,
-    config: &Config,
+    config: &ValidatedConfig,
     providers: &[&dyn Provider],
     batch: CodexDesktopPollBatch,
     delivery_safety: Option<&DeliverySafetyGuard>,
@@ -119,7 +119,7 @@ async fn route_and_checkpoint_batch(
     Ok(())
 }
 
-fn codex_desktop_source(config: &Config) -> Option<&SourceConfig> {
+fn codex_desktop_source(config: &ValidatedConfig) -> Option<&SourceConfig> {
     config
         .sources
         .iter()

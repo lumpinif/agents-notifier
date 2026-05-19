@@ -7,7 +7,8 @@ pub(super) use output::*;
 pub(super) use prompts::*;
 
 pub(super) struct LoadedConfig {
-    pub(super) config: Config,
+    pub(super) raw: RawConfig,
+    pub(super) validated: ValidatedConfig,
     pub(super) guided_setup: Option<GuidedSetup>,
 }
 
@@ -131,7 +132,7 @@ pub(super) struct SetupDefaults {
 }
 
 impl SetupDefaults {
-    pub(super) fn from_config(config: &Config) -> Self {
+    pub(super) fn from_config(config: &RawConfig) -> Self {
         let agent_route = first_agent_route(config);
         let source_integration = first_configured_agent(config);
         let supports_duration_filter =
@@ -219,12 +220,12 @@ impl SetupDefaults {
             return Ok(Self::default());
         }
 
-        let config = Config::from_path(path)?;
-        Ok(Self::from_config(&config))
+        let loaded = ParsedConfig::from_path(path)?;
+        Ok(Self::from_config(&loaded.raw))
     }
 }
 
-fn first_agent_route(config: &Config) -> Option<&RouteConfig> {
+fn first_agent_route(config: &RawConfig) -> Option<&RouteConfig> {
     let agent = first_configured_agent(config)?;
     let source_id = agent.source_id();
     config
@@ -249,9 +250,10 @@ impl ConfigWriteMode {
 }
 
 pub(super) async fn load_config(path: &Path, allow_setup: bool) -> anyhow::Result<LoadedConfig> {
-    match Config::from_path(path) {
+    match ParsedConfig::from_path(path) {
         Ok(config) => Ok(LoadedConfig {
-            config,
+            raw: config.raw,
+            validated: config.validated,
             guided_setup: None,
         }),
         Err(ConfigError::NotFound { path }) if allow_setup && is_interactive_terminal() => {
@@ -262,6 +264,18 @@ pub(super) async fn load_config(path: &Path, allow_setup: bool) -> anyhow::Resul
         }
         Err(error) => Err(error).context("config load failed"),
     }
+}
+
+fn loaded_config(
+    config: RawConfig,
+    guided_setup: Option<GuidedSetup>,
+) -> anyhow::Result<LoadedConfig> {
+    let validated = config.validate()?;
+    Ok(LoadedConfig {
+        raw: config,
+        validated,
+        guided_setup,
+    })
 }
 
 pub(super) fn is_interactive_terminal() -> bool {
@@ -384,7 +398,7 @@ pub(super) fn localized_string(i18n: I18n, english: String, simplified_chinese: 
 
 pub(super) fn write_setup_config(
     path: &Path,
-    config: &mut Config,
+    config: &mut RawConfig,
     language: CliLanguage,
 ) -> anyhow::Result<()> {
     config.cli = CliConfig::new(language);
@@ -393,7 +407,7 @@ pub(super) fn write_setup_config(
 
 fn write_setup_config_with_route_filters(
     path: &Path,
-    config: &mut Config,
+    config: &mut RawConfig,
     language: CliLanguage,
     agent: setup::SourceIntegrationId,
     route_filters: &SetupRouteFilters,
@@ -807,10 +821,7 @@ pub(super) fn run_ntfy_setup(context: ProviderSetupContext<'_>) -> anyhow::Resul
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Ntfy { agent, topic }),
-    })
+    loaded_config(config, Some(GuidedSetup::Ntfy { agent, topic }))
 }
 
 pub(super) fn run_feishu_lark_setup(
@@ -857,10 +868,7 @@ pub(super) fn run_feishu_lark_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::FeishuLark { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::FeishuLark { agent }))
 }
 
 pub(super) fn run_webhook_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
@@ -901,10 +909,7 @@ pub(super) fn run_webhook_setup(context: ProviderSetupContext<'_>) -> anyhow::Re
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Webhook { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Webhook { agent }))
 }
 
 pub(super) fn run_pushover_setup(
@@ -958,10 +963,7 @@ pub(super) fn run_pushover_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Pushover { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Pushover { agent }))
 }
 
 pub(super) fn run_slack_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
@@ -1002,10 +1004,7 @@ pub(super) fn run_slack_setup(context: ProviderSetupContext<'_>) -> anyhow::Resu
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Slack { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Slack { agent }))
 }
 
 pub(super) fn run_discord_setup(context: ProviderSetupContext<'_>) -> anyhow::Result<LoadedConfig> {
@@ -1047,10 +1046,7 @@ pub(super) fn run_discord_setup(context: ProviderSetupContext<'_>) -> anyhow::Re
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Discord { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Discord { agent }))
 }
 
 pub(super) fn run_telegram_setup(
@@ -1095,10 +1091,7 @@ pub(super) fn run_telegram_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Telegram { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Telegram { agent }))
 }
 
 pub(super) fn run_whatsapp_setup(
@@ -1155,10 +1148,7 @@ pub(super) fn run_whatsapp_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Whatsapp { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Whatsapp { agent }))
 }
 
 pub(super) async fn run_wechat_setup(
@@ -1260,10 +1250,7 @@ pub(super) async fn run_wechat_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::Wechat { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::Wechat { agent }))
 }
 
 pub(super) fn run_microsoft_teams_setup(
@@ -1310,10 +1297,7 @@ pub(super) fn run_microsoft_teams_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::MicrosoftTeams { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::MicrosoftTeams { agent }))
 }
 
 pub(super) fn run_email_smtp_setup(
@@ -1392,8 +1376,5 @@ pub(super) fn run_email_smtp_setup(
     );
     print_setup_provider_summary(&config, i18n);
 
-    Ok(LoadedConfig {
-        config,
-        guided_setup: Some(GuidedSetup::EmailSmtp { agent }),
-    })
+    loaded_config(config, Some(GuidedSetup::EmailSmtp { agent }))
 }

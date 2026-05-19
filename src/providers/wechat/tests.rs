@@ -5,6 +5,7 @@ use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
+use crate::config::{SecretSource, WechatProviderConfig};
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
 use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
@@ -151,43 +152,13 @@ async fn rejects_wechat_text_that_exceeds_limit_before_sending() {
 fn validates_wechat_config_values() {
     let provider = WechatProvider::from_config(&ProviderConfig {
         id: "wechat".to_string(),
-        provider_type: ProviderType::Wechat,
-        base_url: Some("https://ilinkai.weixin.qq.com".to_string()),
-        server: None,
-        topic: None,
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-        app_token: None,
-        app_token_env: None,
-        user_key: None,
-        user_key_env: None,
-        device: None,
-        sound: None,
-        bot_token: None,
-        bot_token_env: None,
-        chat_id: None,
-        access_token: None,
-        access_token_env: None,
-        phone_number_id: None,
-        recipient_phone_number: None,
-        host: None,
-        port: None,
-        security: None,
-        username: None,
-        username_env: None,
-        password: None,
-        password_env: None,
-        from: None,
-        to: None,
-        reply_to: None,
-        token: Some("test-token".to_string()),
-        token_env: None,
-        recipient_user_id: Some("user@im.wechat".to_string()),
-        context_token: Some("test-context-token".to_string()),
-        context_token_env: None,
-        route_tag: Some("test-route".to_string()),
+        detail: ProviderConfigDetail::Wechat(WechatProviderConfig {
+            base_url: "https://ilinkai.weixin.qq.com".to_string(),
+            token: SecretSource::Inline("test-token".to_string()),
+            recipient_user_id: "user@im.wechat".to_string(),
+            context_token: SecretSource::Inline("test-context-token".to_string()),
+            route_tag: Some("test-route".to_string()),
+        }),
     })
     .expect("WeChat provider config should be valid");
 

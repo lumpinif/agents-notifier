@@ -5,6 +5,7 @@ use wiremock::matchers::{body_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
+use crate::config::{SecretSource, TelegramProviderConfig};
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
 use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
@@ -111,43 +112,10 @@ async fn rejects_telegram_text_that_exceeds_limit_before_sending() {
 fn validates_telegram_config_values() {
     let provider = TelegramProvider::from_config(&ProviderConfig {
         id: "telegram".to_string(),
-        provider_type: ProviderType::Telegram,
-        base_url: None,
-        server: None,
-        topic: None,
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-        app_token: None,
-        app_token_env: None,
-        user_key: None,
-        user_key_env: None,
-        device: None,
-        sound: None,
-        bot_token: Some("123456:test-token".to_string()),
-        bot_token_env: None,
-        chat_id: Some("@agents_router".to_string()),
-        access_token: None,
-        access_token_env: None,
-        phone_number_id: None,
-        recipient_phone_number: None,
-        host: None,
-        port: None,
-        security: None,
-        username: None,
-        username_env: None,
-        password: None,
-        password_env: None,
-        from: None,
-        to: None,
-        reply_to: None,
-        token: None,
-        token_env: None,
-        recipient_user_id: None,
-        context_token: None,
-        context_token_env: None,
-        route_tag: None,
+        detail: ProviderConfigDetail::Telegram(TelegramProviderConfig {
+            bot_token: SecretSource::Inline("123456:test-token".to_string()),
+            chat_id: "@agents_router".to_string(),
+        }),
     })
     .expect("Telegram provider config should be valid");
 

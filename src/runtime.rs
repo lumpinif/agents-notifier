@@ -7,9 +7,9 @@ use anyhow::Context;
 use tokio::time::{self, MissedTickBehavior};
 use tracing::{info, warn};
 
-use crate::config::Config;
 #[cfg(target_os = "linux")]
 use crate::config::SourceType;
+use crate::config::{LoadedConfig, ValidatedConfig};
 use crate::delivery_safety::DeliverySafetyGuard;
 use crate::local_integrations::{self, LocalSourceIntegrationPaths, LocalSourceIntegrationReport};
 use crate::providers::build_providers;
@@ -25,17 +25,17 @@ pub struct RuntimeState {
 }
 
 pub struct RuntimeSnapshot {
-    pub config: Config,
+    pub config: ValidatedConfig,
     providers: Vec<Box<dyn Provider>>,
 }
 
 impl RuntimeState {
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    pub fn new(config: ValidatedConfig) -> anyhow::Result<Self> {
         Self::new_with_delivery_safety(config, DeliverySafetyGuard::in_memory())
     }
 
     pub fn new_with_delivery_safety(
-        config: Config,
+        config: ValidatedConfig,
         delivery_safety: DeliverySafetyGuard,
     ) -> anyhow::Result<Self> {
         Ok(Self {
@@ -85,16 +85,16 @@ impl RuntimeState {
 }
 
 impl RuntimeSnapshot {
-    pub fn new(config: Config) -> anyhow::Result<Self> {
+    pub fn new(config: ValidatedConfig) -> anyhow::Result<Self> {
         ensure_sources_supported_on_current_platform(&config)?;
         let providers = build_providers(&config).context("provider setup failed")?;
         Ok(Self { config, providers })
     }
 
     pub fn from_path(path: &Path) -> anyhow::Result<Self> {
-        let config = Config::from_path(path)
+        let config = LoadedConfig::from_path(path)
             .with_context(|| format!("failed to load config `{}`", path.display()))?;
-        Self::new(config)
+        Self::new(config.validated)
     }
 
     pub fn provider_refs(&self) -> Vec<&dyn Provider> {
@@ -105,7 +105,9 @@ impl RuntimeSnapshot {
     }
 }
 
-pub fn ensure_sources_supported_on_current_platform(config: &Config) -> anyhow::Result<()> {
+pub fn ensure_sources_supported_on_current_platform(
+    config: &ValidatedConfig,
+) -> anyhow::Result<()> {
     #[cfg(target_os = "linux")]
     if config
         .sources

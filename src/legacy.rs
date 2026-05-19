@@ -7,7 +7,7 @@ use std::process::Command;
 use anyhow::Context;
 use serde::Deserialize;
 
-use crate::config::{Config, SourceType};
+use crate::config::{RawConfig, SourceType, ValidatedConfig};
 
 const LEGACY_APP_NAME: &str = "agents-notifier";
 const LEGACY_BINARY_NAME: &str = "agents-notifier";
@@ -154,17 +154,17 @@ pub fn migrate_legacy_config(
 }
 
 pub fn migrate_legacy_config_content(raw: &str) -> anyhow::Result<String> {
-    let mut config: Config =
+    let mut config: RawConfig =
         toml::from_str(raw).context("failed to parse legacy agents-notifier config")?;
     normalize_legacy_config(&mut config);
     let migrated =
         toml::to_string_pretty(&config).context("failed to serialize migrated config")?;
 
-    Config::from_toml_str(&migrated).context("migrated config is invalid")?;
+    ValidatedConfig::from_toml_str(&migrated).context("migrated config is invalid")?;
     Ok(migrated)
 }
 
-fn normalize_legacy_config(config: &mut Config) {
+fn normalize_legacy_config(config: &mut RawConfig) {
     for source in &mut config.sources {
         if source.id == LEGACY_SOURCE_ID {
             source.id = NEW_SOURCE_ID.to_string();
@@ -783,7 +783,8 @@ providers = ["hook"]
 "#;
 
         let migrated = migrate_legacy_config_content(raw).expect("legacy config should migrate");
-        let config = Config::from_toml_str(&migrated).expect("migrated config should be valid");
+        ValidatedConfig::from_toml_str(&migrated).expect("migrated config should be valid");
+        let config = RawConfig::from_toml_str(&migrated).expect("migrated config should parse");
 
         assert!(config.source(NEW_SOURCE_ID).is_some());
         assert_eq!(config.sources[0].source_type, SourceType::AgentsRouter);
@@ -816,7 +817,8 @@ providers = ["hook"]
 "#;
 
         let migrated = migrate_legacy_config_content(raw).expect("config should migrate");
-        let config = Config::from_toml_str(&migrated).expect("migrated config should be valid");
+        ValidatedConfig::from_toml_str(&migrated).expect("migrated config should be valid");
+        let config = RawConfig::from_toml_str(&migrated).expect("migrated config should parse");
 
         assert!(config.source("codex_cli").is_some());
         assert!(config.source(NEW_SOURCE_ID).is_none());

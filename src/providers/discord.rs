@@ -3,7 +3,7 @@ use chrono::{DateTime, Local, Utc};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -24,14 +24,18 @@ pub struct DiscordProvider {
 
 impl DiscordProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Discord {
+        let ProviderConfigDetail::Discord(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a discord provider",
                 config.id
             ));
-        }
+        };
 
-        let url = resolve_url(config)?;
+        let url = detail.url.resolve_runtime_value(
+            &config.id,
+            ProviderType::Discord.as_str(),
+            "url_env",
+        )?;
         let url = validate_discord_webhook_url(&url)?;
 
         Ok(Self {
@@ -157,21 +161,6 @@ struct DiscordErrorResponse {
     code: Option<i64>,
 }
 
-fn resolve_url(config: &ProviderConfig) -> anyhow::Result<String> {
-    match (
-        present(config.url.as_deref()),
-        present(config.url_env.as_deref()),
-    ) {
-        (Some(url), None) => Ok(url.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name)
-            .with_context(|| format!("discord provider `{}` env var is not set", config.id)),
-        _ => Err(anyhow!(
-            "discord provider `{}` must set exactly one of `url` or `url_env`",
-            config.id
-        )),
-    }
-}
-
 fn endpoint_with_wait(url: &str) -> anyhow::Result<String> {
     let mut parsed = Url::parse(url).context("Discord webhook URL must be a valid URL")?;
     parsed.query_pairs_mut().append_pair("wait", "true");
@@ -249,10 +238,6 @@ fn response_summary(response_body: &str) -> String {
         .filter(|character| !character.is_control())
         .take(160)
         .collect()
-}
-
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(test)]

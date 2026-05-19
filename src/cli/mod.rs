@@ -15,8 +15,9 @@ use tokio::task::JoinSet;
 use tokio::time::sleep;
 
 use agents_router::config::{
-    AnswerDetail, CliConfig, CliLanguage, Config, ConfigError, EmailSmtpSecurity, PromptDetail,
-    ProviderConfig, ProviderType, RouteConfig, SourceType,
+    AnswerDetail, CliConfig, CliLanguage, ConfigError, EmailSmtpSecurity,
+    LoadedConfig as ParsedConfig, PromptDetail, ProviderType, RawConfig, RawProviderConfig,
+    RouteConfig, SourceType, ValidatedConfig,
 };
 use agents_router::delivery_safety::DeliverySafetyGuard;
 use agents_router::i18n::{I18n, Text};
@@ -254,8 +255,8 @@ pub async fn run() -> anyhow::Result<()> {
         } => {
             let config_path = resolve_config_path(config_path)?;
             let loaded = load_config(&config_path, false).await?;
-            init_tracing(&loaded.config.log.level)?;
-            run_watch(&config_path, loaded.config).await
+            init_tracing(&loaded.raw.log.level)?;
+            run_watch(&config_path, loaded.validated).await
         }
         Command::Restart {
             config: config_path,
@@ -338,11 +339,12 @@ async fn run_start_service(
     force_restart: bool,
     offer_test_after_start: bool,
 ) -> anyhow::Result<()> {
-    let i18n = I18n::new(loaded.config.cli.language);
-    ensure_sources_supported_on_current_platform(&loaded.config)?;
-    build_providers(&loaded.config).context("provider setup failed")?;
+    let i18n = I18n::new(loaded.raw.cli.language);
+    ensure_sources_supported_on_current_platform(&loaded.validated)?;
+    build_providers(&loaded.validated).context("provider setup failed")?;
     let guided_setup = loaded.guided_setup.is_some();
-    let integration_report = local_integrations::ensure_local_source_integrations(&loaded.config)?;
+    let integration_report =
+        local_integrations::ensure_local_source_integrations(&loaded.validated)?;
     if guided_setup || integration_report.has_changes() {
         print_local_source_integration_report(&integration_report, i18n);
     }
@@ -386,9 +388,9 @@ async fn run_start_service(
     if let Some(setup) = loaded.guided_setup {
         finish_guided_setup(setup, i18n).await?;
     } else {
-        print_notification_targets(&loaded.config, i18n);
+        print_notification_targets(&loaded.raw, i18n);
         if offer_test_after_start {
-            offer_test_notification(&loaded.config, i18n).await?;
+            offer_test_notification(&loaded.raw, i18n).await?;
         }
     }
 
@@ -470,7 +472,7 @@ fn print_service_start_outcome(
     print_path_field("log", log_file.display());
 }
 
-fn print_notification_targets(config: &Config, i18n: I18n) {
+fn print_notification_targets(config: &RawConfig, i18n: I18n) {
     let agents = configured_agents(config);
     let subscriptions = setup::ntfy_subscriptions(config);
     let feishu_lark_targets = setup::feishu_lark_targets(config);
@@ -614,7 +616,7 @@ fn print_notification_targets(config: &Config, i18n: I18n) {
     }
 }
 
-fn configured_agents(config: &Config) -> Vec<String> {
+fn configured_agents(config: &RawConfig) -> Vec<String> {
     config
         .sources
         .iter()
@@ -644,7 +646,7 @@ fn configured_agents(config: &Config) -> Vec<String> {
         .collect()
 }
 
-fn first_configured_agent(config: &Config) -> Option<setup::SourceIntegrationId> {
+fn first_configured_agent(config: &RawConfig) -> Option<setup::SourceIntegrationId> {
     config
         .sources
         .iter()
@@ -658,25 +660,28 @@ fn first_configured_agent(config: &Config) -> Option<setup::SourceIntegrationId>
         })
 }
 
-fn first_configured_provider(config: &Config) -> Option<ProviderType> {
+fn first_configured_provider(config: &RawConfig) -> Option<ProviderType> {
     config
         .providers
         .first()
         .map(|provider| provider.provider_type)
 }
 
-fn first_provider_of_type(config: &Config, provider_type: ProviderType) -> Option<&ProviderConfig> {
+fn first_provider_of_type(
+    config: &RawConfig,
+    provider_type: ProviderType,
+) -> Option<&RawProviderConfig> {
     config
         .providers
         .iter()
         .find(|provider| provider.provider_type.as_str() == provider_type.as_str())
 }
 
-fn configured_provider_url(provider: &ProviderConfig) -> Option<String> {
+fn configured_provider_url(provider: &RawProviderConfig) -> Option<String> {
     provider.url.clone()
 }
 
-fn configured_provider_secret(provider: &ProviderConfig) -> Option<String> {
+fn configured_provider_secret(provider: &RawProviderConfig) -> Option<String> {
     provider.secret.clone()
 }
 
@@ -702,10 +707,10 @@ fn safe_url_host(url: &str) -> String {
 }
 
 fn print_status_notification_targets(config_path: &Path) {
-    match Config::from_path(config_path) {
+    match ParsedConfig::from_path(config_path) {
         Ok(config) => {
-            let i18n = I18n::new(config.cli.language);
-            print_notification_targets(&config, i18n);
+            let i18n = I18n::new(config.raw.cli.language);
+            print_notification_targets(&config.raw, i18n);
         }
         Err(error) => {
             print_section("Config");
@@ -1020,7 +1025,7 @@ fn print_chinese_hook_command_note(
     }
 }
 
-async fn offer_test_notification(config: &Config, i18n: I18n) -> anyhow::Result<()> {
+async fn offer_test_notification(config: &RawConfig, i18n: I18n) -> anyhow::Result<()> {
     if !is_interactive_terminal() || !can_send_test_notification(config) {
         return Ok(());
     }
@@ -1045,7 +1050,7 @@ async fn offer_test_notification(config: &Config, i18n: I18n) -> anyhow::Result<
     Ok(())
 }
 
-fn can_send_test_notification(config: &Config) -> bool {
+fn can_send_test_notification(config: &RawConfig) -> bool {
     config.source("agents_router").is_some()
         && config.routes.iter().any(|route| {
             route.sources.iter().any(|source| source == "agents_router")
@@ -1308,7 +1313,7 @@ fn cleanup_ingress_endpoint_if_exists() -> anyhow::Result<()> {
     local_ingress::cleanup_endpoint(&endpoint)
 }
 
-async fn run_watch(config_path: &Path, config: Config) -> anyhow::Result<()> {
+async fn run_watch(config_path: &Path, config: ValidatedConfig) -> anyhow::Result<()> {
     local_integrations::ensure_local_source_integrations(&config)?;
     let runtime =
         RuntimeState::new_with_delivery_safety(config, DeliverySafetyGuard::load_default()?)?;
@@ -1445,15 +1450,19 @@ fn codex_cli_stop_hook_is_shadowed_by_codex_desktop(
         .unwrap_or(false)
 }
 
-fn codex_cli_stop_hook_shadowing_config() -> Option<Config> {
+fn codex_cli_stop_hook_shadowing_config() -> Option<ValidatedConfig> {
     if let Ok(metadata_path) = service_metadata_path()
         && let Ok(metadata) = load_metadata(&metadata_path)
     {
-        return Config::from_path(&PathBuf::from(metadata.config_path)).ok();
+        return ParsedConfig::from_path(&PathBuf::from(metadata.config_path))
+            .ok()
+            .map(|config| config.validated);
     }
 
     let config_path = default_config_file_path().ok()?;
-    Config::from_path(&config_path).ok()
+    ParsedConfig::from_path(&config_path)
+        .ok()
+        .map(|config| config.validated)
 }
 
 fn init_tracing(level: &str) -> anyhow::Result<()> {

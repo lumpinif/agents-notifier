@@ -1,6 +1,6 @@
 use super::*;
 
-pub fn ntfy_subscriptions(config: &Config) -> Vec<NtfySubscription> {
+pub fn ntfy_subscriptions(config: &RawConfig) -> Vec<NtfySubscription> {
     config
         .providers
         .iter()
@@ -15,7 +15,7 @@ pub fn ntfy_subscriptions(config: &Config) -> Vec<NtfySubscription> {
         .collect()
 }
 
-pub fn feishu_lark_targets(config: &Config) -> Vec<FeishuLarkTarget> {
+pub fn feishu_lark_targets(config: &RawConfig) -> Vec<FeishuLarkTarget> {
     config
         .providers
         .iter()
@@ -52,7 +52,7 @@ pub fn feishu_lark_targets(config: &Config) -> Vec<FeishuLarkTarget> {
         .collect()
 }
 
-pub fn webhook_targets(config: &Config) -> Vec<WebhookTarget> {
+pub fn webhook_targets(config: &RawConfig) -> Vec<WebhookTarget> {
     config
         .providers
         .iter()
@@ -81,7 +81,7 @@ pub fn webhook_targets(config: &Config) -> Vec<WebhookTarget> {
         .collect()
 }
 
-pub fn pushover_targets(config: &Config) -> Vec<PushoverTarget> {
+pub fn pushover_targets(config: &RawConfig) -> Vec<PushoverTarget> {
     config
         .providers
         .iter()
@@ -94,7 +94,7 @@ pub fn pushover_targets(config: &Config) -> Vec<PushoverTarget> {
         .collect()
 }
 
-pub fn slack_targets(config: &Config) -> Vec<SlackTarget> {
+pub fn slack_targets(config: &RawConfig) -> Vec<SlackTarget> {
     config
         .providers
         .iter()
@@ -108,7 +108,7 @@ pub fn slack_targets(config: &Config) -> Vec<SlackTarget> {
         .collect()
 }
 
-pub fn discord_targets(config: &Config) -> Vec<DiscordTarget> {
+pub fn discord_targets(config: &RawConfig) -> Vec<DiscordTarget> {
     config
         .providers
         .iter()
@@ -122,7 +122,7 @@ pub fn discord_targets(config: &Config) -> Vec<DiscordTarget> {
         .collect()
 }
 
-pub fn telegram_targets(config: &Config) -> Vec<TelegramTarget> {
+pub fn telegram_targets(config: &RawConfig) -> Vec<TelegramTarget> {
     config
         .providers
         .iter()
@@ -136,7 +136,7 @@ pub fn telegram_targets(config: &Config) -> Vec<TelegramTarget> {
         .collect()
 }
 
-pub fn whatsapp_targets(config: &Config) -> Vec<WhatsappTarget> {
+pub fn whatsapp_targets(config: &RawConfig) -> Vec<WhatsappTarget> {
     config
         .providers
         .iter()
@@ -150,7 +150,7 @@ pub fn whatsapp_targets(config: &Config) -> Vec<WhatsappTarget> {
         .collect()
 }
 
-pub fn wechat_targets(config: &Config) -> Vec<WechatTarget> {
+pub fn wechat_targets(config: &RawConfig) -> Vec<WechatTarget> {
     config
         .providers
         .iter()
@@ -166,7 +166,7 @@ pub fn wechat_targets(config: &Config) -> Vec<WechatTarget> {
         .collect()
 }
 
-pub fn microsoft_teams_targets(config: &Config) -> Vec<MicrosoftTeamsTarget> {
+pub fn microsoft_teams_targets(config: &RawConfig) -> Vec<MicrosoftTeamsTarget> {
     config
         .providers
         .iter()
@@ -180,7 +180,7 @@ pub fn microsoft_teams_targets(config: &Config) -> Vec<MicrosoftTeamsTarget> {
         .collect()
 }
 
-pub fn email_smtp_targets(config: &Config) -> Vec<EmailSmtpTarget> {
+pub fn email_smtp_targets(config: &RawConfig) -> Vec<EmailSmtpTarget> {
     config
         .providers
         .iter()

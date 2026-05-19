@@ -1,4 +1,5 @@
 use super::*;
+use crate::providers::build_providers;
 
 const VALID_CONFIG: &str = r#"
 schema_version = 1
@@ -88,7 +89,7 @@ providers = ["phone", "debug_webhook", "work_chat", "pushover", "slack", "discor
 
 #[test]
 fn parses_valid_config() {
-    let config = Config::from_toml_str(VALID_CONFIG).expect("valid config should parse");
+    let config = ValidatedConfig::from_toml_str(VALID_CONFIG).expect("valid config should parse");
 
     assert_eq!(config.schema_version, 1);
     assert_eq!(config.sources.len(), 2);
@@ -124,7 +125,8 @@ only_forward_from_project_paths = [
 ]
 "#;
 
-    let config = Config::from_toml_str(raw).expect("route filters should parse");
+    let loaded = LoadedConfig::from_toml_str(raw).expect("route filters should parse");
+    let config = loaded.validated;
 
     assert_eq!(config.routes[0].minimum_task_duration_minutes, Some(5));
     assert_eq!(
@@ -135,7 +137,7 @@ only_forward_from_project_paths = [
         ]
     );
 
-    let serialized = toml::to_string_pretty(&config).expect("config should serialize");
+    let serialized = toml::to_string_pretty(&loaded.raw).expect("config should serialize");
     assert!(serialized.contains("minimum_task_duration_minutes = 5"));
     assert!(serialized.contains("only_forward_from_project_paths"));
 }
@@ -160,7 +162,8 @@ providers = ["debug_webhook"]
 minimum_task_duration_minutes = 0
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("zero route duration should be rejected");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("zero route duration should be rejected");
 
     assert!(matches!(
         err,
@@ -191,7 +194,8 @@ minimum_task_duration_minutes = {}
         u64::MAX
     );
 
-    let err = Config::from_toml_str(&raw).expect_err("oversized route duration should be rejected");
+    let err = ValidatedConfig::from_toml_str(&raw)
+        .expect_err("oversized route duration should be rejected");
 
     assert!(matches!(
         err,
@@ -227,7 +231,8 @@ only_forward_from_project_paths = ["{invalid_path}"]
 "#
         );
 
-        let err = Config::from_toml_str(&raw).expect_err("invalid project path should be rejected");
+        let err = ValidatedConfig::from_toml_str(&raw)
+            .expect_err("invalid project path should be rejected");
 
         assert!(matches!(
             err,
@@ -258,7 +263,7 @@ sources = ["codex_cli"]
 providers = ["debug_webhook"]
 "#;
 
-    let config = Config::from_toml_str(raw).expect("valid config should parse");
+    let config = ValidatedConfig::from_toml_str(raw).expect("valid config should parse");
 
     assert_eq!(config.cli.language, CliLanguage::SimplifiedChinese);
 }
@@ -299,7 +304,7 @@ sources = ["codex_cli"]
 providers = ["debug_webhook"]
 "#;
 
-    let config = Config::from_toml_str(raw).expect("valid config should parse");
+    let config = ValidatedConfig::from_toml_str(raw).expect("valid config should parse");
 
     assert_eq!(config.notification.answer_detail, AnswerDetail::Full);
 }
@@ -327,7 +332,8 @@ sources = ["codex_cli"]
 providers = ["phone"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("ntfy should reject full answer detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("ntfy should reject full answer detail");
 
     assert!(matches!(
         err,
@@ -361,7 +367,8 @@ sources = ["codex_cli"]
 providers = ["pushover"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Pushover should reject full answer detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("Pushover should reject full answer detail");
 
     assert!(matches!(
         err,
@@ -394,7 +401,8 @@ sources = ["codex_cli"]
 providers = ["slack"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Slack should reject full answer detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("Slack should reject full answer detail");
 
     assert!(matches!(
         err,
@@ -427,7 +435,8 @@ sources = ["codex_cli"]
 providers = ["discord"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Discord should reject full answer detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("Discord should reject full answer detail");
 
     assert!(matches!(
         err,
@@ -461,7 +470,8 @@ sources = ["codex_cli"]
 providers = ["telegram"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Telegram should reject full answer detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("Telegram should reject full answer detail");
 
     assert!(matches!(
         err,
@@ -497,7 +507,8 @@ sources = ["codex_cli"]
 providers = ["wechat"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("WeChat should reject full answer detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("WeChat should reject full answer detail");
 
     assert!(matches!(
         err,
@@ -530,7 +541,7 @@ sources = ["codex_cli"]
 providers = ["debug_webhook"]
 "#;
 
-    let config = Config::from_toml_str(raw).expect("valid config should parse");
+    let config = ValidatedConfig::from_toml_str(raw).expect("valid config should parse");
 
     assert_eq!(config.notification.prompt_detail, PromptDetail::On);
 }
@@ -558,7 +569,7 @@ sources = ["codex_cli"]
 providers = ["phone"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("ntfy should reject prompt detail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("ntfy should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -592,7 +603,8 @@ sources = ["codex_cli"]
 providers = ["pushover"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Pushover should reject prompt detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("Pushover should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -625,7 +637,7 @@ sources = ["codex_cli"]
 providers = ["slack"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Slack should reject prompt detail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("Slack should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -658,7 +670,7 @@ sources = ["codex_cli"]
 providers = ["discord"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Discord should reject prompt detail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("Discord should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -693,7 +705,8 @@ sources = ["codex_cli"]
 providers = ["whatsapp"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("WhatsApp should reject prompt detail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("WhatsApp should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -729,7 +742,7 @@ sources = ["codex_cli"]
 providers = ["wechat"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("WeChat should reject prompt detail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("WeChat should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -762,7 +775,8 @@ sources = ["codex_cli"]
 providers = ["microsoft_teams"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("Microsoft Teams should reject prompt detail");
+    let err = ValidatedConfig::from_toml_str(raw)
+        .expect_err("Microsoft Teams should reject prompt detail");
 
     assert!(matches!(
         err,
@@ -775,9 +789,10 @@ providers = ["microsoft_teams"]
 
 #[test]
 fn rejects_unsupported_schema_version() {
-    let err =
-        Config::from_toml_str(&VALID_CONFIG.replace("schema_version = 1", "schema_version = 2"))
-            .expect_err("unsupported schema should fail");
+    let err = ValidatedConfig::from_toml_str(
+        &VALID_CONFIG.replace("schema_version = 1", "schema_version = 2"),
+    )
+    .expect_err("unsupported schema should fail");
 
     assert!(matches!(
         err,
@@ -809,24 +824,149 @@ sources = ["codex_cli"]
 providers = ["phone"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("duplicate source id should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("duplicate source id should fail");
 
     assert!(matches!(err, ConfigError::DuplicateSourceId(id) if id == "codex_cli"));
 }
 
 #[test]
-fn rejects_unknown_route_source() {
+fn rejects_noncanonical_codex_cli_source_id_during_validation() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "my_codex"
+type = "codex_cli"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["my_codex"]
+providers = ["phone"]
+"#;
+
     let err =
-        Config::from_toml_str(&VALID_CONFIG.replace("codex_desktop\", \"codex_cli", "missing"))
-            .expect_err("unknown source should fail");
+        ValidatedConfig::from_toml_str(raw).expect_err("noncanonical Codex CLI id should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidSourceIdForType {
+            source_id,
+            source_type: "codex_cli",
+            expected_id: "codex_cli",
+            ..
+        } if source_id == "my_codex"
+    ));
+}
+
+#[test]
+fn rejects_noncanonical_claude_code_source_id_during_validation() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "my_claude"
+type = "claude_code"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["my_claude"]
+providers = ["phone"]
+"#;
+
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("noncanonical Claude Code id should fail");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidSourceIdForType {
+            source_id,
+            source_type: "claude_code",
+            expected_id: "claude_code",
+            ..
+        } if source_id == "my_claude"
+    ));
+}
+
+#[test]
+fn accepts_custom_codex_desktop_source_id() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "my_desktop"
+type = "codex_desktop"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["my_desktop"]
+providers = ["phone"]
+"#;
+
+    let config =
+        ValidatedConfig::from_toml_str(raw).expect("custom Codex Desktop id should validate");
+
+    assert_eq!(config.sources[0].id, "my_desktop");
+    assert_eq!(config.sources[0].source_type, SourceType::CodexDesktop);
+}
+
+#[test]
+fn accepts_agent_hook_that_reuses_codex_cli_source_id() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "agent_hook"
+
+[[providers]]
+id = "phone"
+type = "ntfy"
+server = "https://ntfy.sh"
+topic = "topic"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["phone"]
+"#;
+
+    let config =
+        ValidatedConfig::from_toml_str(raw).expect("generic agent_hook id should validate");
+
+    assert_eq!(config.sources[0].id, "codex_cli");
+    assert_eq!(config.sources[0].source_type, SourceType::AgentHook);
+}
+
+#[test]
+fn rejects_unknown_route_source() {
+    let err = ValidatedConfig::from_toml_str(
+        &VALID_CONFIG.replace("codex_desktop\", \"codex_cli", "missing"),
+    )
+    .expect_err("unknown source should fail");
 
     assert!(matches!(err, ConfigError::UnknownRouteSource(id) if id == "missing"));
 }
 
 #[test]
 fn rejects_unknown_route_provider() {
-    let err = Config::from_toml_str(&VALID_CONFIG.replace("phone\", \"debug_webhook", "missing"))
-        .expect_err("unknown provider should fail");
+    let err = ValidatedConfig::from_toml_str(
+        &VALID_CONFIG.replace("phone\", \"debug_webhook", "missing"),
+    )
+    .expect_err("unknown provider should fail");
 
     assert!(matches!(err, ConfigError::UnknownRouteProvider(id) if id == "missing"));
 }
@@ -838,7 +978,7 @@ fn rejects_webhook_with_both_url_sources() {
         "url = \"https://example.com/hook\"\nurl_env = \"AGENTS_ROUTER_WEBHOOK_URL\"",
     );
 
-    let err = Config::from_toml_str(&raw).expect_err("ambiguous webhook url should fail");
+    let err = ValidatedConfig::from_toml_str(&raw).expect_err("ambiguous webhook url should fail");
 
     assert!(matches!(
         err,
@@ -864,7 +1004,7 @@ sources = ["codex_cli"]
 providers = ["work_chat"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing webhook URL should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("missing webhook URL should fail");
 
     assert!(matches!(
         err,
@@ -879,7 +1019,8 @@ fn rejects_feishu_lark_with_both_secret_sources() {
         "secret = \"inline-secret\"\nsecret_env = \"AGENTS_ROUTER_FEISHU_LARK_SECRET\"",
     );
 
-    let err = Config::from_toml_str(&raw).expect_err("ambiguous secret source should fail");
+    let err =
+        ValidatedConfig::from_toml_str(&raw).expect_err("ambiguous secret source should fail");
 
     assert!(matches!(
         err,
@@ -906,7 +1047,7 @@ sources = ["codex_cli"]
 providers = ["pushover"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing app token should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("missing app token should fail");
 
     assert!(matches!(
         err,
@@ -935,7 +1076,7 @@ sources = ["codex_cli"]
 providers = ["pushover"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("ambiguous user key should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("ambiguous user key should fail");
 
     assert!(matches!(
         err,
@@ -961,7 +1102,8 @@ sources = ["codex_cli"]
 providers = ["slack"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing Slack webhook URL should fail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("missing Slack webhook URL should fail");
 
     assert!(matches!(
         err,
@@ -1018,7 +1160,8 @@ providers = ["{provider_id}"]
 "#
         );
 
-        let err = Config::from_toml_str(&raw).expect_err("invalid provider URL should fail");
+        let err =
+            ValidatedConfig::from_toml_str(&raw).expect_err("invalid provider URL should fail");
 
         assert!(matches!(
             err,
@@ -1051,7 +1194,7 @@ sources = ["codex_cli"]
 providers = ["discord"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("ambiguous Discord URL should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("ambiguous Discord URL should fail");
 
     assert!(matches!(
         err,
@@ -1078,7 +1221,8 @@ sources = ["codex_cli"]
 providers = ["telegram"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing Telegram bot token should fail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("missing Telegram bot token should fail");
 
     assert!(matches!(
         err,
@@ -1106,7 +1250,8 @@ sources = ["codex_cli"]
 providers = ["whatsapp"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing WhatsApp access token should fail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("missing WhatsApp access token should fail");
 
     assert!(matches!(
         err,
@@ -1135,7 +1280,7 @@ sources = ["codex_cli"]
 providers = ["wechat"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing WeChat token should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("missing WeChat token should fail");
 
     assert!(matches!(
         err,
@@ -1164,7 +1309,8 @@ sources = ["codex_cli"]
 providers = ["wechat"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing WeChat context token should fail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("missing WeChat context token should fail");
 
     assert!(matches!(
         err,
@@ -1192,7 +1338,8 @@ sources = ["codex_cli"]
 providers = ["microsoft_teams"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("ambiguous Microsoft Teams URL should fail");
+    let err =
+        ValidatedConfig::from_toml_str(raw).expect_err("ambiguous Microsoft Teams URL should fail");
 
     assert!(matches!(
         err,
@@ -1222,7 +1369,7 @@ sources = ["codex_cli"]
 providers = ["email"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("missing recipients should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("missing recipients should fail");
 
     assert!(matches!(
         err,
@@ -1255,10 +1402,235 @@ sources = ["codex_cli"]
 providers = ["email"]
 "#;
 
-    let err = Config::from_toml_str(raw).expect_err("partial credentials should fail");
+    let err = ValidatedConfig::from_toml_str(raw).expect_err("partial credentials should fail");
 
     assert!(matches!(
         err,
         ConfigError::InvalidEmailSmtpCredentials { provider_id } if provider_id == "email"
     ));
+}
+
+#[test]
+fn provider_structure_errors_still_win_before_route_reference_errors() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+
+[[routes]]
+sources = ["missing_source"]
+providers = ["debug_webhook"]
+"#;
+
+    let err = ValidatedConfig::from_toml_str(raw)
+        .expect_err("provider structure errors should stay first");
+
+    assert!(matches!(
+        err,
+        ConfigError::InvalidWebhookUrlSource { provider_id } if provider_id == "debug_webhook"
+    ));
+}
+
+#[test]
+fn validated_provider_type_is_derived_from_detail() {
+    let provider = ProviderConfig {
+        id: "debug".to_string(),
+        detail: ProviderConfigDetail::Webhook(WebhookProviderConfig {
+            url: UrlSource::Inline("https://example.com/hook".to_string()),
+        }),
+    };
+
+    assert_eq!(provider.provider_type(), ProviderType::Webhook);
+}
+
+#[test]
+fn validation_preserves_exact_provider_identifiers_and_secrets() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "telegram"
+type = "telegram"
+bot_token = " 123456:secret "
+chat_id = " 123456789 "
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["telegram"]
+"#;
+
+    let config =
+        ValidatedConfig::from_toml_str(raw).expect("structure validation should not trim tokens");
+    let provider = config
+        .provider("telegram")
+        .expect("validated provider should exist");
+
+    assert!(matches!(
+        &provider.detail,
+        ProviderConfigDetail::Telegram(TelegramProviderConfig {
+            bot_token: SecretSource::Inline(bot_token),
+            chat_id,
+        }) if bot_token == " 123456:secret " && chat_id == " 123456789 "
+    ));
+
+    let err = match build_providers(&config) {
+        Ok(_) => panic!("runtime provider build should reject the bad token"),
+        Err(error) => error,
+    };
+    assert!(err.to_string().contains("bot_token"));
+}
+
+#[test]
+fn validation_preserves_exact_provider_env_names() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url_env = " AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL "
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+    let config = ValidatedConfig::from_toml_str(raw)
+        .expect("structure validation should not trim env names");
+    let provider = config
+        .provider("debug_webhook")
+        .expect("validated provider should exist");
+
+    assert!(matches!(
+        &provider.detail,
+        ProviderConfigDetail::Webhook(WebhookProviderConfig {
+            url: UrlSource::Env(env_name),
+        }) if env_name == " AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL "
+    ));
+}
+
+#[test]
+fn validation_keeps_inline_url_normalization_explicit() {
+    let raw = r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url = " https://example.com/hook "
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#;
+
+    let config =
+        ValidatedConfig::from_toml_str(raw).expect("inline URL normalization should be accepted");
+    let provider = config
+        .provider("debug_webhook")
+        .expect("validated provider should exist");
+
+    assert!(matches!(
+        &provider.detail,
+        ProviderConfigDetail::Webhook(WebhookProviderConfig {
+            url: UrlSource::Inline(url),
+        }) if url == "https://example.com/hook"
+    ));
+}
+
+#[test]
+fn raw_parse_and_validation_do_not_read_provider_env_values() {
+    let _guard = EnvVarGuard::unset("AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL");
+    let raw = runtime_env_webhook_config();
+
+    let parsed = RawConfig::from_toml_str(raw).expect("raw config should parse without env");
+    assert_eq!(
+        parsed.providers[0].url_env.as_deref(),
+        Some("AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL")
+    );
+
+    let validated =
+        ValidatedConfig::from_toml_str(raw).expect("validated config should not read env");
+    let provider = validated
+        .provider("debug_webhook")
+        .expect("validated provider should exist");
+    assert!(matches!(
+        &provider.detail,
+        ProviderConfigDetail::Webhook(WebhookProviderConfig {
+            url: UrlSource::Env(env_name),
+        }) if env_name == "AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL"
+    ));
+}
+
+#[test]
+fn provider_build_reads_env_values_at_runtime_boundary() {
+    let _guard = EnvVarGuard::unset("AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL");
+    let config = ValidatedConfig::from_toml_str(runtime_env_webhook_config())
+        .expect("validated config should not read env");
+
+    let err = match build_providers(&config) {
+        Ok(_) => panic!("provider build should read missing env"),
+        Err(error) => error,
+    };
+
+    assert!(
+        err.to_string()
+            .contains("AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL")
+    );
+}
+
+fn runtime_env_webhook_config() -> &'static str {
+    r#"
+schema_version = 1
+
+[[sources]]
+id = "codex_cli"
+type = "codex_cli"
+
+[[providers]]
+id = "debug_webhook"
+type = "webhook"
+url_env = "AGENTS_ROUTER_TEST_RUNTIME_WEBHOOK_URL"
+
+[[routes]]
+sources = ["codex_cli"]
+providers = ["debug_webhook"]
+"#
+}
+
+struct EnvVarGuard {
+    name: &'static str,
+}
+
+impl EnvVarGuard {
+    fn unset(name: &'static str) -> Self {
+        // SAFETY: this test uses a unique env var name scoped to this module.
+        unsafe { std::env::remove_var(name) };
+        Self { name }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        // SAFETY: this removes only the unique env var controlled by the test guard.
+        unsafe { std::env::remove_var(self.name) };
+    }
 }

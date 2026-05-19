@@ -5,7 +5,7 @@ use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -31,45 +31,30 @@ pub struct WechatProvider {
 
 impl WechatProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Wechat {
+        let ProviderConfigDetail::Wechat(detail) = &config.detail else {
             return Err(anyhow!("provider `{}` is not a wechat provider", config.id));
-        }
+        };
 
-        let base_url = config
-            .base_url
-            .as_deref()
-            .ok_or_else(|| anyhow!("wechat provider `{}` requires `base_url`", config.id))?;
-        let base_url = validate_base_url(&config.id, base_url)?;
+        let base_url = validate_base_url(&config.id, &detail.base_url)?;
 
-        let token = resolve_secret_value(
-            config,
-            "token",
-            config.token.as_deref(),
+        let token = detail.token.resolve_runtime_value(
+            &config.id,
+            ProviderType::Wechat.as_str(),
             "token_env",
-            config.token_env.as_deref(),
         )?;
         let token = validate_secret_token(&config.id, "token", &token)?;
 
-        let recipient_user_id = present(config.recipient_user_id.as_deref())
-            .ok_or_else(|| {
-                anyhow!(
-                    "wechat provider `{}` requires `recipient_user_id`",
-                    config.id
-                )
-            })?
-            .to_string();
+        let recipient_user_id = detail.recipient_user_id.clone();
         validate_recipient_user_id(&config.id, &recipient_user_id)?;
 
-        let context_token = resolve_secret_value(
-            config,
-            "context_token",
-            config.context_token.as_deref(),
+        let context_token = detail.context_token.resolve_runtime_value(
+            &config.id,
+            ProviderType::Wechat.as_str(),
             "context_token_env",
-            config.context_token_env.as_deref(),
         )?;
         let context_token = validate_secret_token(&config.id, "context_token", &context_token)?;
 
-        let route_tag = resolve_route_tag(&config.id, config.route_tag.as_deref())?;
+        let route_tag = resolve_route_tag(&config.id, detail.route_tag.as_deref())?;
 
         Ok(Self {
             id: config.id.clone(),
@@ -225,30 +210,6 @@ struct WechatSendMessageResponse {
     errcode: i64,
     #[serde(default)]
     errmsg: String,
-}
-
-fn resolve_secret_value(
-    config: &ProviderConfig,
-    value_field: &'static str,
-    value: Option<&str>,
-    env_field: &'static str,
-    env_name: Option<&str>,
-) -> anyhow::Result<String> {
-    match (present(value), present(env_name)) {
-        (Some(value), None) => Ok(value.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name).with_context(|| {
-            format!(
-                "wechat provider `{}` env var `{}` from `{}` is not set",
-                config.id, env_name, env_field
-            )
-        }),
-        _ => Err(anyhow!(
-            "wechat provider `{}` must set exactly one of `{}` or `{}`",
-            config.id,
-            value_field,
-            env_field
-        )),
-    }
 }
 
 fn validate_base_url(provider_id: &str, base_url: &str) -> anyhow::Result<String> {

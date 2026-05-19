@@ -1,8 +1,8 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use chrono::{DateTime, Local, Utc};
 use serde::Serialize;
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -23,11 +23,15 @@ pub struct SlackProvider {
 
 impl SlackProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Slack {
+        let ProviderConfigDetail::Slack(detail) = &config.detail else {
             return Err(anyhow!("provider `{}` is not a slack provider", config.id));
-        }
+        };
 
-        let url = resolve_url(config)?;
+        let url = detail.url.resolve_runtime_value(
+            &config.id,
+            ProviderType::Slack.as_str(),
+            "url_env",
+        )?;
         let url = validate_slack_webhook_url(&url)?;
 
         Ok(Self {
@@ -129,21 +133,6 @@ struct SlackWebhookRequest<'a> {
     mrkdwn: bool,
 }
 
-fn resolve_url(config: &ProviderConfig) -> anyhow::Result<String> {
-    match (
-        present(config.url.as_deref()),
-        present(config.url_env.as_deref()),
-    ) {
-        (Some(url), None) => Ok(url.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name)
-            .with_context(|| format!("slack provider `{}` env var is not set", config.id)),
-        _ => Err(anyhow!(
-            "slack provider `{}` must set exactly one of `url` or `url_env`",
-            config.id
-        )),
-    }
-}
-
 fn validate_text_size(
     signal: &Signal,
     provider_id: &str,
@@ -203,10 +192,6 @@ fn response_summary(response_body: &str) -> String {
         .collect()
 }
 
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -216,6 +201,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+    use crate::config::{UrlSource, WebhookProviderConfig};
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
     use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
@@ -350,43 +336,9 @@ mod tests {
     fn rejects_non_slack_provider_config() {
         let err = SlackProvider::from_config(&ProviderConfig {
             id: "slack".to_string(),
-            provider_type: ProviderType::Webhook,
-            base_url: None,
-            server: None,
-            topic: None,
-            url: Some("https://example.com/slack".to_string()),
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
+            detail: ProviderConfigDetail::Webhook(WebhookProviderConfig {
+                url: UrlSource::Inline("https://example.com/slack".to_string()),
+            }),
         })
         .expect_err("wrong provider type should fail");
 

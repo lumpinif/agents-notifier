@@ -17,7 +17,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::time::{Duration, timeout};
 use tracing::{info, warn};
 
-use crate::config::{AnswerDetail, Config, PromptDetail, SourceType};
+use crate::config::{AnswerDetail, PromptDetail, SourceType, ValidatedConfig};
 use crate::delivery_safety::DeliverySafetyGuard;
 use crate::paths::{IngressEndpoint, codex_sessions_dir_path};
 use crate::router::{DeliveryReport, Provider, Router};
@@ -424,7 +424,7 @@ async fn serve_windows_named_pipe(runtime: RuntimeState, pipe_name: &str) -> any
 }
 
 pub async fn route_event(
-    config: &Config,
+    config: &ValidatedConfig,
     providers: &[&dyn Provider],
     event: LocalSignalEvent,
 ) -> anyhow::Result<()> {
@@ -433,7 +433,7 @@ pub async fn route_event(
 }
 
 pub async fn route_event_with_state(
-    config: &Config,
+    config: &ValidatedConfig,
     providers: &[&dyn Provider],
     state: &LocalIngressState,
     event: LocalSignalEvent,
@@ -451,7 +451,7 @@ pub async fn route_event_with_state(
 }
 
 async fn route_event_with_state_and_codex_sessions_dir(
-    config: &Config,
+    config: &ValidatedConfig,
     providers: &[&dyn Provider],
     state: &LocalIngressState,
     event: LocalSignalEvent,
@@ -469,7 +469,7 @@ async fn route_event_with_state_and_codex_sessions_dir(
 }
 
 async fn route_event_with_state_and_codex_sessions_dir_and_safety(
-    config: &Config,
+    config: &ValidatedConfig,
     providers: &[&dyn Provider],
     state: &LocalIngressState,
     event: LocalSignalEvent,
@@ -515,7 +515,7 @@ async fn route_event_with_state_and_codex_sessions_dir_and_safety(
 }
 
 async fn route_event_with_state_and_safety(
-    config: &Config,
+    config: &ValidatedConfig,
     providers: &[&dyn Provider],
     state: &LocalIngressState,
     event: LocalSignalEvent,
@@ -534,7 +534,7 @@ async fn route_event_with_state_and_safety(
 }
 
 fn codex_cli_stop_event_is_shadowed_by_codex_desktop(
-    config: &Config,
+    config: &ValidatedConfig,
     event: &LocalSignalEvent,
     codex_sessions_dir: Option<&Path>,
 ) -> bool {
@@ -580,7 +580,7 @@ pub async fn route_event_with_runtime(
 }
 
 fn store_session_context(
-    config: &Config,
+    config: &ValidatedConfig,
     state: &LocalIngressState,
     event: LocalSignalEvent,
 ) -> anyhow::Result<()> {
@@ -609,7 +609,7 @@ fn store_session_context(
 }
 
 fn store_turn_start(
-    config: &Config,
+    config: &ValidatedConfig,
     state: &LocalIngressState,
     event: LocalSignalEvent,
 ) -> anyhow::Result<()> {
@@ -638,7 +638,7 @@ fn store_turn_start(
     Ok(())
 }
 
-fn create_signal(config: &Config, event: LocalSignalEvent) -> anyhow::Result<Signal> {
+fn create_signal(config: &ValidatedConfig, event: LocalSignalEvent) -> anyhow::Result<Signal> {
     let source_id = event.source_id.clone();
     let title = event.title.clone();
     let body = event.body.clone();
@@ -659,7 +659,7 @@ fn create_signal(config: &Config, event: LocalSignalEvent) -> anyhow::Result<Sig
 }
 
 fn validate_local_ingress_source<'a>(
-    config: &'a Config,
+    config: &'a ValidatedConfig,
     source_id: &str,
 ) -> anyhow::Result<&'a crate::config::SourceConfig> {
     let source = config
@@ -676,7 +676,11 @@ fn validate_local_ingress_source<'a>(
     Ok(source)
 }
 
-fn apply_local_structured_fields(config: &Config, signal: &mut Signal, event: LocalSignalEvent) {
+fn apply_local_structured_fields(
+    config: &ValidatedConfig,
+    signal: &mut Signal,
+    event: LocalSignalEvent,
+) {
     if let Some(event) = event.event {
         signal.event = event;
     }

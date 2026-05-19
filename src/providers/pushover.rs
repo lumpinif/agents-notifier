@@ -1,8 +1,8 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     provider_request_error,
@@ -28,31 +28,27 @@ pub struct PushoverProvider {
 
 impl PushoverProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Pushover {
+        let ProviderConfigDetail::Pushover(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a pushover provider",
                 config.id
             ));
-        }
+        };
 
-        let app_token = resolve_secret_value(
-            config,
-            "app_token",
-            config.app_token.as_deref(),
+        let app_token = detail.app_token.resolve_runtime_value(
+            &config.id,
+            ProviderType::Pushover.as_str(),
             "app_token_env",
-            config.app_token_env.as_deref(),
         )?;
-        let user_key = resolve_secret_value(
-            config,
-            "user_key",
-            config.user_key.as_deref(),
+        let user_key = detail.user_key.resolve_runtime_value(
+            &config.id,
+            ProviderType::Pushover.as_str(),
             "user_key_env",
-            config.user_key_env.as_deref(),
         )?;
         validate_pushover_identifier(&config.id, "app_token", &app_token)?;
         validate_pushover_identifier(&config.id, "user_key", &user_key)?;
 
-        let device = present(config.device.as_deref()).map(ToOwned::to_owned);
+        let device = detail.device.clone();
         if let Some(device) = &device {
             validate_device(&config.id, device)?;
         }
@@ -63,7 +59,7 @@ impl PushoverProvider {
             app_token,
             user_key,
             device,
-            sound: present(config.sound.as_deref()).map(ToOwned::to_owned),
+            sound: detail.sound.clone(),
             client: provider_http_client()?,
         })
     }
@@ -193,30 +189,6 @@ struct PushoverResponse {
     errors: Option<Vec<String>>,
 }
 
-fn resolve_secret_value(
-    config: &ProviderConfig,
-    value_field: &'static str,
-    value: Option<&str>,
-    env_field: &'static str,
-    env_name: Option<&str>,
-) -> anyhow::Result<String> {
-    match (present(value), present(env_name)) {
-        (Some(value), None) => Ok(value.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name).with_context(|| {
-            format!(
-                "pushover provider `{}` env var `{}` from `{}` is not set",
-                config.id, env_name, env_field
-            )
-        }),
-        _ => Err(anyhow!(
-            "pushover provider `{}` must set exactly one of `{}` or `{}`",
-            config.id,
-            value_field,
-            env_field
-        )),
-    }
-}
-
 fn validate_pushover_identifier(
     provider_id: &str,
     field: &'static str,
@@ -327,10 +299,6 @@ fn format_pushover_rejection_message(
 
 fn is_retriable_pushover_http_status(status: u16) -> bool {
     status == 408 || status >= 500
-}
-
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(test)]

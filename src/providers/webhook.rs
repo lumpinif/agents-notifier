@@ -1,6 +1,6 @@
 use anyhow::{Context, anyhow};
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -19,28 +19,18 @@ pub struct WebhookProvider {
 
 impl WebhookProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Webhook {
+        let ProviderConfigDetail::Webhook(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a webhook provider",
                 config.id
             ));
-        }
-
-        let url = match (
-            present(config.url.as_deref()),
-            present(config.url_env.as_deref()),
-        ) {
-            (Some(url), None) => url.to_string(),
-            (None, Some(env_name)) => std::env::var(env_name)
-                .with_context(|| format!("webhook provider `{}` env var is not set", config.id))?,
-            _ => {
-                return Err(anyhow!(
-                    "webhook provider `{}` must set exactly one of `url` or `url_env`",
-                    config.id
-                ));
-            }
         };
 
+        let url = detail.url.resolve_runtime_value(
+            &config.id,
+            ProviderType::Webhook.as_str(),
+            "url_env",
+        )?;
         let url = validate_custom_webhook_url(&url)
             .with_context(|| format!("webhook provider `{}` URL is invalid", config.id))?;
 
@@ -103,16 +93,12 @@ impl Provider for WebhookProvider {
     }
 }
 
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::config::ProviderType;
+    use crate::config::{UrlSource, WebhookProviderConfig};
     use crate::delivery::DeliveryErrorKind;
     use crate::providers::contract_test::ProviderHttpSimulator;
     use chrono::{DateTime, Utc};
@@ -123,47 +109,8 @@ mod tests {
         let signal = test_signal();
         simulator.expect_post_json("/hook", &signal, 200).await;
 
-        let provider = WebhookProvider::from_config(&ProviderConfig {
-            id: "debug".to_string(),
-            provider_type: ProviderType::Webhook,
-            base_url: None,
-            server: None,
-            topic: None,
-            url: Some(simulator.url("/hook")),
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        })
-        .expect("provider config should be valid");
+        let provider = WebhookProvider::from_config(&webhook_config(simulator.url("/hook")))
+            .expect("provider config should be valid");
 
         provider
             .send(&signal)
@@ -172,57 +119,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ambiguous_url_sources() {
-        let err = WebhookProvider::from_config(&ProviderConfig {
-            id: "debug".to_string(),
-            provider_type: ProviderType::Webhook,
-            base_url: None,
-            server: None,
-            topic: None,
-            url: Some("https://example.com/hook".to_string()),
-            url_env: Some("AGENTS_ROUTER_WEBHOOK_URL".to_string()),
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        })
-        .expect_err("ambiguous URL config should fail");
-
-        assert!(err.to_string().contains("exactly one"));
-    }
-
-    #[test]
     fn rejects_invalid_url_from_env() {
         let _guard = EnvVarGuard::set("AGENTS_ROUTER_TEST_WEBHOOK_URL", "http://example.com/hook");
-        let mut config = ProviderConfig::new("debug", ProviderType::Webhook);
-        config.url_env = Some("AGENTS_ROUTER_TEST_WEBHOOK_URL".to_string());
+        let config = webhook_env_config("AGENTS_ROUTER_TEST_WEBHOOK_URL");
 
         let err = WebhookProvider::from_config(&config)
             .expect_err("invalid webhook URL env value should fail");
@@ -235,47 +134,8 @@ mod tests {
         let simulator = ProviderHttpSimulator::start().await;
         simulator.expect_post_status("/hook", 500).await;
 
-        let provider = WebhookProvider::from_config(&ProviderConfig {
-            id: "debug".to_string(),
-            provider_type: ProviderType::Webhook,
-            base_url: None,
-            server: None,
-            topic: None,
-            url: Some(simulator.url("/hook")),
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        })
-        .expect("provider config should be valid");
+        let provider = WebhookProvider::from_config(&webhook_config(simulator.url("/hook")))
+            .expect("provider config should be valid");
 
         let err = provider
             .send(&test_signal())
@@ -306,6 +166,24 @@ mod tests {
             timestamp,
             BTreeMap::new(),
         )
+    }
+
+    fn webhook_config(url: String) -> ProviderConfig {
+        ProviderConfig {
+            id: "debug".to_string(),
+            detail: ProviderConfigDetail::Webhook(WebhookProviderConfig {
+                url: UrlSource::Inline(url),
+            }),
+        }
+    }
+
+    fn webhook_env_config(env_name: &'static str) -> ProviderConfig {
+        ProviderConfig {
+            id: "debug".to_string(),
+            detail: ProviderConfigDetail::Webhook(WebhookProviderConfig {
+                url: UrlSource::Env(env_name.to_string()),
+            }),
+        }
     }
 
     struct EnvVarGuard {

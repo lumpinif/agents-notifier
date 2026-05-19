@@ -3,6 +3,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Component, Path};
 
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -11,17 +12,35 @@ use crate::provider_urls::{
     validate_custom_webhook_url, validate_discord_webhook_url, validate_feishu_lark_webhook_url,
     validate_microsoft_teams_webhook_url, validate_slack_webhook_url,
 };
+use crate::source_integration_catalog::{SourceIntegrationId, source_integration_descriptor};
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedConfig {
+    pub raw: RawConfig,
+    pub validated: ValidatedConfig,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct Config {
+pub struct RawConfig {
     pub schema_version: u32,
     #[serde(default)]
     pub cli: CliConfig,
     #[serde(default)]
     pub log: LogConfig,
     #[serde(default)]
+    pub notification: NotificationConfig,
+    pub sources: Vec<SourceConfig>,
+    pub providers: Vec<RawProviderConfig>,
+    pub routes: Vec<RouteConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedConfig {
+    pub schema_version: u32,
+    pub cli: CliConfig,
+    pub log: LogConfig,
     pub notification: NotificationConfig,
     pub sources: Vec<SourceConfig>,
     pub providers: Vec<ProviderConfig>,
@@ -187,7 +206,7 @@ impl SourceType {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ProviderConfig {
+pub struct RawProviderConfig {
     pub id: String,
     #[serde(rename = "type")]
     pub provider_type: ProviderType,
@@ -263,6 +282,179 @@ pub struct ProviderConfig {
     pub context_token_env: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route_tag: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderConfig {
+    pub id: String,
+    pub detail: ProviderConfigDetail,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderConfigDetail {
+    Ntfy(NtfyProviderConfig),
+    Webhook(WebhookProviderConfig),
+    FeishuLark(FeishuLarkProviderConfig),
+    Pushover(PushoverProviderConfig),
+    Slack(SlackProviderConfig),
+    Discord(DiscordProviderConfig),
+    Telegram(TelegramProviderConfig),
+    Whatsapp(WhatsappProviderConfig),
+    Wechat(WechatProviderConfig),
+    MicrosoftTeams(MicrosoftTeamsProviderConfig),
+    EmailSmtp(EmailSmtpProviderConfig),
+}
+
+impl ProviderConfig {
+    pub fn provider_type(&self) -> ProviderType {
+        self.detail.provider_type()
+    }
+}
+
+impl ProviderConfigDetail {
+    pub fn provider_type(&self) -> ProviderType {
+        match self {
+            Self::Ntfy(_) => ProviderType::Ntfy,
+            Self::Webhook(_) => ProviderType::Webhook,
+            Self::FeishuLark(_) => ProviderType::FeishuLark,
+            Self::Pushover(_) => ProviderType::Pushover,
+            Self::Slack(_) => ProviderType::Slack,
+            Self::Discord(_) => ProviderType::Discord,
+            Self::Telegram(_) => ProviderType::Telegram,
+            Self::Whatsapp(_) => ProviderType::Whatsapp,
+            Self::Wechat(_) => ProviderType::Wechat,
+            Self::MicrosoftTeams(_) => ProviderType::MicrosoftTeams,
+            Self::EmailSmtp(_) => ProviderType::EmailSmtp,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NtfyProviderConfig {
+    pub server: String,
+    pub topic: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebhookProviderConfig {
+    pub url: UrlSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeishuLarkProviderConfig {
+    pub url: UrlSource,
+    pub secret: Option<SecretSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PushoverProviderConfig {
+    pub app_token: SecretSource,
+    pub user_key: SecretSource,
+    pub device: Option<String>,
+    pub sound: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlackProviderConfig {
+    pub url: UrlSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscordProviderConfig {
+    pub url: UrlSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TelegramProviderConfig {
+    pub bot_token: SecretSource,
+    pub chat_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhatsappProviderConfig {
+    pub access_token: SecretSource,
+    pub phone_number_id: String,
+    pub recipient_phone_number: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WechatProviderConfig {
+    pub base_url: String,
+    pub token: SecretSource,
+    pub recipient_user_id: String,
+    pub context_token: SecretSource,
+    pub route_tag: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MicrosoftTeamsProviderConfig {
+    pub url: UrlSource,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmailSmtpProviderConfig {
+    pub host: String,
+    pub port: u16,
+    pub security: EmailSmtpSecurity,
+    pub username: Option<SecretSource>,
+    pub password: Option<SecretSource>,
+    pub from: String,
+    pub to: Vec<String>,
+    pub reply_to: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UrlSource {
+    Inline(String),
+    Env(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SecretSource {
+    Inline(String),
+    Env(String),
+}
+
+impl UrlSource {
+    pub fn resolve_runtime_value(
+        &self,
+        provider_id: &str,
+        provider_type: &str,
+        field: &'static str,
+    ) -> anyhow::Result<String> {
+        match self {
+            Self::Inline(value) => Ok(value.clone()),
+            Self::Env(env_name) => std::env::var(env_name).with_context(|| {
+                format!(
+                    "{provider_type} provider `{provider_id}` env var `{env_name}` from `{field}` is not set"
+                )
+            }),
+        }
+    }
+}
+
+impl SecretSource {
+    pub fn resolve_runtime_value(
+        &self,
+        provider_id: &str,
+        provider_type: &str,
+        field: &'static str,
+    ) -> anyhow::Result<String> {
+        match self {
+            Self::Inline(value) => Ok(value.clone()),
+            Self::Env(env_name) => std::env::var(env_name).with_context(|| {
+                format!(
+                    "{provider_type} provider `{provider_id}` env var `{env_name}` from `{field}` is not set"
+                )
+            }),
+        }
+    }
+
+    pub fn is_configured(&self) -> bool {
+        match self {
+            Self::Inline(value) | Self::Env(value) => !value.trim().is_empty(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -356,6 +548,13 @@ pub enum ConfigError {
     UnsupportedSchema { found: u32, expected: u32 },
     #[error("duplicate source id `{0}`")]
     DuplicateSourceId(String),
+    #[error("{source_type} source must use id `{expected_id}` because {reason}; got `{source_id}`")]
+    InvalidSourceIdForType {
+        source_id: String,
+        source_type: &'static str,
+        expected_id: &'static str,
+        reason: &'static str,
+    },
     #[error("duplicate provider id `{0}`")]
     DuplicateProviderId(String),
     #[error("route references unknown source `{0}`")]
@@ -443,7 +642,21 @@ pub enum ConfigError {
     },
 }
 
-impl Config {
+impl LoadedConfig {
+    pub fn from_path(path: &Path) -> Result<Self, ConfigError> {
+        let raw = RawConfig::from_path(path)?;
+        let validated = raw.validate()?;
+        Ok(Self { raw, validated })
+    }
+
+    pub fn from_toml_str(raw: &str) -> Result<Self, ConfigError> {
+        let raw = RawConfig::from_toml_str(raw)?;
+        let validated = raw.validate()?;
+        Ok(Self { raw, validated })
+    }
+}
+
+impl RawConfig {
     pub fn from_path(path: &Path) -> Result<Self, ConfigError> {
         let raw = fs::read_to_string(path).map_err(|source| {
             if source.kind() == ErrorKind::NotFound {
@@ -462,20 +675,18 @@ impl Config {
     }
 
     pub fn from_toml_str(raw: &str) -> Result<Self, ConfigError> {
-        let config: Self = toml::from_str(raw)?;
-        config.validate()?;
-        Ok(config)
+        Ok(toml::from_str(raw)?)
     }
 
     pub fn source(&self, id: &str) -> Option<&SourceConfig> {
         self.sources.iter().find(|source| source.id == id)
     }
 
-    pub fn provider(&self, id: &str) -> Option<&ProviderConfig> {
+    pub fn provider(&self, id: &str) -> Option<&RawProviderConfig> {
         self.providers.iter().find(|provider| provider.id == id)
     }
 
-    fn validate(&self) -> Result<(), ConfigError> {
+    pub fn validate(&self) -> Result<ValidatedConfig, ConfigError> {
         if self.schema_version != CONFIG_SCHEMA_VERSION {
             return Err(ConfigError::UnsupportedSchema {
                 found: self.schema_version,
@@ -488,6 +699,7 @@ impl Config {
             if !source_ids.insert(source.id.as_str()) {
                 return Err(ConfigError::DuplicateSourceId(source.id.clone()));
             }
+            source.validate()?;
         }
 
         let mut provider_ids = HashSet::new();
@@ -495,8 +707,13 @@ impl Config {
             if !provider_ids.insert(provider.id.as_str()) {
                 return Err(ConfigError::DuplicateProviderId(provider.id.clone()));
             }
-            provider.validate()?;
         }
+
+        let providers = self
+            .providers
+            .iter()
+            .map(RawProviderConfig::to_validated)
+            .collect::<Result<Vec<_>, _>>()?;
 
         for (route_index, route) in self.routes.iter().enumerate() {
             for source_id in &route.sources {
@@ -516,7 +733,15 @@ impl Config {
 
         self.validate_notification_provider_compatibility()?;
 
-        Ok(())
+        Ok(ValidatedConfig {
+            schema_version: self.schema_version,
+            cli: self.cli.clone(),
+            log: self.log.clone(),
+            notification: self.notification.clone(),
+            sources: self.sources.clone(),
+            providers,
+            routes: self.routes.clone(),
+        })
     }
 
     fn validate_notification_provider_compatibility(&self) -> Result<(), ConfigError> {
@@ -552,6 +777,63 @@ impl Config {
         }
 
         Ok(())
+    }
+}
+
+impl ValidatedConfig {
+    pub fn from_path(path: &Path) -> Result<Self, ConfigError> {
+        LoadedConfig::from_path(path).map(|loaded| loaded.validated)
+    }
+
+    pub fn from_toml_str(raw: &str) -> Result<Self, ConfigError> {
+        LoadedConfig::from_toml_str(raw).map(|loaded| loaded.validated)
+    }
+
+    pub fn source(&self, id: &str) -> Option<&SourceConfig> {
+        self.sources.iter().find(|source| source.id == id)
+    }
+
+    pub fn provider(&self, id: &str) -> Option<&ProviderConfig> {
+        self.providers.iter().find(|provider| provider.id == id)
+    }
+}
+
+impl SourceConfig {
+    fn validate(&self) -> Result<(), ConfigError> {
+        let Some(requirement) = canonical_source_id_requirement(self.source_type) else {
+            return Ok(());
+        };
+        if self.id == requirement.expected_id {
+            return Ok(());
+        }
+
+        Err(ConfigError::InvalidSourceIdForType {
+            source_id: self.id.clone(),
+            source_type: self.source_type.as_str(),
+            expected_id: requirement.expected_id,
+            reason: requirement.reason,
+        })
+    }
+}
+
+struct CanonicalSourceIdRequirement {
+    expected_id: &'static str,
+    reason: &'static str,
+}
+
+fn canonical_source_id_requirement(
+    source_type: SourceType,
+) -> Option<CanonicalSourceIdRequirement> {
+    match source_type {
+        SourceType::CodexCli => Some(CanonicalSourceIdRequirement {
+            expected_id: source_integration_descriptor(SourceIntegrationId::CodexCli).source_id,
+            reason: "Codex CLI has one global Stop hook",
+        }),
+        SourceType::ClaudeCode => Some(CanonicalSourceIdRequirement {
+            expected_id: source_integration_descriptor(SourceIntegrationId::ClaudeCode).source_id,
+            reason: "Claude Code has one global settings file",
+        }),
+        SourceType::AgentsRouter | SourceType::AgentHook | SourceType::CodexDesktop => None,
     }
 }
 
@@ -598,7 +880,7 @@ fn has_dot_project_path_component(value: &str) -> bool {
         .any(|component| component == "." || component == "..")
 }
 
-impl ProviderConfig {
+impl RawProviderConfig {
     pub fn new(id: impl Into<String>, provider_type: ProviderType) -> Self {
         Self {
             id: id.into(),
@@ -642,214 +924,315 @@ impl ProviderConfig {
         }
     }
 
-    fn validate(&self) -> Result<(), ConfigError> {
-        match self.provider_type {
-            ProviderType::Ntfy => {
-                self.require_present("server", self.server.as_deref())?;
-                self.require_present("topic", self.topic.as_deref())?;
-            }
-            ProviderType::Webhook => {
-                let has_url = is_present(self.url.as_deref());
-                let has_url_env = is_present(self.url_env.as_deref());
-                if has_url == has_url_env {
-                    return Err(ConfigError::InvalidWebhookUrlSource {
+    fn to_validated(&self) -> Result<ProviderConfig, ConfigError> {
+        let detail = match self.provider_type {
+            ProviderType::Ntfy => ProviderConfigDetail::Ntfy(NtfyProviderConfig {
+                server: self.required_exact_string("server", self.server.as_deref())?,
+                topic: self.required_exact_string("topic", self.topic.as_deref())?,
+            }),
+            ProviderType::Webhook => ProviderConfigDetail::Webhook(WebhookProviderConfig {
+                url: self.required_url_source(
+                    ConfigError::InvalidWebhookUrlSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-                self.validate_inline_url("url", validate_custom_webhook_url)?;
-            }
+                    },
+                    validate_custom_webhook_url,
+                )?,
+            }),
             ProviderType::FeishuLark => {
-                let has_url = is_present(self.url.as_deref());
-                let has_url_env = is_present(self.url_env.as_deref());
-                if has_url == has_url_env {
-                    return Err(ConfigError::InvalidFeishuLarkUrlSource {
-                        provider_id: self.id.clone(),
-                    });
-                }
-                self.validate_inline_url("url", validate_feishu_lark_webhook_url)?;
-
-                let has_secret = is_present(self.secret.as_deref());
-                let has_secret_env = is_present(self.secret_env.as_deref());
-                if has_secret && has_secret_env {
-                    return Err(ConfigError::InvalidFeishuLarkSecretSource {
-                        provider_id: self.id.clone(),
-                    });
-                }
+                ProviderConfigDetail::FeishuLark(FeishuLarkProviderConfig {
+                    url: self.required_url_source(
+                        ConfigError::InvalidFeishuLarkUrlSource {
+                            provider_id: self.id.clone(),
+                        },
+                        validate_feishu_lark_webhook_url,
+                    )?,
+                    secret: self.optional_exact_secret_source(
+                        "secret",
+                        self.secret.as_deref(),
+                        "secret_env",
+                        self.secret_env.as_deref(),
+                        ConfigError::InvalidFeishuLarkSecretSource {
+                            provider_id: self.id.clone(),
+                        },
+                    )?,
+                })
             }
-            ProviderType::Pushover => {
-                let has_app_token = is_present(self.app_token.as_deref());
-                let has_app_token_env = is_present(self.app_token_env.as_deref());
-                if has_app_token == has_app_token_env {
-                    return Err(ConfigError::InvalidPushoverAppTokenSource {
+            ProviderType::Pushover => ProviderConfigDetail::Pushover(PushoverProviderConfig {
+                app_token: self.required_exact_secret_source(
+                    "app_token",
+                    self.app_token.as_deref(),
+                    "app_token_env",
+                    self.app_token_env.as_deref(),
+                    ConfigError::InvalidPushoverAppTokenSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-
-                let has_user_key = is_present(self.user_key.as_deref());
-                let has_user_key_env = is_present(self.user_key_env.as_deref());
-                if has_user_key == has_user_key_env {
-                    return Err(ConfigError::InvalidPushoverUserKeySource {
+                    },
+                )?,
+                user_key: self.required_exact_secret_source(
+                    "user_key",
+                    self.user_key.as_deref(),
+                    "user_key_env",
+                    self.user_key_env.as_deref(),
+                    ConfigError::InvalidPushoverUserKeySource {
                         provider_id: self.id.clone(),
-                    });
-                }
-            }
-            ProviderType::Slack => {
-                let has_url = is_present(self.url.as_deref());
-                let has_url_env = is_present(self.url_env.as_deref());
-                if has_url == has_url_env {
-                    return Err(ConfigError::InvalidSlackUrlSource {
+                    },
+                )?,
+                device: present_exact_owned(self.device.as_deref()),
+                sound: present_exact_owned(self.sound.as_deref()),
+            }),
+            ProviderType::Slack => ProviderConfigDetail::Slack(SlackProviderConfig {
+                url: self.required_url_source(
+                    ConfigError::InvalidSlackUrlSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-                self.validate_inline_url("url", validate_slack_webhook_url)?;
-            }
-            ProviderType::Discord => {
-                let has_url = is_present(self.url.as_deref());
-                let has_url_env = is_present(self.url_env.as_deref());
-                if has_url == has_url_env {
-                    return Err(ConfigError::InvalidDiscordUrlSource {
+                    },
+                    validate_slack_webhook_url,
+                )?,
+            }),
+            ProviderType::Discord => ProviderConfigDetail::Discord(DiscordProviderConfig {
+                url: self.required_url_source(
+                    ConfigError::InvalidDiscordUrlSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-                self.validate_inline_url("url", validate_discord_webhook_url)?;
-            }
-            ProviderType::Telegram => {
-                let has_bot_token = is_present(self.bot_token.as_deref());
-                let has_bot_token_env = is_present(self.bot_token_env.as_deref());
-                if has_bot_token == has_bot_token_env {
-                    return Err(ConfigError::InvalidTelegramBotTokenSource {
+                    },
+                    validate_discord_webhook_url,
+                )?,
+            }),
+            ProviderType::Telegram => ProviderConfigDetail::Telegram(TelegramProviderConfig {
+                bot_token: self.required_exact_secret_source(
+                    "bot_token",
+                    self.bot_token.as_deref(),
+                    "bot_token_env",
+                    self.bot_token_env.as_deref(),
+                    ConfigError::InvalidTelegramBotTokenSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-                self.require_present("chat_id", self.chat_id.as_deref())?;
-            }
-            ProviderType::Whatsapp => {
-                let has_access_token = is_present(self.access_token.as_deref());
-                let has_access_token_env = is_present(self.access_token_env.as_deref());
-                if has_access_token == has_access_token_env {
-                    return Err(ConfigError::InvalidWhatsappAccessTokenSource {
+                    },
+                )?,
+                chat_id: self.required_exact_string("chat_id", self.chat_id.as_deref())?,
+            }),
+            ProviderType::Whatsapp => ProviderConfigDetail::Whatsapp(WhatsappProviderConfig {
+                access_token: self.required_exact_secret_source(
+                    "access_token",
+                    self.access_token.as_deref(),
+                    "access_token_env",
+                    self.access_token_env.as_deref(),
+                    ConfigError::InvalidWhatsappAccessTokenSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-                self.require_present("phone_number_id", self.phone_number_id.as_deref())?;
-                self.require_present(
+                    },
+                )?,
+                phone_number_id: self
+                    .required_exact_string("phone_number_id", self.phone_number_id.as_deref())?,
+                recipient_phone_number: self.required_exact_string(
                     "recipient_phone_number",
                     self.recipient_phone_number.as_deref(),
-                )?;
-            }
-            ProviderType::Wechat => {
-                self.require_present("base_url", self.base_url.as_deref())?;
-                let has_token = is_present(self.token.as_deref());
-                let has_token_env = is_present(self.token_env.as_deref());
-                if has_token == has_token_env {
-                    return Err(ConfigError::InvalidWechatTokenSource {
+                )?,
+            }),
+            ProviderType::Wechat => ProviderConfigDetail::Wechat(WechatProviderConfig {
+                base_url: self.required_exact_string("base_url", self.base_url.as_deref())?,
+                token: self.required_exact_secret_source(
+                    "token",
+                    self.token.as_deref(),
+                    "token_env",
+                    self.token_env.as_deref(),
+                    ConfigError::InvalidWechatTokenSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-                self.require_present("recipient_user_id", self.recipient_user_id.as_deref())?;
-                let has_context_token = is_present(self.context_token.as_deref());
-                let has_context_token_env = is_present(self.context_token_env.as_deref());
-                if has_context_token == has_context_token_env {
-                    return Err(ConfigError::InvalidWechatContextTokenSource {
+                    },
+                )?,
+                recipient_user_id: self.required_exact_string(
+                    "recipient_user_id",
+                    self.recipient_user_id.as_deref(),
+                )?,
+                context_token: self.required_exact_secret_source(
+                    "context_token",
+                    self.context_token.as_deref(),
+                    "context_token_env",
+                    self.context_token_env.as_deref(),
+                    ConfigError::InvalidWechatContextTokenSource {
                         provider_id: self.id.clone(),
-                    });
-                }
-            }
+                    },
+                )?,
+                route_tag: present_exact_owned(self.route_tag.as_deref()),
+            }),
             ProviderType::MicrosoftTeams => {
-                let has_url = is_present(self.url.as_deref());
-                let has_url_env = is_present(self.url_env.as_deref());
-                if has_url == has_url_env {
-                    return Err(ConfigError::InvalidMicrosoftTeamsUrlSource {
-                        provider_id: self.id.clone(),
-                    });
-                }
-                self.validate_inline_url("url", validate_microsoft_teams_webhook_url)?;
+                ProviderConfigDetail::MicrosoftTeams(MicrosoftTeamsProviderConfig {
+                    url: self.required_url_source(
+                        ConfigError::InvalidMicrosoftTeamsUrlSource {
+                            provider_id: self.id.clone(),
+                        },
+                        validate_microsoft_teams_webhook_url,
+                    )?,
+                })
             }
             ProviderType::EmailSmtp => {
-                self.require_present("host", self.host.as_deref())?;
-                if self.port.is_none() {
-                    return Err(ConfigError::MissingProviderField {
+                let username = self.optional_trimmed_secret_source(
+                    "username",
+                    self.username.as_deref(),
+                    "username_env",
+                    self.username_env.as_deref(),
+                    ConfigError::InvalidEmailSmtpUsernameSource {
                         provider_id: self.id.clone(),
-                        field: "port",
-                    });
-                }
-                if self.security.is_none() {
-                    return Err(ConfigError::MissingProviderField {
+                    },
+                )?;
+                let password = self.optional_trimmed_secret_source(
+                    "password",
+                    self.password.as_deref(),
+                    "password_env",
+                    self.password_env.as_deref(),
+                    ConfigError::InvalidEmailSmtpPasswordSource {
                         provider_id: self.id.clone(),
-                        field: "security",
-                    });
-                }
-                self.require_present("from", self.from.as_deref())?;
-                if self
-                    .to
-                    .as_ref()
-                    .is_none_or(|recipients| recipients.is_empty())
-                {
-                    return Err(ConfigError::MissingProviderField {
-                        provider_id: self.id.clone(),
-                        field: "to",
-                    });
-                }
-
-                let has_username = is_present(self.username.as_deref());
-                let has_username_env = is_present(self.username_env.as_deref());
-                if has_username && has_username_env {
-                    return Err(ConfigError::InvalidEmailSmtpUsernameSource {
-                        provider_id: self.id.clone(),
-                    });
-                }
-
-                let has_password = is_present(self.password.as_deref());
-                let has_password_env = is_present(self.password_env.as_deref());
-                if has_password && has_password_env {
-                    return Err(ConfigError::InvalidEmailSmtpPasswordSource {
-                        provider_id: self.id.clone(),
-                    });
-                }
-
-                if (has_username || has_username_env) != (has_password || has_password_env) {
+                    },
+                )?;
+                if username.is_some() != password.is_some() {
                     return Err(ConfigError::InvalidEmailSmtpCredentials {
                         provider_id: self.id.clone(),
                     });
                 }
+
+                ProviderConfigDetail::EmailSmtp(EmailSmtpProviderConfig {
+                    host: self.required_trimmed_string("host", self.host.as_deref())?,
+                    port: self.port.ok_or_else(|| ConfigError::MissingProviderField {
+                        provider_id: self.id.clone(),
+                        field: "port",
+                    })?,
+                    security: self
+                        .security
+                        .ok_or_else(|| ConfigError::MissingProviderField {
+                            provider_id: self.id.clone(),
+                            field: "security",
+                        })?,
+                    username,
+                    password,
+                    from: self.required_trimmed_string("from", self.from.as_deref())?,
+                    to: self
+                        .to
+                        .as_ref()
+                        .filter(|recipients| !recipients.is_empty())
+                        .cloned()
+                        .ok_or_else(|| ConfigError::MissingProviderField {
+                            provider_id: self.id.clone(),
+                            field: "to",
+                        })?,
+                    reply_to: present_trimmed_owned(self.reply_to.as_deref()),
+                })
             }
-        }
-
-        Ok(())
-    }
-
-    fn validate_inline_url(
-        &self,
-        field: &'static str,
-        validate: fn(&str) -> anyhow::Result<String>,
-    ) -> Result<(), ConfigError> {
-        let Some(url) = self.url.as_deref().filter(|url| is_present(Some(url))) else {
-            return Ok(());
         };
 
-        validate(url)
-            .map(|_| ())
-            .map_err(|error| ConfigError::InvalidProviderUrl {
-                provider_id: self.id.clone(),
-                field,
-                message: error.to_string(),
-            })
+        Ok(ProviderConfig {
+            id: self.id.clone(),
+            detail,
+        })
     }
 
-    fn require_present(&self, field: &'static str, value: Option<&str>) -> Result<(), ConfigError> {
-        if is_present(value) {
-            Ok(())
+    fn required_exact_string(
+        &self,
+        field: &'static str,
+        value: Option<&str>,
+    ) -> Result<String, ConfigError> {
+        present_exact_owned(value).ok_or_else(|| ConfigError::MissingProviderField {
+            provider_id: self.id.clone(),
+            field,
+        })
+    }
+
+    fn required_trimmed_string(
+        &self,
+        field: &'static str,
+        value: Option<&str>,
+    ) -> Result<String, ConfigError> {
+        present_trimmed_owned(value).ok_or_else(|| ConfigError::MissingProviderField {
+            provider_id: self.id.clone(),
+            field,
+        })
+    }
+
+    fn required_url_source(
+        &self,
+        source_error: ConfigError,
+        validate: fn(&str) -> anyhow::Result<String>,
+    ) -> Result<UrlSource, ConfigError> {
+        let has_url = is_present(self.url.as_deref());
+        let has_url_env = is_present(self.url_env.as_deref());
+        if has_url == has_url_env {
+            return Err(source_error);
+        }
+        if let Some(raw_url) = present_exact_owned(self.url.as_deref()) {
+            validate(&raw_url)
+                .map_err(|error| ConfigError::InvalidProviderUrl {
+                    provider_id: self.id.clone(),
+                    field: "url",
+                    message: error.to_string(),
+                })
+                .map(UrlSource::Inline)
         } else {
-            Err(ConfigError::MissingProviderField {
-                provider_id: self.id.clone(),
-                field,
-            })
+            Ok(UrlSource::Env(
+                present_exact_owned(self.url_env.as_deref()).expect("url_env presence was checked"),
+            ))
+        }
+    }
+
+    fn required_exact_secret_source(
+        &self,
+        _value_field: &'static str,
+        value: Option<&str>,
+        _env_field: &'static str,
+        env_name: Option<&str>,
+        source_error: ConfigError,
+    ) -> Result<SecretSource, ConfigError> {
+        match (present_exact_owned(value), present_exact_owned(env_name)) {
+            (Some(value), None) => Ok(SecretSource::Inline(value)),
+            (None, Some(env_name)) => Ok(SecretSource::Env(env_name)),
+            (None, None) | (Some(_), Some(_)) => Err(source_error),
+        }
+    }
+
+    fn optional_exact_secret_source(
+        &self,
+        _value_field: &'static str,
+        value: Option<&str>,
+        _env_field: &'static str,
+        env_name: Option<&str>,
+        source_error: ConfigError,
+    ) -> Result<Option<SecretSource>, ConfigError> {
+        match (present_exact_owned(value), present_exact_owned(env_name)) {
+            (Some(value), None) => Ok(Some(SecretSource::Inline(value))),
+            (None, Some(env_name)) => Ok(Some(SecretSource::Env(env_name))),
+            (None, None) => Ok(None),
+            (Some(_), Some(_)) => Err(source_error),
+        }
+    }
+
+    fn optional_trimmed_secret_source(
+        &self,
+        _value_field: &'static str,
+        value: Option<&str>,
+        _env_field: &'static str,
+        env_name: Option<&str>,
+        source_error: ConfigError,
+    ) -> Result<Option<SecretSource>, ConfigError> {
+        match (
+            present_trimmed_owned(value),
+            present_trimmed_owned(env_name),
+        ) {
+            (Some(value), None) => Ok(Some(SecretSource::Inline(value))),
+            (None, Some(env_name)) => Ok(Some(SecretSource::Env(env_name))),
+            (None, None) => Ok(None),
+            (Some(_), Some(_)) => Err(source_error),
         }
     }
 }
 
 fn is_present(value: Option<&str>) -> bool {
     value.is_some_and(|value| !value.trim().is_empty())
+}
+
+fn present_exact_owned(value: Option<&str>) -> Option<String> {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn present_trimmed_owned(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 #[cfg(test)]

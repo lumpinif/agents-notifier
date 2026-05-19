@@ -5,8 +5,8 @@ pub fn build_ntfy_config(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     topic: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Ntfy.as_str(), ProviderType::Ntfy);
+) -> RawConfig {
+    let mut provider = RawProviderConfig::new(ProviderType::Ntfy.as_str(), ProviderType::Ntfy);
     provider.server = Some(DEFAULT_NTFY_SERVER.to_string());
     provider.topic = Some(topic.to_string());
 
@@ -19,9 +19,9 @@ pub fn build_feishu_lark_config(
     prompt_detail: PromptDetail,
     webhook_url: &str,
     secret: Option<String>,
-) -> Config {
+) -> RawConfig {
     let mut provider =
-        ProviderConfig::new(ProviderType::FeishuLark.as_str(), ProviderType::FeishuLark);
+        RawProviderConfig::new(ProviderType::FeishuLark.as_str(), ProviderType::FeishuLark);
     provider.url = Some(webhook_url.to_string());
     provider.secret = secret;
 
@@ -33,8 +33,9 @@ pub fn build_webhook_config(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Webhook.as_str(), ProviderType::Webhook);
+) -> RawConfig {
+    let mut provider =
+        RawProviderConfig::new(ProviderType::Webhook.as_str(), ProviderType::Webhook);
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
@@ -48,8 +49,9 @@ pub fn build_pushover_config(
     user_key: &str,
     device: Option<String>,
     sound: Option<String>,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Pushover.as_str(), ProviderType::Pushover);
+) -> RawConfig {
+    let mut provider =
+        RawProviderConfig::new(ProviderType::Pushover.as_str(), ProviderType::Pushover);
     provider.app_token = Some(app_token.to_string());
     provider.user_key = Some(user_key.to_string());
     provider.device = device;
@@ -63,8 +65,8 @@ pub fn build_slack_config(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Slack.as_str(), ProviderType::Slack);
+) -> RawConfig {
+    let mut provider = RawProviderConfig::new(ProviderType::Slack.as_str(), ProviderType::Slack);
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
@@ -75,8 +77,9 @@ pub fn build_discord_config(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Discord.as_str(), ProviderType::Discord);
+) -> RawConfig {
+    let mut provider =
+        RawProviderConfig::new(ProviderType::Discord.as_str(), ProviderType::Discord);
     provider.url = Some(webhook_url.to_string());
 
     build_config(agent, answer_detail, prompt_detail, vec![provider])
@@ -88,8 +91,9 @@ pub fn build_telegram_config(
     prompt_detail: PromptDetail,
     bot_token: &str,
     chat_id: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Telegram.as_str(), ProviderType::Telegram);
+) -> RawConfig {
+    let mut provider =
+        RawProviderConfig::new(ProviderType::Telegram.as_str(), ProviderType::Telegram);
     provider.bot_token = Some(bot_token.to_string());
     provider.chat_id = Some(chat_id.to_string());
 
@@ -103,8 +107,9 @@ pub fn build_whatsapp_config(
     access_token: &str,
     phone_number_id: &str,
     recipient_phone_number: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Whatsapp.as_str(), ProviderType::Whatsapp);
+) -> RawConfig {
+    let mut provider =
+        RawProviderConfig::new(ProviderType::Whatsapp.as_str(), ProviderType::Whatsapp);
     provider.access_token = Some(access_token.to_string());
     provider.phone_number_id = Some(phone_number_id.to_string());
     provider.recipient_phone_number = Some(recipient_phone_number.to_string());
@@ -122,8 +127,8 @@ pub fn build_wechat_config(
     recipient_user_id: &str,
     context_token: &str,
     route_tag: Option<String>,
-) -> Config {
-    let mut provider = ProviderConfig::new(ProviderType::Wechat.as_str(), ProviderType::Wechat);
+) -> RawConfig {
+    let mut provider = RawProviderConfig::new(ProviderType::Wechat.as_str(), ProviderType::Wechat);
     provider.base_url = Some(base_url.to_string());
     provider.token = Some(token.to_string());
     provider.recipient_user_id = Some(recipient_user_id.to_string());
@@ -138,8 +143,8 @@ pub fn build_microsoft_teams_config(
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
     webhook_url: &str,
-) -> Config {
-    let mut provider = ProviderConfig::new(
+) -> RawConfig {
+    let mut provider = RawProviderConfig::new(
         ProviderType::MicrosoftTeams.as_str(),
         ProviderType::MicrosoftTeams,
     );
@@ -161,9 +166,9 @@ pub fn build_email_smtp_config(
     from: &str,
     to: Vec<String>,
     reply_to: Option<String>,
-) -> Config {
+) -> RawConfig {
     let mut provider =
-        ProviderConfig::new(ProviderType::EmailSmtp.as_str(), ProviderType::EmailSmtp);
+        RawProviderConfig::new(ProviderType::EmailSmtp.as_str(), ProviderType::EmailSmtp);
     provider.host = Some(host.to_string());
     provider.port = Some(port);
     provider.security = Some(security);
@@ -177,7 +182,7 @@ pub fn build_email_smtp_config(
 }
 
 pub fn apply_agent_route_filters(
-    config: &mut Config,
+    config: &mut RawConfig,
     agent: SourceIntegrationId,
     minimum_task_duration_minutes: Option<u64>,
     only_forward_from_project_paths: Vec<String>,
@@ -202,8 +207,8 @@ fn build_config(
     agent: SourceIntegrationId,
     answer_detail: AnswerDetail,
     prompt_detail: PromptDetail,
-    providers: Vec<ProviderConfig>,
-) -> Config {
+    providers: Vec<RawProviderConfig>,
+) -> RawConfig {
     let provider_ids: Vec<String> = providers
         .iter()
         .map(|provider| provider.id.clone())
@@ -211,7 +216,7 @@ fn build_config(
     let agent_source = agent.source_config();
     let agent_source_id = agent_source.id.clone();
 
-    Config {
+    RawConfig {
         schema_version: CONFIG_SCHEMA_VERSION,
         cli: CliConfig::default(),
         log: LogConfig::default(),

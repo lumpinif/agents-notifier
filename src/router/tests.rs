@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 
 use super::*;
 use crate::config::{
-    CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-    SourceConfig, SourceType,
+    CliConfig, LogConfig, NotificationConfig, ProviderType, RawConfig, RawProviderConfig,
+    RouteConfig, SourceConfig, SourceType, ValidatedConfig,
 };
 use crate::delivery::DeliveryErrorContext;
 use crate::delivery_safety::DeliverySafetyGuard;
@@ -401,8 +401,15 @@ fn test_signal_with_duration_and_project_path(
     signal
 }
 
-fn test_config(routes: Vec<RouteConfig>) -> Config {
-    Config {
+fn test_config(routes: Vec<RouteConfig>) -> ValidatedConfig {
+    let mut ntfy = RawProviderConfig::new("phone", ProviderType::Ntfy);
+    ntfy.server = Some("https://ntfy.sh".to_string());
+    ntfy.topic = Some("topic".to_string());
+
+    let mut webhook = RawProviderConfig::new("debug", ProviderType::Webhook);
+    webhook.url = Some("https://example.com/hook".to_string());
+
+    RawConfig {
         schema_version: 1,
         cli: CliConfig::default(),
         log: LogConfig::default(),
@@ -421,88 +428,9 @@ fn test_config(routes: Vec<RouteConfig>) -> Config {
                 source_type: SourceType::ClaudeCode,
             },
         ],
-        providers: vec![
-            ProviderConfig {
-                id: "phone".to_string(),
-                provider_type: ProviderType::Ntfy,
-                base_url: None,
-                server: Some("https://ntfy.sh".to_string()),
-                topic: Some("topic".to_string()),
-                url: None,
-                url_env: None,
-                secret: None,
-                secret_env: None,
-                app_token: None,
-                app_token_env: None,
-                user_key: None,
-                user_key_env: None,
-                device: None,
-                sound: None,
-                bot_token: None,
-                bot_token_env: None,
-                chat_id: None,
-                access_token: None,
-                access_token_env: None,
-                phone_number_id: None,
-                recipient_phone_number: None,
-                host: None,
-                port: None,
-                security: None,
-                username: None,
-                username_env: None,
-                password: None,
-                password_env: None,
-                from: None,
-                to: None,
-                reply_to: None,
-                token: None,
-                token_env: None,
-                recipient_user_id: None,
-                context_token: None,
-                context_token_env: None,
-                route_tag: None,
-            },
-            ProviderConfig {
-                id: "debug".to_string(),
-                provider_type: ProviderType::Webhook,
-                base_url: None,
-                server: None,
-                topic: None,
-                url: Some("https://example.com/hook".to_string()),
-                url_env: None,
-                secret: None,
-                secret_env: None,
-                app_token: None,
-                app_token_env: None,
-                user_key: None,
-                user_key_env: None,
-                device: None,
-                sound: None,
-                bot_token: None,
-                bot_token_env: None,
-                chat_id: None,
-                access_token: None,
-                access_token_env: None,
-                phone_number_id: None,
-                recipient_phone_number: None,
-                host: None,
-                port: None,
-                security: None,
-                username: None,
-                username_env: None,
-                password: None,
-                password_env: None,
-                from: None,
-                to: None,
-                reply_to: None,
-                token: None,
-                token_env: None,
-                recipient_user_id: None,
-                context_token: None,
-                context_token_env: None,
-                route_tag: None,
-            },
-        ],
+        providers: vec![ntfy, webhook],
         routes,
     }
+    .validate()
+    .expect("test config should validate")
 }

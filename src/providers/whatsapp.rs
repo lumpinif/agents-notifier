@@ -1,8 +1,8 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -26,40 +26,24 @@ pub struct WhatsappProvider {
 
 impl WhatsappProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Whatsapp {
+        let ProviderConfigDetail::Whatsapp(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a whatsapp provider",
                 config.id
             ));
-        }
+        };
 
-        let access_token = resolve_secret_value(
-            config,
-            "access_token",
-            config.access_token.as_deref(),
+        let access_token = detail.access_token.resolve_runtime_value(
+            &config.id,
+            ProviderType::Whatsapp.as_str(),
             "access_token_env",
-            config.access_token_env.as_deref(),
         )?;
         validate_access_token(&config.id, &access_token)?;
 
-        let phone_number_id = present(config.phone_number_id.as_deref())
-            .ok_or_else(|| {
-                anyhow!(
-                    "whatsapp provider `{}` requires `phone_number_id`",
-                    config.id
-                )
-            })?
-            .to_string();
+        let phone_number_id = detail.phone_number_id.clone();
         validate_phone_number_id(&config.id, &phone_number_id)?;
 
-        let recipient_phone_number = present(config.recipient_phone_number.as_deref())
-            .ok_or_else(|| {
-                anyhow!(
-                    "whatsapp provider `{}` requires `recipient_phone_number`",
-                    config.id
-                )
-            })?
-            .to_string();
+        let recipient_phone_number = detail.recipient_phone_number.clone();
         validate_recipient_phone_number(&config.id, &recipient_phone_number)?;
 
         Ok(Self {
@@ -220,30 +204,6 @@ struct WhatsappError {
     error_type: Option<String>,
 }
 
-fn resolve_secret_value(
-    config: &ProviderConfig,
-    value_field: &'static str,
-    value: Option<&str>,
-    env_field: &'static str,
-    env_name: Option<&str>,
-) -> anyhow::Result<String> {
-    match (present(value), present(env_name)) {
-        (Some(value), None) => Ok(value.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name).with_context(|| {
-            format!(
-                "whatsapp provider `{}` env var `{}` from `{}` is not set",
-                config.id, env_name, env_field
-            )
-        }),
-        _ => Err(anyhow!(
-            "whatsapp provider `{}` must set exactly one of `{}` or `{}`",
-            config.id,
-            value_field,
-            env_field
-        )),
-    }
-}
-
 fn validate_access_token(provider_id: &str, access_token: &str) -> anyhow::Result<()> {
     if !access_token.is_empty() && access_token.bytes().all(|byte| !byte.is_ascii_whitespace()) {
         Ok(())
@@ -358,10 +318,6 @@ fn response_summary(response_body: &str) -> String {
         .filter(|character| !character.is_control())
         .take(160)
         .collect()
-}
-
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(test)]

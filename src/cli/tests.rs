@@ -274,7 +274,7 @@ fn emit_rejects_negative_duration_argument() {
 
 #[test]
 fn setup_defaults_do_not_inline_env_values() {
-    let config = Config::from_toml_str(
+    let config = RawConfig::from_toml_str(
         r#"
 schema_version = 1
 
@@ -651,7 +651,7 @@ fn safe_url_host_does_not_expose_webhook_token() {
     );
 }
 
-fn single_setup_provider_summary(config: &Config) -> SetupProviderSummary {
+fn single_setup_provider_summary(config: &RawConfig) -> SetupProviderSummary {
     let mut summaries = setup_provider_summaries(config);
     assert_eq!(summaries.len(), 1);
     summaries.remove(0)

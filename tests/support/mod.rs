@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
 use agents_router::config::{
-    CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-    SourceConfig, SourceType,
+    CliConfig, LogConfig, NotificationConfig, ProviderType, RawConfig, RawProviderConfig,
+    RouteConfig, SourceConfig, SourceType, ValidatedConfig,
 };
 use agents_router::delivery::ProviderSendResult;
 use agents_router::router::{Provider, ProviderFuture};
@@ -51,11 +51,11 @@ impl Provider for SignalCaptureProvider {
     }
 }
 
-pub fn source_contract_config(source_id: &str, source_type: SourceType) -> Config {
-    let mut provider = ProviderConfig::new("capture", ProviderType::Webhook);
+pub fn source_contract_config(source_id: &str, source_type: SourceType) -> ValidatedConfig {
+    let mut provider = RawProviderConfig::new("capture", ProviderType::Webhook);
     provider.url = Some("https://example.com/capture".to_string());
 
-    Config {
+    RawConfig {
         schema_version: 1,
         cli: CliConfig::default(),
         log: LogConfig::default(),
@@ -73,4 +73,6 @@ pub fn source_contract_config(source_id: &str, source_type: SourceType) -> Confi
             vec!["capture".to_string()],
         )],
     }
+    .validate()
+    .expect("source contract config should validate")
 }

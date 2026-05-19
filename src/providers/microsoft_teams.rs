@@ -1,9 +1,9 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use chrono::{DateTime, Local, Utc};
 use reqwest::header::CONTENT_TYPE;
 use serde::Serialize;
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -24,14 +24,18 @@ pub struct MicrosoftTeamsProvider {
 
 impl MicrosoftTeamsProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::MicrosoftTeams {
+        let ProviderConfigDetail::MicrosoftTeams(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a microsoft_teams provider",
                 config.id
             ));
-        }
+        };
 
-        let url = resolve_url(config)?;
+        let url = detail.url.resolve_runtime_value(
+            &config.id,
+            ProviderType::MicrosoftTeams.as_str(),
+            "url_env",
+        )?;
         let url = validate_microsoft_teams_webhook_url(&url)?;
 
         Ok(Self {
@@ -199,25 +203,6 @@ struct MicrosoftTeamsTextBlock<'a> {
     wrap: bool,
 }
 
-fn resolve_url(config: &ProviderConfig) -> anyhow::Result<String> {
-    match (
-        present(config.url.as_deref()),
-        present(config.url_env.as_deref()),
-    ) {
-        (Some(url), None) => Ok(url.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name).with_context(|| {
-            format!(
-                "microsoft_teams provider `{}` env var is not set",
-                config.id
-            )
-        }),
-        _ => Err(anyhow!(
-            "microsoft_teams provider `{}` must set exactly one of `url` or `url_env`",
-            config.id
-        )),
-    }
-}
-
 fn validate_request_size(
     signal: &Signal,
     provider_id: &str,
@@ -288,10 +273,6 @@ fn response_summary(response_body: &str) -> String {
         .filter(|character| !character.is_control())
         .take(160)
         .collect()
-}
-
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
+use crate::config::{SecretSource, WhatsappProviderConfig};
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
 use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
@@ -121,43 +122,11 @@ async fn rejects_whatsapp_text_that_exceeds_limit_before_sending() {
 fn validates_whatsapp_config_values() {
     let provider = WhatsappProvider::from_config(&ProviderConfig {
         id: "whatsapp".to_string(),
-        provider_type: ProviderType::Whatsapp,
-        base_url: None,
-        server: None,
-        topic: None,
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-        app_token: None,
-        app_token_env: None,
-        user_key: None,
-        user_key_env: None,
-        device: None,
-        sound: None,
-        bot_token: None,
-        bot_token_env: None,
-        chat_id: None,
-        access_token: Some("test-access-token".to_string()),
-        access_token_env: None,
-        phone_number_id: Some("123456789".to_string()),
-        recipient_phone_number: Some("15551234567".to_string()),
-        host: None,
-        port: None,
-        security: None,
-        username: None,
-        username_env: None,
-        password: None,
-        password_env: None,
-        from: None,
-        to: None,
-        reply_to: None,
-        token: None,
-        token_env: None,
-        recipient_user_id: None,
-        context_token: None,
-        context_token_env: None,
-        route_tag: None,
+        detail: ProviderConfigDetail::Whatsapp(WhatsappProviderConfig {
+            access_token: SecretSource::Inline("test-access-token".to_string()),
+            phone_number_id: "123456789".to_string(),
+            recipient_phone_number: "15551234567".to_string(),
+        }),
     })
     .expect("WhatsApp provider config should be valid");
 

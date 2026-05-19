@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use anyhow::{Context, anyhow};
 use serde::Deserialize;
 
-use crate::config::{Config, SourceType};
+use crate::config::{SourceType, ValidatedConfig};
 use crate::local_ingress::{LocalSignalConversation, LocalSignalEvent};
 use crate::signal::{Signal, SignalEvent, SignalLifecycle, SignalLink, SignalWorkspace};
 
 pub fn create_signal(
-    config: &Config,
+    config: &ValidatedConfig,
     source_id: &str,
     title: impl Into<String>,
     body: impl Into<String>,
@@ -17,7 +17,7 @@ pub fn create_signal(
 }
 
 pub fn create_signal_for_type(
-    config: &Config,
+    config: &ValidatedConfig,
     source_id: &str,
     expected_source_type: SourceType,
     title: impl Into<String>,
@@ -98,8 +98,8 @@ fn present(value: String) -> Option<String> {
 mod tests {
     use super::*;
     use crate::config::{
-        CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType,
-        RouteConfig, SourceConfig, SourceType,
+        CliConfig, LogConfig, NotificationConfig, ProviderType, RawConfig, RawProviderConfig,
+        RouteConfig, SourceConfig, SourceType, ValidatedConfig,
     };
 
     #[test]
@@ -194,8 +194,11 @@ mod tests {
         );
     }
 
-    fn test_config(source_id: &str, source_type: SourceType) -> Config {
-        Config {
+    fn test_config(source_id: &str, source_type: SourceType) -> ValidatedConfig {
+        let mut provider = RawProviderConfig::new("debug", ProviderType::Webhook);
+        provider.url = Some("https://example.com/hook".to_string());
+
+        RawConfig {
             schema_version: 1,
             cli: CliConfig::default(),
             log: LogConfig::default(),
@@ -204,50 +207,13 @@ mod tests {
                 id: source_id.to_string(),
                 source_type,
             }],
-            providers: vec![ProviderConfig {
-                id: "debug".to_string(),
-                provider_type: ProviderType::Webhook,
-                base_url: None,
-                server: None,
-                topic: None,
-                url: Some("https://example.com/hook".to_string()),
-                url_env: None,
-                secret: None,
-                secret_env: None,
-                app_token: None,
-                app_token_env: None,
-                user_key: None,
-                user_key_env: None,
-                device: None,
-                sound: None,
-                bot_token: None,
-                bot_token_env: None,
-                chat_id: None,
-                access_token: None,
-                access_token_env: None,
-                phone_number_id: None,
-                recipient_phone_number: None,
-                host: None,
-                port: None,
-                security: None,
-                username: None,
-                username_env: None,
-                password: None,
-                password_env: None,
-                from: None,
-                to: None,
-                reply_to: None,
-                token: None,
-                token_env: None,
-                recipient_user_id: None,
-                context_token: None,
-                context_token_env: None,
-                route_tag: None,
-            }],
+            providers: vec![provider],
             routes: vec![RouteConfig::new(
                 vec![source_id.to_string()],
                 vec!["debug".to_string()],
             )],
         }
+        .validate()
+        .expect("test config should validate")
     }
 }

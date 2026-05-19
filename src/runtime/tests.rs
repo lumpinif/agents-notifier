@@ -1,8 +1,8 @@
 use tempfile::tempdir;
 
 use crate::config::{
-    CliConfig, Config, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-    SourceConfig, SourceType,
+    CliConfig, LogConfig, NotificationConfig, ProviderType, RawConfig, RawProviderConfig,
+    RouteConfig, SourceConfig, SourceType, ValidatedConfig,
 };
 use crate::local_integrations::{LocalSourceIntegrationPaths, codex_cli_stop_hook_command};
 use crate::setup;
@@ -13,10 +13,11 @@ use super::*;
 fn reload_replaces_current_runtime_snapshot() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
-    setup::write_config(&path, &test_config(None)).expect("config should be written");
+    setup::write_config(&path, &raw_test_config(None)).expect("config should be written");
     let runtime = RuntimeState::new(test_config(None)).expect("runtime should be created");
 
-    setup::write_config(&path, &test_config(Some(5))).expect("updated config should be written");
+    setup::write_config(&path, &raw_test_config(Some(5)))
+        .expect("updated config should be written");
     runtime
         .reload_from_path(&path)
         .expect("valid config should reload");
@@ -36,7 +37,7 @@ fn reload_replaces_current_runtime_snapshot() {
 fn failed_reload_keeps_previous_runtime_snapshot() {
     let dir = tempdir().expect("tempdir should be created");
     let path = dir.path().join("config.toml");
-    setup::write_config(&path, &test_config(Some(5))).expect("config should be written");
+    setup::write_config(&path, &raw_test_config(Some(5))).expect("config should be written");
     let runtime = RuntimeState::new(test_config(Some(5))).expect("runtime should be created");
 
     std::fs::write(
@@ -87,7 +88,7 @@ fn reload_with_local_integrations_applies_before_replacing_snapshot() {
         codex_cli_config_path: codex_config_path.clone(),
         claude_code_settings_path: claude_settings_path,
     };
-    setup::write_config(&path, &test_config(None)).expect("config should be written");
+    setup::write_config(&path, &raw_test_config(None)).expect("config should be written");
     let runtime = RuntimeState::new(test_config(Some(5))).expect("runtime should be created");
 
     let report = runtime
@@ -125,7 +126,7 @@ fn failed_local_integration_keeps_previous_runtime_snapshot() {
         codex_cli_config_path: codex_config_path,
         claude_code_settings_path: claude_settings_path,
     };
-    setup::write_config(&path, &test_config(None)).expect("config should be written");
+    setup::write_config(&path, &raw_test_config(None)).expect("config should be written");
     let runtime = RuntimeState::new(test_config(Some(5))).expect("runtime should be created");
 
     runtime
@@ -143,11 +144,21 @@ fn failed_local_integration_keeps_previous_runtime_snapshot() {
     );
 }
 
-fn test_config(minimum_task_duration_minutes: Option<u64>) -> Config {
+fn test_config(minimum_task_duration_minutes: Option<u64>) -> ValidatedConfig {
+    raw_test_config(minimum_task_duration_minutes)
+        .validate()
+        .expect("test config should validate")
+}
+
+fn raw_test_config(minimum_task_duration_minutes: Option<u64>) -> RawConfig {
     let mut route = RouteConfig::new(vec!["codex_cli".to_string()], vec!["phone".to_string()]);
     route.minimum_task_duration_minutes = minimum_task_duration_minutes;
 
-    Config {
+    let mut provider = RawProviderConfig::new("phone", ProviderType::Ntfy);
+    provider.server = Some("https://ntfy.sh".to_string());
+    provider.topic = Some("agents-router-test".to_string());
+
+    RawConfig {
         schema_version: 1,
         cli: CliConfig::default(),
         log: LogConfig::default(),
@@ -156,46 +167,7 @@ fn test_config(minimum_task_duration_minutes: Option<u64>) -> Config {
             id: "codex_cli".to_string(),
             source_type: SourceType::CodexCli,
         }],
-        providers: vec![ProviderConfig {
-            id: "phone".to_string(),
-            provider_type: ProviderType::Ntfy,
-            base_url: None,
-            server: Some("https://ntfy.sh".to_string()),
-            topic: Some("agents-router-test".to_string()),
-            url: None,
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        }],
+        providers: vec![provider],
         routes: vec![route],
     }
 }

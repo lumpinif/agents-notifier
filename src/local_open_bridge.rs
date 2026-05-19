@@ -116,7 +116,7 @@ fn runtime_requires_bridge(runtime: &RuntimeState) -> anyhow::Result<bool> {
         .config
         .providers
         .iter()
-        .any(|provider| provider.provider_type == ProviderType::FeishuLark))
+        .any(|provider| provider.provider_type() == ProviderType::FeishuLark))
 }
 
 async fn handle_connection(mut stream: TcpStream) -> anyhow::Result<()> {

@@ -3,7 +3,7 @@ use std::io::Write;
 
 use tempfile::tempdir;
 
-use crate::config::{AnswerDetail, PromptDetail, SourceType};
+use crate::config::{AnswerDetail, PromptDetail, SourceType, ValidatedConfig};
 use crate::delivery::{DeliveryError, DeliveryErrorContext, DeliveryErrorKind};
 use crate::router::{Provider, ProviderFuture};
 
@@ -381,8 +381,8 @@ fn source_config() -> SourceConfig {
     }
 }
 
-fn routing_config() -> Config {
-    Config::from_toml_str(
+fn routing_config() -> ValidatedConfig {
+    ValidatedConfig::from_toml_str(
         r#"
 schema_version = 1
 

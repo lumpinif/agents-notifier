@@ -115,7 +115,7 @@ fn localized_provider_name(provider: &str, i18n: I18n) -> &str {
     }
 }
 
-pub(in crate::cli) fn print_setup_provider_summary(config: &Config, i18n: I18n) {
+pub(in crate::cli) fn print_setup_provider_summary(config: &RawConfig, i18n: I18n) {
     for summary in setup_provider_summaries(config) {
         print_provider_configured(summary.provider_name, i18n);
         for field in &summary.fields {
@@ -151,7 +151,7 @@ pub(in crate::cli) fn localized_summary_value(value: &str, i18n: I18n) -> &str {
     }
 }
 
-pub(in crate::cli) fn setup_provider_summaries(config: &Config) -> Vec<SetupProviderSummary> {
+pub(in crate::cli) fn setup_provider_summaries(config: &RawConfig) -> Vec<SetupProviderSummary> {
     config
         .providers
         .iter()
@@ -159,7 +159,7 @@ pub(in crate::cli) fn setup_provider_summaries(config: &Config) -> Vec<SetupProv
         .collect()
 }
 
-pub(in crate::cli) fn setup_provider_summary(provider: &ProviderConfig) -> SetupProviderSummary {
+pub(in crate::cli) fn setup_provider_summary(provider: &RawProviderConfig) -> SetupProviderSummary {
     match &provider.provider_type {
         ProviderType::Ntfy => SetupProviderSummary {
             provider_name: "ntfy",
@@ -342,7 +342,7 @@ pub(in crate::cli) fn provider_secret_configured(
         || present_summary_str(env.as_deref()).is_some()
 }
 
-pub(in crate::cli) fn provider_url_summary(provider: &ProviderConfig) -> String {
+pub(in crate::cli) fn provider_url_summary(provider: &RawProviderConfig) -> String {
     if let Some(url) = present_summary_str(provider.url.as_deref()) {
         return safe_url_host(url);
     }
@@ -358,14 +358,14 @@ pub(in crate::cli) fn provider_url_summary(provider: &ProviderConfig) -> String 
 }
 
 pub(in crate::cli) fn required_summary_host(
-    provider: &ProviderConfig,
+    provider: &RawProviderConfig,
     field: &'static str,
 ) -> String {
     safe_url_host(&required_summary_string(provider, field))
 }
 
 pub(in crate::cli) fn required_summary_string(
-    provider: &ProviderConfig,
+    provider: &RawProviderConfig,
     field: &'static str,
 ) -> String {
     let value = match field {
@@ -391,7 +391,7 @@ pub(in crate::cli) fn required_summary_string(
         .to_string()
 }
 
-pub(in crate::cli) fn required_summary_recipients(provider: &ProviderConfig) -> String {
+pub(in crate::cli) fn required_summary_recipients(provider: &RawProviderConfig) -> String {
     provider
         .to
         .as_ref()
@@ -406,7 +406,7 @@ pub(in crate::cli) fn required_summary_recipients(provider: &ProviderConfig) -> 
         .join(", ")
 }
 
-pub(in crate::cli) fn email_smtp_server_summary(provider: &ProviderConfig) -> String {
+pub(in crate::cli) fn email_smtp_server_summary(provider: &RawProviderConfig) -> String {
     let host = provider.host.as_deref().unwrap_or_else(|| {
         panic!(
             "{} provider `{}` is missing `host`",
@@ -425,7 +425,7 @@ pub(in crate::cli) fn email_smtp_server_summary(provider: &ProviderConfig) -> St
     format!("{host}:{port}")
 }
 
-pub(in crate::cli) fn email_smtp_security_summary(provider: &ProviderConfig) -> String {
+pub(in crate::cli) fn email_smtp_security_summary(provider: &RawProviderConfig) -> String {
     provider
         .security
         .map(email_smtp_security_display)
@@ -440,7 +440,7 @@ pub(in crate::cli) fn email_smtp_security_summary(provider: &ProviderConfig) -> 
 }
 
 pub(in crate::cli) fn email_smtp_authentication_summary_field(
-    provider: &ProviderConfig,
+    provider: &RawProviderConfig,
 ) -> SetupProviderSummaryField {
     match (
         provider_secret_configured(&provider.username, &provider.username_env),

@@ -5,6 +5,7 @@ use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
+use crate::config::{PushoverProviderConfig, SecretSource};
 use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
 use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
@@ -162,43 +163,12 @@ async fn rejects_message_that_exceeds_pushover_limit_before_sending() {
 fn resolves_inline_config_values() {
     let provider = PushoverProvider::from_config(&ProviderConfig {
         id: "pushover".to_string(),
-        provider_type: ProviderType::Pushover,
-        base_url: None,
-        server: None,
-        topic: None,
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-        app_token: Some("123456789012345678901234567890".to_string()),
-        app_token_env: None,
-        user_key: Some("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ".to_string()),
-        user_key_env: None,
-        device: Some("iphone,work_mac".to_string()),
-        sound: Some("pushover".to_string()),
-        bot_token: None,
-        bot_token_env: None,
-        chat_id: None,
-        access_token: None,
-        access_token_env: None,
-        phone_number_id: None,
-        recipient_phone_number: None,
-        host: None,
-        port: None,
-        security: None,
-        username: None,
-        username_env: None,
-        password: None,
-        password_env: None,
-        from: None,
-        to: None,
-        reply_to: None,
-        token: None,
-        token_env: None,
-        recipient_user_id: None,
-        context_token: None,
-        context_token_env: None,
-        route_tag: None,
+        detail: ProviderConfigDetail::Pushover(PushoverProviderConfig {
+            app_token: SecretSource::Inline("123456789012345678901234567890".to_string()),
+            user_key: SecretSource::Inline("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ".to_string()),
+            device: Some("iphone,work_mac".to_string()),
+            sound: Some("pushover".to_string()),
+        }),
     })
     .expect("pushover provider config should be valid");
 
@@ -211,43 +181,12 @@ fn resolves_inline_config_values() {
 fn rejects_invalid_inline_app_token() {
     let err = PushoverProvider::from_config(&ProviderConfig {
         id: "pushover".to_string(),
-        provider_type: ProviderType::Pushover,
-        base_url: None,
-        server: None,
-        topic: None,
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-        app_token: Some("too-short".to_string()),
-        app_token_env: None,
-        user_key: Some("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ".to_string()),
-        user_key_env: None,
-        device: None,
-        sound: None,
-        bot_token: None,
-        bot_token_env: None,
-        chat_id: None,
-        access_token: None,
-        access_token_env: None,
-        phone_number_id: None,
-        recipient_phone_number: None,
-        host: None,
-        port: None,
-        security: None,
-        username: None,
-        username_env: None,
-        password: None,
-        password_env: None,
-        from: None,
-        to: None,
-        reply_to: None,
-        token: None,
-        token_env: None,
-        recipient_user_id: None,
-        context_token: None,
-        context_token_env: None,
-        route_tag: None,
+        detail: ProviderConfigDetail::Pushover(PushoverProviderConfig {
+            app_token: SecretSource::Inline("too-short".to_string()),
+            user_key: SecretSource::Inline("ABCDEFGHIJABCDEFGHIJABCDEFGHIJ".to_string()),
+            device: None,
+            sound: None,
+        }),
     })
     .expect_err("invalid token should fail");
 

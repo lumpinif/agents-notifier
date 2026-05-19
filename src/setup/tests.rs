@@ -2,6 +2,12 @@ use tempfile::tempdir;
 
 use super::*;
 
+fn read_valid_written_config(path: &std::path::Path) -> RawConfig {
+    crate::config::LoadedConfig::from_path(path)
+        .expect("written config should parse and validate")
+        .raw
+}
+
 #[test]
 fn empty_topic_input_uses_generated_topic() {
     let topic = resolve_ntfy_topic("  ", "agents-router-test")
@@ -31,7 +37,7 @@ fn writes_parseable_ntfy_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(parsed.notification.answer_detail, AnswerDetail::Preview);
     assert_eq!(
         parsed
@@ -61,7 +67,7 @@ fn writes_parseable_full_answer_detail_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(parsed.notification.answer_detail, AnswerDetail::Full);
 }
 
@@ -78,7 +84,7 @@ fn writes_parseable_on_prompt_detail_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(parsed.notification.prompt_detail, PromptDetail::On);
 }
 
@@ -95,7 +101,7 @@ fn writes_parseable_codex_cli_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert!(parsed.source("codex_cli").is_some());
     assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_desktop").is_none());
@@ -116,7 +122,7 @@ fn writes_parseable_claude_code_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert!(parsed.source("claude_code").is_some());
     assert!(parsed.source("agents_router").is_some());
     assert!(parsed.source("codex_desktop").is_none());
@@ -138,7 +144,7 @@ fn writes_parseable_agent_hook_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     let source = parsed
         .source("opencode_cli")
         .expect("OpenCode CLI source should be configured");
@@ -169,7 +175,7 @@ fn applies_agent_route_filters_without_filtering_setup_test_route() {
     );
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(parsed.routes.len(), 2);
     assert_eq!(parsed.routes[0].sources, vec!["codex_desktop".to_string()]);
     assert_eq!(parsed.routes[0].minimum_task_duration_minutes, Some(12));
@@ -196,7 +202,7 @@ fn writes_parseable_feishu_lark_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("feishu_lark")
@@ -227,7 +233,7 @@ fn writes_parseable_webhook_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("webhook")
@@ -255,7 +261,7 @@ fn writes_parseable_pushover_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("pushover")
@@ -286,7 +292,7 @@ fn writes_parseable_slack_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("slack")
@@ -311,7 +317,7 @@ fn writes_parseable_discord_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("discord")
@@ -337,7 +343,7 @@ fn writes_parseable_telegram_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("telegram")
@@ -371,7 +377,7 @@ fn writes_parseable_whatsapp_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("whatsapp")
@@ -407,7 +413,7 @@ fn writes_parseable_wechat_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("wechat")
@@ -439,7 +445,7 @@ fn writes_parseable_microsoft_teams_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     assert_eq!(
         parsed
             .provider("microsoft_teams")
@@ -472,7 +478,7 @@ fn writes_parseable_email_smtp_config() {
 
     write_config(&path, &config).expect("config should be written");
 
-    let parsed = Config::from_path(&path).expect("written config should parse");
+    let parsed = read_valid_written_config(&path);
     let provider = parsed
         .provider("email_smtp")
         .expect("email_smtp provider should be configured");

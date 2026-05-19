@@ -10,7 +10,7 @@ use lettre::transport::smtp::Error as SmtpError;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
-use crate::config::{EmailSmtpSecurity, ProviderConfig, ProviderType};
+use crate::config::{EmailSmtpSecurity, ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult};
 use crate::providers::formatting::format_signal_body;
 use crate::router::{Provider, ProviderFuture};
@@ -29,37 +29,43 @@ pub struct EmailSmtpProvider {
 
 impl EmailSmtpProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::EmailSmtp {
+        let ProviderConfigDetail::EmailSmtp(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not an email_smtp provider",
                 config.id
             ));
-        }
+        };
 
-        let host = resolve_host(&config.id, config.host.as_deref())?;
-        let port = validate_port(&config.id, config.port)?;
-        let security = config
-            .security
-            .ok_or_else(|| anyhow!("email_smtp provider `{}` requires `security`", config.id))?;
-        let username = resolve_optional_secret_value(
-            config,
-            "username",
-            config.username.as_deref(),
-            "username_env",
-            config.username_env.as_deref(),
-        )?;
-        let password = resolve_optional_secret_value(
-            config,
-            "password",
-            config.password.as_deref(),
-            "password_env",
-            config.password_env.as_deref(),
-        )?;
+        let host = resolve_host(&config.id, &detail.host)?;
+        let port = validate_port(&config.id, detail.port)?;
+        let security = detail.security;
+        let username = detail
+            .username
+            .as_ref()
+            .map(|source| {
+                source.resolve_runtime_value(
+                    &config.id,
+                    ProviderType::EmailSmtp.as_str(),
+                    "username_env",
+                )
+            })
+            .transpose()?;
+        let password = detail
+            .password
+            .as_ref()
+            .map(|source| {
+                source.resolve_runtime_value(
+                    &config.id,
+                    ProviderType::EmailSmtp.as_str(),
+                    "password_env",
+                )
+            })
+            .transpose()?;
         validate_credentials(&config.id, username.as_ref(), password.as_ref())?;
 
-        let from = parse_mailbox(&config.id, "from", config.from.as_deref())?;
-        let to = parse_recipients(&config.id, config.to.as_deref())?;
-        let reply_to = config
+        let from = parse_mailbox(&config.id, "from", Some(&detail.from))?;
+        let to = parse_recipients(&config.id, Some(&detail.to))?;
+        let reply_to = detail
             .reply_to
             .as_deref()
             .map(|value| parse_mailbox(&config.id, "reply_to", Some(value)))
@@ -269,12 +275,7 @@ fn build_smtp_transport(
     Ok(builder.build())
 }
 
-fn resolve_host(provider_id: &str, host: Option<&str>) -> anyhow::Result<String> {
-    let Some(host) = present(host) else {
-        return Err(anyhow!(
-            "email_smtp provider `{provider_id}` requires `host`"
-        ));
-    };
+fn resolve_host(provider_id: &str, host: &str) -> anyhow::Result<String> {
     if host.contains("://")
         || host.contains('/')
         || host.contains('@')
@@ -288,12 +289,7 @@ fn resolve_host(provider_id: &str, host: Option<&str>) -> anyhow::Result<String>
     Ok(host.to_string())
 }
 
-fn validate_port(provider_id: &str, port: Option<u16>) -> anyhow::Result<u16> {
-    let Some(port) = port else {
-        return Err(anyhow!(
-            "email_smtp provider `{provider_id}` requires `port`"
-        ));
-    };
+fn validate_port(provider_id: &str, port: u16) -> anyhow::Result<u16> {
     if port == 0 {
         return Err(anyhow!(
             "email_smtp provider `{provider_id}` `port` must be greater than 0"
@@ -301,31 +297,6 @@ fn validate_port(provider_id: &str, port: Option<u16>) -> anyhow::Result<u16> {
     }
 
     Ok(port)
-}
-
-fn resolve_optional_secret_value(
-    config: &ProviderConfig,
-    value_field: &'static str,
-    value: Option<&str>,
-    env_field: &'static str,
-    env_name: Option<&str>,
-) -> anyhow::Result<Option<String>> {
-    match (present(value), present(env_name)) {
-        (Some(value), None) => Ok(Some(value.to_string())),
-        (None, Some(env_name)) => std::env::var(env_name).map(Some).with_context(|| {
-            format!(
-                "email_smtp provider `{}` env var `{}` from `{}` is not set",
-                config.id, env_name, env_field
-            )
-        }),
-        (None, None) => Ok(None),
-        (Some(_), Some(_)) => Err(anyhow!(
-            "email_smtp provider `{}` must set at most one of `{}` or `{}`",
-            config.id,
-            value_field,
-            env_field
-        )),
-    }
 }
 
 fn validate_credentials(

@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 use uuid::Uuid;
 
-use crate::config::{Config, SourceType};
+use crate::config::{SourceType, ValidatedConfig};
 use crate::paths::{claude_code_settings_path, codex_cli_config_path};
 use crate::source_integration_catalog::{
     LocalIntegrationKind, SourceIntegrationDescriptor, SourceIntegrationId,
@@ -110,23 +110,24 @@ pub enum ClaudeCodeHooksSetupStatus {
 }
 
 pub fn ensure_local_source_integrations(
-    config: &Config,
+    config: &ValidatedConfig,
 ) -> anyhow::Result<LocalSourceIntegrationReport> {
     let paths = LocalSourceIntegrationPaths::detect()?;
     ensure_local_source_integrations_with_paths(config, &paths)
 }
 
 pub fn ensure_local_source_integrations_with_paths(
-    config: &Config,
+    config: &ValidatedConfig,
     paths: &LocalSourceIntegrationPaths,
 ) -> anyhow::Result<LocalSourceIntegrationReport> {
     let mut report = LocalSourceIntegrationReport::default();
+    let descriptors = config
+        .sources
+        .iter()
+        .filter_map(|source| local_integration_descriptor(source).transpose())
+        .collect::<anyhow::Result<Vec<_>>>()?;
 
-    for source in &config.sources {
-        let Some(descriptor) = local_integration_descriptor(source)? else {
-            continue;
-        };
-
+    for descriptor in descriptors {
         match descriptor.local_integration {
             LocalIntegrationKind::CodexCliStopHook => {
                 if report.codex_cli_stop_hook.is_none() {
@@ -506,8 +507,8 @@ mod tests {
 
     use super::*;
     use crate::config::{
-        CliConfig, LogConfig, NotificationConfig, ProviderConfig, ProviderType, RouteConfig,
-        SourceConfig,
+        CliConfig, LogConfig, NotificationConfig, ProviderType, RawConfig, RawProviderConfig,
+        RouteConfig, SourceConfig,
     };
 
     #[test]
@@ -593,11 +594,13 @@ mod tests {
             claude_code_settings_path: claude_settings_path,
         };
 
-        let err = ensure_local_source_integrations_with_paths(
-            &test_config("my_codex", SourceType::CodexCli),
-            &paths,
-        )
-        .expect_err("noncanonical Codex CLI source id should fail");
+        let config = unchecked_config(vec![SourceConfig {
+            id: "my_codex".to_string(),
+            source_type: SourceType::CodexCli,
+        }]);
+
+        let err = ensure_local_source_integrations_with_paths(&config, &paths)
+            .expect_err("noncanonical Codex CLI source id should fail");
 
         assert!(
             err.to_string()
@@ -679,11 +682,13 @@ mod tests {
             claude_code_settings_path: claude_settings_path,
         };
 
-        let err = ensure_local_source_integrations_with_paths(
-            &test_config("my_claude", SourceType::ClaudeCode),
-            &paths,
-        )
-        .expect_err("noncanonical Claude Code source id should fail");
+        let config = unchecked_config(vec![SourceConfig {
+            id: "my_claude".to_string(),
+            source_type: SourceType::ClaudeCode,
+        }]);
+
+        let err = ensure_local_source_integrations_with_paths(&config, &paths)
+            .expect_err("noncanonical Claude Code source id should fail");
 
         assert!(
             err.to_string()
@@ -735,6 +740,8 @@ mod tests {
             err.to_string()
                 .contains("Claude Code source id must be `claude_code`")
         );
+        assert!(!paths.claude_code_settings_path.exists());
+        assert!(!paths.codex_cli_config_path.exists());
     }
 
     #[test]
@@ -1134,8 +1141,12 @@ command = "{command}"
             .and_then(Value::as_i64)
     }
 
-    fn test_config(source_id: &str, source_type: SourceType) -> Config {
-        Config {
+    fn test_config(source_id: &str, source_type: SourceType) -> ValidatedConfig {
+        let mut provider = RawProviderConfig::new("phone", ProviderType::Ntfy);
+        provider.server = Some("https://ntfy.sh".to_string());
+        provider.topic = Some("agents-router-test".to_string());
+
+        RawConfig {
             schema_version: 1,
             cli: CliConfig::default(),
             log: LogConfig::default(),
@@ -1144,50 +1155,19 @@ command = "{command}"
                 id: source_id.to_string(),
                 source_type,
             }],
-            providers: vec![ProviderConfig {
-                id: "phone".to_string(),
-                provider_type: ProviderType::Ntfy,
-                base_url: None,
-                server: Some("https://ntfy.sh".to_string()),
-                topic: Some("agents-router-test".to_string()),
-                url: None,
-                url_env: None,
-                secret: None,
-                secret_env: None,
-                app_token: None,
-                app_token_env: None,
-                user_key: None,
-                user_key_env: None,
-                device: None,
-                sound: None,
-                bot_token: None,
-                bot_token_env: None,
-                chat_id: None,
-                access_token: None,
-                access_token_env: None,
-                phone_number_id: None,
-                recipient_phone_number: None,
-                host: None,
-                port: None,
-                security: None,
-                username: None,
-                username_env: None,
-                password: None,
-                password_env: None,
-                from: None,
-                to: None,
-                reply_to: None,
-                token: None,
-                token_env: None,
-                recipient_user_id: None,
-                context_token: None,
-                context_token_env: None,
-                route_tag: None,
-            }],
+            providers: vec![provider],
             routes: vec![RouteConfig::new(
                 vec![source_id.to_string()],
                 vec!["phone".to_string()],
             )],
         }
+        .validate()
+        .expect("test config should validate")
+    }
+
+    fn unchecked_config(sources: Vec<SourceConfig>) -> ValidatedConfig {
+        let mut config = test_config("agents_router", SourceType::AgentsRouter);
+        config.sources = sources;
+        config
     }
 }

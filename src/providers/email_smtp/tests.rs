@@ -4,6 +4,7 @@ use std::sync::Mutex;
 use chrono::{DateTime, Utc};
 
 use super::*;
+use crate::config::{EmailSmtpProviderConfig, SecretSource};
 use crate::delivery::ProviderSendStatus;
 
 #[tokio::test]
@@ -69,43 +70,16 @@ async fn returns_retriable_error_for_transient_smtp_failure() {
 fn validates_email_smtp_config_values() {
     let provider = EmailSmtpProvider::from_config(&ProviderConfig {
         id: "email".to_string(),
-        provider_type: ProviderType::EmailSmtp,
-        base_url: None,
-        server: None,
-        topic: None,
-        url: None,
-        url_env: None,
-        secret: None,
-        secret_env: None,
-        app_token: None,
-        app_token_env: None,
-        user_key: None,
-        user_key_env: None,
-        device: None,
-        sound: None,
-        bot_token: None,
-        bot_token_env: None,
-        chat_id: None,
-        access_token: None,
-        access_token_env: None,
-        phone_number_id: None,
-        recipient_phone_number: None,
-        host: Some("smtp.example.com".to_string()),
-        port: Some(587),
-        security: Some(EmailSmtpSecurity::Starttls),
-        username: Some("alerts@example.com".to_string()),
-        username_env: None,
-        password: Some("smtp-password".to_string()),
-        password_env: None,
-        from: Some("Agents Router <alerts@example.com>".to_string()),
-        to: Some(vec!["Felix <felix@example.com>".to_string()]),
-        reply_to: Some("reply@example.com".to_string()),
-        token: None,
-        token_env: None,
-        recipient_user_id: None,
-        context_token: None,
-        context_token_env: None,
-        route_tag: None,
+        detail: ProviderConfigDetail::EmailSmtp(EmailSmtpProviderConfig {
+            host: "smtp.example.com".to_string(),
+            port: 587,
+            security: EmailSmtpSecurity::Starttls,
+            username: Some(SecretSource::Inline("alerts@example.com".to_string())),
+            password: Some(SecretSource::Inline("smtp-password".to_string())),
+            from: "Agents Router <alerts@example.com>".to_string(),
+            to: vec!["Felix <felix@example.com>".to_string()],
+            reply_to: Some("reply@example.com".to_string()),
+        }),
     })
     .expect("email_smtp provider config should be valid");
 
@@ -118,8 +92,7 @@ fn rejects_invalid_email_smtp_host_and_mailbox() {
         .expect_err("invalid mailbox should fail");
     assert!(err.to_string().contains("valid email mailbox"));
 
-    let err =
-        resolve_host("email", Some("https://smtp.example.com")).expect_err("host URL should fail");
+    let err = resolve_host("email", "https://smtp.example.com").expect_err("host URL should fail");
     assert!(err.to_string().contains("hostname"));
 }
 

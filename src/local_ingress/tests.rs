@@ -12,8 +12,8 @@ use tempfile::tempdir;
 use tokio::net::UnixListener;
 
 use crate::config::{
-    AnswerDetail, CliConfig, Config, LogConfig, NotificationConfig, PromptDetail, ProviderConfig,
-    ProviderType, RouteConfig, SourceConfig, SourceType,
+    AnswerDetail, CliConfig, LogConfig, NotificationConfig, PromptDetail, ProviderType, RawConfig,
+    RawProviderConfig, RouteConfig, SourceConfig, SourceType, ValidatedConfig,
 };
 use crate::delivery::ProviderSendResult;
 use crate::delivery_safety::DeliverySafetyGuard;
@@ -629,8 +629,11 @@ fn create_signal_applies_structured_fields_with_notification_policy() {
     assert!(answer.content.ends_with("..."));
 }
 
-fn test_config(source_id: &str, source_type: SourceType) -> Config {
-    Config {
+fn test_config(source_id: &str, source_type: SourceType) -> ValidatedConfig {
+    let mut provider = RawProviderConfig::new("debug", ProviderType::Webhook);
+    provider.url = Some("https://example.com/hook".to_string());
+
+    RawConfig {
         schema_version: 1,
         cli: CliConfig::default(),
         log: LogConfig::default(),
@@ -639,54 +642,17 @@ fn test_config(source_id: &str, source_type: SourceType) -> Config {
             id: source_id.to_string(),
             source_type,
         }],
-        providers: vec![ProviderConfig {
-            id: "debug".to_string(),
-            provider_type: ProviderType::Webhook,
-            base_url: None,
-            server: None,
-            topic: None,
-            url: Some("https://example.com/hook".to_string()),
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        }],
+        providers: vec![provider],
         routes: vec![RouteConfig::new(
             vec![source_id.to_string()],
             vec!["debug".to_string()],
         )],
     }
+    .validate()
+    .expect("test config should validate")
 }
 
-fn codex_desktop_and_cli_config() -> Config {
+fn codex_desktop_and_cli_config() -> ValidatedConfig {
     let mut config = test_config("codex_cli", SourceType::CodexCli);
     config.sources.push(SourceConfig {
         id: "codex_desktop".to_string(),

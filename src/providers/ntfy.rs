@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use chrono::{DateTime, Local, Utc};
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -22,19 +22,16 @@ pub struct NtfyProvider {
 
 impl NtfyProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Ntfy {
+        let ProviderConfigDetail::Ntfy(detail) = &config.detail else {
             return Err(anyhow!("provider `{}` is not an ntfy provider", config.id));
-        }
-
-        let server = required_field(config, "server", config.server.as_deref())?;
-        let topic = required_field(config, "topic", config.topic.as_deref())?;
+        };
 
         Ok(Self {
             id: config.id.clone(),
             endpoint: format!(
                 "{}/{}",
-                server.trim_end_matches('/'),
-                topic.trim_start_matches('/')
+                detail.server.trim_end_matches('/'),
+                detail.topic.trim_start_matches('/')
             ),
             client: provider_http_client()?,
         })
@@ -94,16 +91,6 @@ impl Provider for NtfyProvider {
     }
 }
 
-fn required_field<'a>(
-    config: &ProviderConfig,
-    field: &'static str,
-    value: Option<&'a str>,
-) -> anyhow::Result<&'a str> {
-    value
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| anyhow!("provider `{}` requires `{}`", config.id, field))
-}
-
 fn format_ntfy_body(signal: &Signal) -> String {
     format_signal_body(signal, &format_local_timestamp(signal.timestamp))
 }
@@ -124,7 +111,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
-    use crate::config::ProviderType;
+    use crate::config::{NtfyProviderConfig, ProviderType};
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
     use crate::provider_catalog::{MessageSurface, provider_message_constraint};
 
@@ -143,47 +130,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let provider = NtfyProvider::from_config(&ProviderConfig {
-            id: "phone".to_string(),
-            provider_type: ProviderType::Ntfy,
-            base_url: None,
-            server: Some(server.uri()),
-            topic: Some("topic".to_string()),
-            url: None,
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        })
-        .expect("provider config should be valid");
+        let provider = NtfyProvider::from_config(&ntfy_config(server.uri()))
+            .expect("provider config should be valid");
 
         let result = provider
             .send(&test_signal())
@@ -206,47 +154,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let provider = NtfyProvider::from_config(&ProviderConfig {
-            id: "phone".to_string(),
-            provider_type: ProviderType::Ntfy,
-            base_url: None,
-            server: Some(server.uri()),
-            topic: Some("topic".to_string()),
-            url: None,
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        })
-        .expect("provider config should be valid");
+        let provider = NtfyProvider::from_config(&ntfy_config(server.uri()))
+            .expect("provider config should be valid");
 
         let err = provider
             .send(&test_signal())
@@ -272,47 +181,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let provider = NtfyProvider::from_config(&ProviderConfig {
-            id: "phone".to_string(),
-            provider_type: ProviderType::Ntfy,
-            base_url: None,
-            server: Some(server.uri()),
-            topic: Some("topic".to_string()),
-            url: None,
-            url_env: None,
-            secret: None,
-            secret_env: None,
-            app_token: None,
-            app_token_env: None,
-            user_key: None,
-            user_key_env: None,
-            device: None,
-            sound: None,
-            bot_token: None,
-            bot_token_env: None,
-            chat_id: None,
-            access_token: None,
-            access_token_env: None,
-            phone_number_id: None,
-            recipient_phone_number: None,
-            host: None,
-            port: None,
-            security: None,
-            username: None,
-            username_env: None,
-            password: None,
-            password_env: None,
-            from: None,
-            to: None,
-            reply_to: None,
-            token: None,
-            token_env: None,
-            recipient_user_id: None,
-            context_token: None,
-            context_token_env: None,
-            route_tag: None,
-        })
-        .expect("provider config should be valid");
+        let provider = NtfyProvider::from_config(&ntfy_config(server.uri()))
+            .expect("provider config should be valid");
         let limit = provider_message_constraint(ProviderType::Ntfy, MessageSurface::MessageBody)
             .and_then(|constraint| constraint.limit)
             .expect("ntfy default server message body limit should be cataloged");
@@ -344,6 +214,16 @@ mod tests {
             test_timestamp(),
             BTreeMap::new(),
         )
+    }
+
+    fn ntfy_config(server: String) -> ProviderConfig {
+        ProviderConfig {
+            id: "phone".to_string(),
+            detail: ProviderConfigDetail::Ntfy(NtfyProviderConfig {
+                server,
+                topic: "topic".to_string(),
+            }),
+        }
     }
 
     fn test_timestamp() -> DateTime<Utc> {

@@ -1,8 +1,8 @@
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::config::{ProviderConfig, ProviderType};
+use crate::config::{ProviderConfig, ProviderConfigDetail, ProviderType};
 use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
@@ -23,25 +23,21 @@ pub struct TelegramProvider {
 
 impl TelegramProvider {
     pub fn from_config(config: &ProviderConfig) -> anyhow::Result<Self> {
-        if config.provider_type != ProviderType::Telegram {
+        let ProviderConfigDetail::Telegram(detail) = &config.detail else {
             return Err(anyhow!(
                 "provider `{}` is not a telegram provider",
                 config.id
             ));
-        }
+        };
 
-        let bot_token = resolve_secret_value(
-            config,
-            "bot_token",
-            config.bot_token.as_deref(),
+        let bot_token = detail.bot_token.resolve_runtime_value(
+            &config.id,
+            ProviderType::Telegram.as_str(),
             "bot_token_env",
-            config.bot_token_env.as_deref(),
         )?;
         validate_bot_token(&config.id, &bot_token)?;
 
-        let chat_id = present(config.chat_id.as_deref())
-            .ok_or_else(|| anyhow!("telegram provider `{}` requires `chat_id`", config.id))?
-            .to_string();
+        let chat_id = detail.chat_id.clone();
         validate_chat_id(&config.id, &chat_id)?;
 
         Ok(Self {
@@ -189,30 +185,6 @@ struct TelegramMessage {
     message_id: Option<i64>,
 }
 
-fn resolve_secret_value(
-    config: &ProviderConfig,
-    value_field: &'static str,
-    value: Option<&str>,
-    env_field: &'static str,
-    env_name: Option<&str>,
-) -> anyhow::Result<String> {
-    match (present(value), present(env_name)) {
-        (Some(value), None) => Ok(value.to_string()),
-        (None, Some(env_name)) => std::env::var(env_name).with_context(|| {
-            format!(
-                "telegram provider `{}` env var `{}` from `{}` is not set",
-                config.id, env_name, env_field
-            )
-        }),
-        _ => Err(anyhow!(
-            "telegram provider `{}` must set exactly one of `{}` or `{}`",
-            config.id,
-            value_field,
-            env_field
-        )),
-    }
-}
-
 fn validate_bot_token(provider_id: &str, token: &str) -> anyhow::Result<()> {
     let Some((bot_id, secret)) = token.split_once(':') else {
         return Err(anyhow!(
@@ -329,10 +301,6 @@ fn response_summary(response_body: &str) -> String {
         .filter(|character| !character.is_control())
         .take(160)
         .collect()
-}
-
-fn present(value: Option<&str>) -> Option<&str> {
-    value.filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(test)]

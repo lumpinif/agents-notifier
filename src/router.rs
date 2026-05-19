@@ -7,7 +7,7 @@ use std::pin::Pin;
 
 use tracing::{debug, info, warn};
 
-use crate::config::{Config, RouteConfig, is_clean_absolute_project_path};
+use crate::config::{RouteConfig, ValidatedConfig, is_clean_absolute_project_path};
 use crate::delivery::{DeliveryError, DeliveryErrorKind, ProviderSendResult};
 use crate::delivery_safety::{
     DeliveryAttempt, DeliverySafetyDecision, DeliverySafetyGuard, DeliverySuppression,
@@ -93,11 +93,11 @@ impl fmt::Display for RouterError {
 impl StdError for RouterError {}
 
 pub struct Router<'a> {
-    config: &'a Config,
+    config: &'a ValidatedConfig,
 }
 
 impl<'a> Router<'a> {
-    pub fn new(config: &'a Config) -> Self {
+    pub fn new(config: &'a ValidatedConfig) -> Self {
         Self { config }
     }
 
@@ -263,7 +263,7 @@ impl<'a> Router<'a> {
         let provider_type = self
             .config
             .provider(provider_id)
-            .map(|provider| provider.provider_type.as_str())
+            .map(|provider| provider.provider_type().as_str())
             .unwrap_or("unknown");
 
         ProviderFailure {

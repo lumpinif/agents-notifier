@@ -11,9 +11,9 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::config::{
-    AnswerDetail, CONFIG_SCHEMA_VERSION, CliConfig, Config, EmailSmtpSecurity, LogConfig,
-    NotificationConfig, PromptDetail, ProviderConfig, ProviderType, RouteConfig, SourceConfig,
-    SourceType,
+    AnswerDetail, CONFIG_SCHEMA_VERSION, CliConfig, EmailSmtpSecurity, LogConfig,
+    NotificationConfig, PromptDetail, ProviderType, RawConfig, RawProviderConfig, RouteConfig,
+    SourceConfig, SourceType,
 };
 use crate::provider_urls::{
     host_label, validate_custom_webhook_url, validate_discord_webhook_url,
@@ -136,7 +136,7 @@ pub struct EmailSmtpTarget {
     pub to: Vec<String>,
 }
 
-pub fn write_config(path: &Path, config: &Config) -> anyhow::Result<()> {
+pub fn write_config(path: &Path, config: &RawConfig) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create config directory `{}`", parent.display()))?;
@@ -190,7 +190,7 @@ fn webhook_host(url: &str) -> String {
     host_label(url)
 }
 
-fn provider_url_host(provider: &ProviderConfig) -> Option<String> {
+fn provider_url_host(provider: &RawProviderConfig) -> Option<String> {
     match (
         provider
             .url
