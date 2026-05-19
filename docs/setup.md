@@ -200,9 +200,9 @@ Answer detail is only configurable for providers without a small message size li
 
 Agents Router fixes answer detail to `Preview` for:
 
-- ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
+- ntfy, because ntfy has a configurable message body size limit that defaults to 4096 characters.
 - Pushover, because Pushover messages are limited to 1024 characters.
-- Slack, because Slack has documented message length and truncation limits.
+- Slack, because Agents Router uses a 4000-character guard for Slack text.
 - Discord, because Discord webhook content is limited to 2000 characters.
 - Telegram, because Telegram Bot API text messages are limited to 4096 characters.
 - WhatsApp, because Agents Router uses a 4096-character guard for WhatsApp text bodies.
@@ -236,9 +236,9 @@ Prompt detail is only configurable for providers without a small message size li
 
 Agents Router disables prompt detail for:
 
-- ntfy, because ntfy has a configurable message body size limit that defaults to 4K.
+- ntfy, because ntfy has a configurable message body size limit that defaults to 4096 characters.
 - Pushover, because Pushover messages are limited to 1024 characters.
-- Slack, because Slack has documented message length and truncation limits.
+- Slack, because Agents Router uses a 4000-character guard for Slack text.
 - Discord, because Discord webhook content is limited to 2000 characters.
 - Telegram, because Telegram Bot API text messages are limited to 4096 characters.
 - WhatsApp, because Agents Router uses a 4096-character guard for WhatsApp text bodies.

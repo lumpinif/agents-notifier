@@ -7,7 +7,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
-use crate::provider_catalog::{MessageSurface, provider_message_limit};
+use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
@@ -288,7 +288,8 @@ fn validate_text_size(
     provider_type: &str,
     text: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    let limit = provider_message_limit(ProviderType::Whatsapp, MessageSurface::TextBody);
+    let limit =
+        provider_local_preflight_message_limit(ProviderType::Whatsapp, MessageSurface::TextBody);
     if text.chars().count() > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,

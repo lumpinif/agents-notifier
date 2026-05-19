@@ -197,9 +197,9 @@ Answer detail 只对没有小型消息长度限制或本地发送保护线的 pr
 
 Agents Router 会对这些 provider 固定使用 `Preview`：
 
-- ntfy，因为 ntfy 有可配置的 message body size limit，默认是 4K。
+- ntfy，因为 ntfy 有可配置的 message body size limit，默认是 4096 个字符。
 - Pushover，因为 Pushover message 最多 1024 个字符。
-- Slack，因为 Slack 官方文档记录了 message length 和 truncation 限制。
+- Slack，因为 Agents Router 对 Slack 文本使用 4000 字符本地保护线。
 - Discord，因为 Discord webhook content 最多 2000 个字符。
 - Telegram，因为 Telegram Bot API text message 最多 4096 个字符。
 - WhatsApp，因为 Agents Router 对 WhatsApp text body 使用 4096 字符本地保护线。
@@ -231,9 +231,9 @@ Prompt detail 只对没有小型消息长度限制或本地发送保护线的 pr
 
 Agents Router 会对这些 provider 禁用 prompt detail：
 
-- ntfy，因为 ntfy 有可配置的 message body size limit，默认是 4K。
+- ntfy，因为 ntfy 有可配置的 message body size limit，默认是 4096 个字符。
 - Pushover，因为 Pushover message 最多 1024 个字符。
-- Slack，因为 Slack 官方文档记录了 message length 和 truncation 限制。
+- Slack，因为 Agents Router 对 Slack 文本使用 4000 字符本地保护线。
 - Discord，因为 Discord webhook content 最多 2000 个字符。
 - Telegram，因为 Telegram Bot API text message 最多 4096 个字符。
 - WhatsApp，因为 Agents Router 对 WhatsApp text body 使用 4096 字符本地保护线。

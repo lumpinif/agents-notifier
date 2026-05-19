@@ -7,7 +7,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
-use crate::provider_catalog::{MessageSurface, provider_message_limit};
+use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 use crate::provider_urls::validate_slack_webhook_url;
 use crate::providers::formatting::format_signal_message;
 use crate::providers::http::provider_http_client;
@@ -150,7 +150,8 @@ fn validate_text_size(
     provider_type: &str,
     text: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    let limit = provider_message_limit(ProviderType::Slack, MessageSurface::TextBody);
+    let limit =
+        provider_local_preflight_message_limit(ProviderType::Slack, MessageSurface::TextBody);
     if text.chars().count() > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
@@ -216,7 +217,7 @@ mod tests {
 
     use super::*;
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
-    use crate::provider_catalog::{MessageSurface, provider_message_limit};
+    use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
     #[tokio::test]
     async fn sends_text_payload_to_slack_webhook() {
@@ -316,7 +317,12 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "a".repeat(provider_message_limit(ProviderType::Slack, MessageSurface::TextBody) + 100),
+            "a".repeat(
+                provider_local_preflight_message_limit(
+                    ProviderType::Slack,
+                    MessageSurface::TextBody,
+                ) + 100,
+            ),
             test_timestamp(),
             BTreeMap::new(),
         );
@@ -329,7 +335,7 @@ mod tests {
         assert_eq!(err.kind, DeliveryErrorKind::Validation);
         assert!(err.to_string().contains(&format!(
             "text exceeds {}",
-            provider_message_limit(ProviderType::Slack, MessageSurface::TextBody)
+            provider_local_preflight_message_limit(ProviderType::Slack, MessageSurface::TextBody)
         )));
         assert!(
             server

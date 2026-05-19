@@ -70,13 +70,13 @@ ntfy
 
 Agents Router 会对 ntfy 固定使用 `Preview` answer detail。
 
-ntfy 有官方文档记录的 message body size limit，默认 server 限制是 4K。完整回答可能很长，所以 Agents Router 会让 ntfy 通知保持短小，保证投递更可靠。
+ntfy 有官方文档记录的 message body size limit，默认 server 限制是 4096 个字符。完整回答可能很长，所以 Agents Router 会让 ntfy 通知保持短小，保证投递更可靠。
 
 ## Prompt Detail
 
 Agents Router 会对 ntfy 禁用 prompt detail。
 
-ntfy 有官方文档记录的 message body size limit，默认 server 限制是 4K。Prompt 可能很长，所以 Agents Router 不会把 prompt 放进 ntfy 通知里，避免投递变得不可靠。
+ntfy 有官方文档记录的 message body size limit，默认 server 限制是 4096 个字符。Prompt 可能很长，所以 Agents Router 不会把 prompt 放进 ntfy 通知里，避免投递变得不可靠。
 
 ## 4. 确认成功
 

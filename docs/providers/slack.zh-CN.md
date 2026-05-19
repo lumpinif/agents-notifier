@@ -57,13 +57,13 @@ Agents Router 会保存 provider、启动本地 service，并通过真实 agent 
 
 Agents Router 会对 Slack 固定使用 `Preview` answer detail。
 
-Slack 官方文档记录了消息长度和截断限制。完整回答可能很长，所以 Agents Router 会让 Slack 通知保持短小，保证投递更可靠。
+Agents Router 对 Slack 文本使用 4000 字符本地保护线。完整回答可能很长，所以 Agents Router 会让 Slack 通知保持短小，保证投递更可靠。
 
 ## Prompt Detail
 
 Agents Router 会对 Slack 禁用 prompt detail。
 
-Prompt 可能很长，也可能包含私人信息。Slack message 有官方文档记录的长度限制，所以 Agents Router 不会把 prompt 放进 Slack 通知里。
+Prompt 可能很长，也可能包含私人信息。Agents Router 对 Slack 文本使用 4000 字符本地保护线，所以不会把 prompt 放进 Slack 通知里。
 
 ## 手动配置
 

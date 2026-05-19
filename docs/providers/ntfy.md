@@ -70,13 +70,13 @@ Press Enter to use the generated topic, or paste your own topic.
 
 Agents Router fixes answer detail to `Preview` for ntfy.
 
-ntfy has a documented message body size limit. The default server limit is 4K. Full answers can be long, so Agents Router keeps ntfy notifications short for reliable delivery.
+ntfy has a documented message body size limit. The default server limit is 4096 characters. Full answers can be long, so Agents Router keeps ntfy notifications short for reliable delivery.
 
 ## Prompt Detail
 
 Agents Router disables prompt detail for ntfy.
 
-ntfy has a documented message body size limit. The default server limit is 4K. Prompts can be long, so Agents Router keeps prompts out of ntfy notifications to avoid unreliable delivery.
+ntfy has a documented message body size limit. The default server limit is 4096 characters. Prompts can be long, so Agents Router keeps prompts out of ntfy notifications to avoid unreliable delivery.
 
 ## 4. Confirm
 

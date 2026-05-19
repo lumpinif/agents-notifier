@@ -38,8 +38,8 @@ use agents_router::paths::{
 #[cfg(target_os = "macos")]
 use agents_router::process::{StopOutcome, SystemProcessManager, stop_with_manager};
 use agents_router::provider_catalog::{
-    MessageConstraintSource, MessageLimitUnit, MessageSurface, ProviderMessageConstraint,
-    provider_descriptor, setup_provider_descriptors,
+    MessageLimitUnit, MessageSurface, ProviderMessageConstraint, provider_descriptor,
+    setup_provider_descriptors,
 };
 use agents_router::providers::build_providers;
 use agents_router::runtime::{

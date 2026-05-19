@@ -428,6 +428,31 @@ fn answer_detail_is_forced_to_preview_for_length_limited_providers() {
 }
 
 #[test]
+fn setup_provider_limit_reasons_use_natural_copy_with_catalog_limits() {
+    let telegram_constraints =
+        agents_router::provider_catalog::provider_message_constraints(ProviderType::Telegram);
+    assert_eq!(
+        provider_constraint_reason(
+            ProviderType::Telegram,
+            telegram_constraints,
+            CliLanguage::English
+        ),
+        "Telegram Bot API text messages are limited to 4096 characters"
+    );
+
+    let teams_constraints =
+        agents_router::provider_catalog::provider_message_constraints(ProviderType::MicrosoftTeams);
+    assert_eq!(
+        provider_constraint_reason(
+            ProviderType::MicrosoftTeams,
+            teams_constraints,
+            CliLanguage::English
+        ),
+        "Teams incoming webhook payloads are limited to 28 KB"
+    );
+}
+
+#[test]
 fn macos_and_windows_offer_codex_desktop_as_default_agent() {
     assert_eq!(
         default_agent_for_runtime_platform(RuntimePlatform::Macos),

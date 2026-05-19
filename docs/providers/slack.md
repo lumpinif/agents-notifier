@@ -57,13 +57,13 @@ Agents Router stores the provider, starts the local service, and sends a test me
 
 Agents Router fixes answer detail to `Preview` for Slack.
 
-Slack has documented message length and truncation limits. Full answers can be long, so Agents Router keeps Slack notifications short for reliable delivery.
+Agents Router uses a 4000-character local guard for Slack text. Full answers can be long, so Agents Router keeps Slack notifications short for reliable delivery.
 
 ## Prompt Detail
 
 Agents Router disables prompt detail for Slack.
 
-Prompts can be long and private. Slack messages have documented length limits, so Agents Router keeps prompts out of Slack notifications.
+Prompts can be long and private. Agents Router uses a 4000-character local guard for Slack text, so it keeps prompts out of Slack notifications.
 
 ## Manual Config
 

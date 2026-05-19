@@ -7,7 +7,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     provider_request_error,
 };
-use crate::provider_catalog::{MessageSurface, provider_message_limit};
+use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 use crate::providers::formatting::format_signal_body;
 use crate::providers::http::provider_http_client;
 use crate::router::{Provider, ProviderFuture};
@@ -254,7 +254,8 @@ fn validate_signal_size(
     provider_type: &str,
     message: &str,
 ) -> Result<(), Box<DeliveryError>> {
-    let title_limit = provider_message_limit(ProviderType::Pushover, MessageSurface::Title);
+    let title_limit =
+        provider_local_preflight_message_limit(ProviderType::Pushover, MessageSurface::Title);
     if signal.title().chars().count() > title_limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
@@ -263,7 +264,8 @@ fn validate_signal_size(
         )));
     }
 
-    let message_limit = provider_message_limit(ProviderType::Pushover, MessageSurface::MessageBody);
+    let message_limit =
+        provider_local_preflight_message_limit(ProviderType::Pushover, MessageSurface::MessageBody);
     if message.chars().count() > message_limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,

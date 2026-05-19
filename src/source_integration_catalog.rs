@@ -39,8 +39,7 @@ impl SourceIntegrationId {
     }
 
     pub fn from_hook_source_id(source_id: &str) -> Option<Self> {
-        source_integration_by_source_id(source_id)
-            .filter(|descriptor| descriptor.source_type == SourceType::AgentHook)
+        source_integration_for_source(source_id, SourceType::AgentHook)
             .map(|descriptor| descriptor.id)
     }
 }
@@ -355,14 +354,6 @@ pub fn source_integration_descriptor(
         .iter()
         .find(|descriptor| descriptor.id == id)
         .expect("every SourceIntegrationId must have a SourceIntegrationDescriptor")
-}
-
-fn source_integration_by_source_id(
-    source_id: &str,
-) -> Option<&'static SourceIntegrationDescriptor> {
-    SOURCE_INTEGRATION_DESCRIPTORS
-        .iter()
-        .find(|descriptor| descriptor.source_id == source_id)
 }
 
 pub fn source_integration_for_source(

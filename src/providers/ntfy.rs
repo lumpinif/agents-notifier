@@ -126,7 +126,7 @@ mod tests {
     use super::*;
     use crate::config::ProviderType;
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
-    use crate::provider_catalog::{MessageSurface, provider_message_limit};
+    use crate::provider_catalog::{MessageSurface, provider_message_constraint};
 
     #[tokio::test]
     async fn sends_ntfy_request_with_title_and_body() {
@@ -313,7 +313,9 @@ mod tests {
             route_tag: None,
         })
         .expect("provider config should be valid");
-        let limit = provider_message_limit(ProviderType::Ntfy, MessageSurface::MessageBody);
+        let limit = provider_message_constraint(ProviderType::Ntfy, MessageSurface::MessageBody)
+            .and_then(|constraint| constraint.limit)
+            .expect("ntfy default server message body limit should be cataloged");
         let signal = Signal::new_with_timestamp(
             "signal-1",
             "codex_cli",

@@ -19,6 +19,7 @@ pub struct ProviderMessageConstraint {
     pub unit: MessageLimitUnit,
     pub limit: Option<usize>,
     pub source: MessageConstraintSource,
+    pub enforcement: MessageConstraintEnforcement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,12 @@ pub enum MessageConstraintSource {
     LocalDeliveryGuard,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageConstraintEnforcement {
+    PolicyOnly,
+    LocalPreflight,
+}
+
 const NO_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[];
 
 const NTFY_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessageConstraint {
@@ -50,6 +57,7 @@ const NTFY_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessage
     unit: MessageLimitUnit::Characters,
     limit: Some(4096),
     source: MessageConstraintSource::ProviderDocumentedDefault,
+    enforcement: MessageConstraintEnforcement::PolicyOnly,
 }];
 
 const PUSHOVER_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[
@@ -58,12 +66,14 @@ const PUSHOVER_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[
         unit: MessageLimitUnit::Characters,
         limit: Some(250),
         source: MessageConstraintSource::ProviderDocumented,
+        enforcement: MessageConstraintEnforcement::LocalPreflight,
     },
     ProviderMessageConstraint {
         surface: MessageSurface::MessageBody,
         unit: MessageLimitUnit::Characters,
         limit: Some(1024),
         source: MessageConstraintSource::ProviderDocumented,
+        enforcement: MessageConstraintEnforcement::LocalPreflight,
     },
 ];
 
@@ -72,6 +82,7 @@ const SLACK_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessag
     unit: MessageLimitUnit::Characters,
     limit: Some(4000),
     source: MessageConstraintSource::LocalDeliveryGuard,
+    enforcement: MessageConstraintEnforcement::LocalPreflight,
 }];
 
 const DISCORD_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessageConstraint {
@@ -79,6 +90,7 @@ const DISCORD_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMess
     unit: MessageLimitUnit::Characters,
     limit: Some(2000),
     source: MessageConstraintSource::ProviderDocumented,
+    enforcement: MessageConstraintEnforcement::LocalPreflight,
 }];
 
 const TELEGRAM_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessageConstraint {
@@ -86,6 +98,7 @@ const TELEGRAM_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMes
     unit: MessageLimitUnit::Characters,
     limit: Some(4096),
     source: MessageConstraintSource::ProviderDocumented,
+    enforcement: MessageConstraintEnforcement::LocalPreflight,
 }];
 
 const WHATSAPP_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessageConstraint {
@@ -93,6 +106,7 @@ const WHATSAPP_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMes
     unit: MessageLimitUnit::Characters,
     limit: Some(4096),
     source: MessageConstraintSource::LocalDeliveryGuard,
+    enforcement: MessageConstraintEnforcement::LocalPreflight,
 }];
 
 const WECHAT_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessageConstraint {
@@ -100,6 +114,7 @@ const WECHAT_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] = &[ProviderMessa
     unit: MessageLimitUnit::Characters,
     limit: Some(3800),
     source: MessageConstraintSource::LocalDeliveryGuard,
+    enforcement: MessageConstraintEnforcement::LocalPreflight,
 }];
 
 const MICROSOFT_TEAMS_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] =
@@ -108,6 +123,7 @@ const MICROSOFT_TEAMS_MESSAGE_CONSTRAINTS: &[ProviderMessageConstraint] =
         unit: MessageLimitUnit::Bytes,
         limit: Some(28 * 1024),
         source: MessageConstraintSource::ProviderDocumented,
+        enforcement: MessageConstraintEnforcement::LocalPreflight,
     }];
 
 const PROVIDER_DESCRIPTORS: &[ProviderDescriptor] = &[
@@ -235,10 +251,21 @@ pub fn provider_message_constraint(
         .find(|constraint| constraint.surface == surface)
 }
 
-pub fn provider_message_limit(provider_type: ProviderType, surface: MessageSurface) -> usize {
+pub fn provider_local_preflight_message_constraint(
+    provider_type: ProviderType,
+    surface: MessageSurface,
+) -> Option<&'static ProviderMessageConstraint> {
     provider_message_constraint(provider_type, surface)
+        .filter(|constraint| constraint.enforcement == MessageConstraintEnforcement::LocalPreflight)
+}
+
+pub fn provider_local_preflight_message_limit(
+    provider_type: ProviderType,
+    surface: MessageSurface,
+) -> usize {
+    provider_local_preflight_message_constraint(provider_type, surface)
         .and_then(|constraint| constraint.limit)
-        .expect("provider message limit must be cataloged for this surface")
+        .expect("provider local preflight message limit must be cataloged for this surface")
 }
 
 #[cfg(test)]
@@ -325,6 +352,7 @@ mod tests {
                 unit: MessageLimitUnit::Characters,
                 limit: Some(4096),
                 source: MessageConstraintSource::ProviderDocumentedDefault,
+                enforcement: MessageConstraintEnforcement::PolicyOnly,
             }]
         );
         assert_eq!(
@@ -335,21 +363,149 @@ mod tests {
                     unit: MessageLimitUnit::Characters,
                     limit: Some(250),
                     source: MessageConstraintSource::ProviderDocumented,
+                    enforcement: MessageConstraintEnforcement::LocalPreflight,
                 },
                 ProviderMessageConstraint {
                     surface: MessageSurface::MessageBody,
                     unit: MessageLimitUnit::Characters,
                     limit: Some(1024),
                     source: MessageConstraintSource::ProviderDocumented,
+                    enforcement: MessageConstraintEnforcement::LocalPreflight,
                 },
             ]
         );
+        let teams_payload_constraint =
+            provider_message_constraint(ProviderType::MicrosoftTeams, MessageSurface::Payload)
+                .expect("Teams payload constraint should be cataloged");
+        assert_eq!(teams_payload_constraint.limit, Some(28 * 1024));
         assert_eq!(
-            provider_message_limit(ProviderType::MicrosoftTeams, MessageSurface::Payload),
+            provider_local_preflight_message_limit(
+                ProviderType::MicrosoftTeams,
+                MessageSurface::Payload
+            ),
             28 * 1024
+        );
+        assert!(
+            provider_local_preflight_message_constraint(
+                ProviderType::Ntfy,
+                MessageSurface::MessageBody
+            )
+            .is_none()
         );
         assert!(provider_message_constraints(ProviderType::Webhook).is_empty());
         assert!(provider_message_constraints(ProviderType::FeishuLark).is_empty());
         assert!(provider_message_constraints(ProviderType::EmailSmtp).is_empty());
+    }
+
+    #[test]
+    fn user_docs_include_cataloged_message_constraint_limits() {
+        for descriptor in all_provider_descriptors() {
+            let provider_docs = provider_user_docs(descriptor.provider_type);
+            for constraint in descriptor.capabilities.message_constraints {
+                let Some(limit) = constraint.limit else {
+                    continue;
+                };
+                let expected = docs_limit_text(*constraint, limit);
+                assert!(
+                    provider_docs.contains(&expected),
+                    "provider docs should include cataloged limit `{expected}` for `{}`",
+                    descriptor.provider_type.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn setup_docs_include_policy_limit_for_each_restricted_provider() {
+        let setup_docs = include_str!("../docs/setup.md");
+
+        for (provider_type, surface) in [
+            (ProviderType::Ntfy, MessageSurface::MessageBody),
+            (ProviderType::Pushover, MessageSurface::MessageBody),
+            (ProviderType::Slack, MessageSurface::TextBody),
+            (ProviderType::Discord, MessageSurface::WebhookContent),
+            (ProviderType::Telegram, MessageSurface::TextBody),
+            (ProviderType::Whatsapp, MessageSurface::TextBody),
+            (ProviderType::Wechat, MessageSurface::TextBody),
+            (ProviderType::MicrosoftTeams, MessageSurface::Payload),
+        ] {
+            let descriptor = provider_descriptor(provider_type);
+            let constraint = provider_message_constraint(provider_type, surface)
+                .expect("restricted provider policy limit must be cataloged");
+            let limit = constraint
+                .limit
+                .expect("restricted provider policy limit must have a numeric value");
+            let expected = docs_limit_text(*constraint, limit);
+            let provider_line = setup_docs
+                .lines()
+                .find(|line| line.starts_with(&format!("- {},", descriptor.display_name)))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "setup docs should include a restricted provider line for `{}`",
+                        descriptor.provider_type.as_str()
+                    )
+                });
+
+            assert!(
+                provider_line.contains(&expected),
+                "setup docs line `{provider_line}` should include cataloged limit `{expected}`"
+            );
+        }
+    }
+
+    fn provider_user_docs(provider_type: ProviderType) -> String {
+        match provider_type {
+            ProviderType::Ntfy => [
+                include_str!("../docs/providers/ntfy.md"),
+                include_str!("../docs/providers/ntfy.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Pushover => [
+                include_str!("../docs/providers/pushover.md"),
+                include_str!("../docs/providers/pushover.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Slack => [
+                include_str!("../docs/providers/slack.md"),
+                include_str!("../docs/providers/slack.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Discord => [
+                include_str!("../docs/providers/discord.md"),
+                include_str!("../docs/providers/discord.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Telegram => [
+                include_str!("../docs/providers/telegram.md"),
+                include_str!("../docs/providers/telegram.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Whatsapp => [
+                include_str!("../docs/providers/whatsapp.md"),
+                include_str!("../docs/providers/whatsapp.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Wechat => [
+                include_str!("../docs/providers/wechat.md"),
+                include_str!("../docs/providers/wechat.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::MicrosoftTeams => [
+                include_str!("../docs/providers/microsoft-teams.md"),
+                include_str!("../docs/providers/microsoft-teams.zh-CN.md"),
+            ]
+            .join("\n"),
+            ProviderType::Webhook | ProviderType::FeishuLark | ProviderType::EmailSmtp => {
+                String::new()
+            }
+        }
+    }
+
+    fn docs_limit_text(constraint: ProviderMessageConstraint, limit: usize) -> String {
+        if constraint.unit == MessageLimitUnit::Bytes && limit % 1024 == 0 {
+            return format!("{} KB", limit / 1024);
+        }
+
+        limit.to_string()
     }
 }

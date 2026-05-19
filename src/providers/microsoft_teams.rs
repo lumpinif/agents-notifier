@@ -8,7 +8,7 @@ use crate::delivery::{
     DeliveryError, DeliveryErrorContext, DeliveryErrorKind, ProviderSendResult,
     is_retriable_http_status, provider_request_error,
 };
-use crate::provider_catalog::{MessageSurface, provider_message_limit};
+use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 use crate::provider_urls::validate_microsoft_teams_webhook_url;
 use crate::providers::formatting::format_signal_body;
 use crate::providers::http::provider_http_client;
@@ -224,7 +224,10 @@ fn validate_request_size(
     provider_type: &str,
     request_size: usize,
 ) -> Result<(), Box<DeliveryError>> {
-    let limit = provider_message_limit(ProviderType::MicrosoftTeams, MessageSurface::Payload);
+    let limit = provider_local_preflight_message_limit(
+        ProviderType::MicrosoftTeams,
+        MessageSurface::Payload,
+    );
     if request_size > limit {
         return Err(Box::new(DeliveryError::new(
             DeliveryErrorKind::Validation,
@@ -301,7 +304,7 @@ mod tests {
 
     use super::*;
     use crate::delivery::{DeliveryErrorKind, ProviderSendStatus};
-    use crate::provider_catalog::{MessageSurface, provider_message_limit};
+    use crate::provider_catalog::{MessageSurface, provider_local_preflight_message_limit};
 
     #[tokio::test]
     async fn sends_adaptive_card_to_microsoft_teams_webhook() {
@@ -388,7 +391,7 @@ mod tests {
             "codex_cli",
             "codex_cli",
             "Codex",
-            "a".repeat(provider_message_limit(
+            "a".repeat(provider_local_preflight_message_limit(
                 ProviderType::MicrosoftTeams,
                 MessageSurface::Payload,
             )),
@@ -404,7 +407,7 @@ mod tests {
         assert_eq!(err.kind, DeliveryErrorKind::Validation);
         assert!(err.to_string().contains(&format!(
             "message exceeds {}",
-            format_payload_limit(provider_message_limit(
+            format_payload_limit(provider_local_preflight_message_limit(
                 ProviderType::MicrosoftTeams,
                 MessageSurface::Payload,
             ))

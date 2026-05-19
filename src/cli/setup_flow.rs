@@ -536,8 +536,12 @@ pub(super) fn answer_detail_for_provider(
                 fixed_answer_detail_message(
                     i18n,
                     localized_setup_provider_display_name(provider, i18n),
-                    &message_constraints_reason(constraints, CliLanguage::English),
-                    &message_constraints_reason(constraints, CliLanguage::SimplifiedChinese),
+                    &provider_constraint_reason(provider, constraints, CliLanguage::English),
+                    &provider_constraint_reason(
+                        provider,
+                        constraints,
+                        CliLanguage::SimplifiedChinese,
+                    ),
                 )
             );
             Ok(AnswerDetail::Preview)
@@ -562,8 +566,12 @@ pub(super) fn prompt_detail_for_provider(
                 fixed_prompt_detail_message(
                     i18n,
                     localized_setup_provider_display_name(provider, i18n),
-                    &message_constraints_reason(constraints, CliLanguage::English),
-                    &message_constraints_reason(constraints, CliLanguage::SimplifiedChinese),
+                    &provider_constraint_reason(provider, constraints, CliLanguage::English),
+                    &provider_constraint_reason(
+                        provider,
+                        constraints,
+                        CliLanguage::SimplifiedChinese,
+                    ),
                 )
             );
             Ok(PromptDetail::Off)
@@ -582,64 +590,135 @@ fn localized_setup_provider_display_name(provider: ProviderType, i18n: I18n) -> 
     }
 }
 
-fn message_constraints_reason(
+pub(super) fn provider_constraint_reason(
+    provider: ProviderType,
     constraints: &[ProviderMessageConstraint],
     language: CliLanguage,
 ) -> String {
-    let parts = constraints
-        .iter()
-        .map(|constraint| message_constraint_reason(*constraint, language))
-        .collect::<Vec<_>>();
-
-    match language {
-        CliLanguage::English => parts.join("; "),
-        CliLanguage::SimplifiedChinese => parts.join("；"),
+    match provider {
+        ProviderType::Ntfy => match language {
+            CliLanguage::English => format!(
+                "ntfy's default server message body limit is {}",
+                constraint_limit_text(constraints, MessageSurface::MessageBody, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "ntfy 默认 server 的消息正文限制是 {}",
+                constraint_limit_text(constraints, MessageSurface::MessageBody, language)
+            ),
+        },
+        ProviderType::Pushover => match language {
+            CliLanguage::English => format!(
+                "Pushover messages are limited to {}",
+                constraint_limit_text(constraints, MessageSurface::MessageBody, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Pushover 消息最多 {}",
+                constraint_limit_text(constraints, MessageSurface::MessageBody, language)
+            ),
+        },
+        ProviderType::Slack => match language {
+            CliLanguage::English => format!(
+                "Agents Router uses a {} delivery guard for Slack text",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Agents Router 对 Slack 文本使用 {} 发送保护线",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+        },
+        ProviderType::Discord => match language {
+            CliLanguage::English => format!(
+                "Discord webhook content is limited to {}",
+                constraint_limit_text(constraints, MessageSurface::WebhookContent, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Discord webhook 内容最多 {}",
+                constraint_limit_text(constraints, MessageSurface::WebhookContent, language)
+            ),
+        },
+        ProviderType::Telegram => match language {
+            CliLanguage::English => format!(
+                "Telegram Bot API text messages are limited to {}",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Telegram Bot API 文本消息最多 {}",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+        },
+        ProviderType::Whatsapp => match language {
+            CliLanguage::English => format!(
+                "Agents Router uses a {} delivery guard for WhatsApp text bodies",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Agents Router 对 WhatsApp 文本正文使用 {} 发送保护线",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+        },
+        ProviderType::Wechat => match language {
+            CliLanguage::English => format!(
+                "Agents Router uses a {} delivery guard for WeChat iLink text messages",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Agents Router 对微信 iLink 文本消息使用 {} 发送保护线",
+                constraint_limit_text(constraints, MessageSurface::TextBody, language)
+            ),
+        },
+        ProviderType::MicrosoftTeams => match language {
+            CliLanguage::English => format!(
+                "Teams incoming webhook payloads are limited to {}",
+                constraint_limit_text(constraints, MessageSurface::Payload, language)
+            ),
+            CliLanguage::SimplifiedChinese => format!(
+                "Teams incoming webhook payload 限制是 {}",
+                constraint_limit_text(constraints, MessageSurface::Payload, language)
+            ),
+        },
+        ProviderType::FeishuLark | ProviderType::Webhook | ProviderType::EmailSmtp => {
+            unreachable!("unconstrained providers should not produce fixed detail reasons")
+        }
     }
 }
 
-fn message_constraint_reason(
-    constraint: ProviderMessageConstraint,
+fn constraint_limit_text(
+    constraints: &[ProviderMessageConstraint],
+    surface: MessageSurface,
     language: CliLanguage,
 ) -> String {
-    let limit = constraint
-        .limit
-        .map(|limit| limit.to_string())
-        .unwrap_or_else(|| match language {
-            CliLanguage::English => "a provider limit".to_string(),
-            CliLanguage::SimplifiedChinese => "平台限制".to_string(),
-        });
-    match language {
-        CliLanguage::English => format!(
-            "{} is limited to {limit} {} by {}",
-            message_surface_label(constraint.surface, language),
-            message_limit_unit_label(constraint.unit, language),
-            message_constraint_source_label(constraint.source, language)
-        ),
-        CliLanguage::SimplifiedChinese => format!(
-            "{}由{}限制为 {limit} {}",
-            message_surface_label(constraint.surface, language),
-            message_constraint_source_label(constraint.source, language),
-            message_limit_unit_label(constraint.unit, language)
-        ),
-    }
+    let constraint = constraints
+        .iter()
+        .find(|constraint| constraint.surface == surface)
+        .expect("provider message constraint must be cataloged for setup reason");
+    message_limit_text(*constraint, language)
 }
 
-fn message_surface_label(surface: MessageSurface, language: CliLanguage) -> &'static str {
+fn message_limit_text(constraint: ProviderMessageConstraint, language: CliLanguage) -> String {
+    let Some(limit) = constraint.limit else {
+        return match language {
+            CliLanguage::English => "the provider limit".to_string(),
+            CliLanguage::SimplifiedChinese => "平台限制".to_string(),
+        };
+    };
+
+    if constraint.unit == MessageLimitUnit::Bytes && limit % 1024 == 0 {
+        return format!("{} KB", limit / 1024);
+    }
+
     match language {
-        CliLanguage::English => match surface {
-            MessageSurface::Title => "title",
-            MessageSurface::MessageBody => "message body",
-            MessageSurface::TextBody => "text body",
-            MessageSurface::WebhookContent => "webhook content",
-            MessageSurface::Payload => "payload",
-        },
-        CliLanguage::SimplifiedChinese => match surface {
-            MessageSurface::Title => "标题",
-            MessageSurface::MessageBody => "消息正文",
-            MessageSurface::TextBody => "文本正文",
-            MessageSurface::WebhookContent => "webhook 内容",
-            MessageSurface::Payload => "payload",
-        },
+        CliLanguage::English => {
+            format!(
+                "{limit} {}",
+                message_limit_unit_label(constraint.unit, language)
+            )
+        }
+        CliLanguage::SimplifiedChinese => {
+            format!(
+                "{limit} {}",
+                message_limit_unit_label(constraint.unit, language)
+            )
+        }
     }
 }
 
@@ -652,24 +731,6 @@ fn message_limit_unit_label(unit: MessageLimitUnit, language: CliLanguage) -> &'
         CliLanguage::SimplifiedChinese => match unit {
             MessageLimitUnit::Characters => "字符",
             MessageLimitUnit::Bytes => "字节",
-        },
-    }
-}
-
-fn message_constraint_source_label(
-    source: MessageConstraintSource,
-    language: CliLanguage,
-) -> &'static str {
-    match language {
-        CliLanguage::English => match source {
-            MessageConstraintSource::ProviderDocumented => "the provider documentation",
-            MessageConstraintSource::ProviderDocumentedDefault => "the provider default",
-            MessageConstraintSource::LocalDeliveryGuard => "the local delivery guard",
-        },
-        CliLanguage::SimplifiedChinese => match source {
-            MessageConstraintSource::ProviderDocumented => "平台文档",
-            MessageConstraintSource::ProviderDocumentedDefault => "平台默认值",
-            MessageConstraintSource::LocalDeliveryGuard => "本地发送保护线",
         },
     }
 }
