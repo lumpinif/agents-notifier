@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/lumpinif/agents-router/compare/v0.10.2...v0.11.0) (2026-05-20)
+
+
+### Features
+
+* make Slack the default setup provider ([9c86c4e](https://github.com/lumpinif/agents-router/commit/9c86c4e165e867e903e7c3e016f2934e941f1124))
+
 ## [0.10.2](https://github.com/lumpinif/agents-router/compare/v0.10.1...v0.10.2) (2026-05-17)
 
 
