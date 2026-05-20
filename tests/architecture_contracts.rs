@@ -31,6 +31,49 @@ fn production_source_paths_do_not_construct_final_signals_directly() {
     }
 }
 
+#[test]
+fn human_provider_renderers_do_not_interpret_signal_structure_directly() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let providers_dir = root.join("src/providers");
+    let mut files = Vec::new();
+    collect_rust_files(&providers_dir, &mut files);
+
+    let allowed = [
+        providers_dir.join("notification_view.rs"),
+        providers_dir.join("webhook.rs"),
+        providers_dir.join("contract_test.rs"),
+        providers_dir.join("http.rs"),
+        providers_dir.join("mod.rs"),
+    ];
+    let forbidden = [
+        ".workspace",
+        ".conversation",
+        ".links",
+        ".summary()",
+        "SignalAnswerKind",
+    ];
+
+    for file in files {
+        if allowed.contains(&file) || file.file_name().is_some_and(|name| name == "tests.rs") {
+            continue;
+        }
+
+        let content = fs::read_to_string(&file)
+            .unwrap_or_else(|error| panic!("failed to read `{}`: {error}", file.display()));
+        let production_content = content
+            .split_once("\n#[cfg(test)]")
+            .map_or(content.as_str(), |(production, _tests)| production);
+        for pattern in forbidden {
+            assert!(
+                !production_content.contains(pattern),
+                "`{}` reads Signal display structure directly with `{}`; human provider rendering must go through SignalNotificationView",
+                file.strip_prefix(&root).unwrap_or(&file).display(),
+                pattern
+            );
+        }
+    }
+}
+
 fn collect_rust_files(path: &Path, files: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(path)
         .unwrap_or_else(|error| panic!("failed to read `{}`: {error}", path.display()));

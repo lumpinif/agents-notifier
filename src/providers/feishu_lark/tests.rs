@@ -182,7 +182,7 @@ fn formats_codex_desktop_message_with_clickable_open_link() {
                 flex_mode: "bisect",
                 background_style: "default",
                 columns: vec![
-                    metric_column("Project Name", "agents-router", None),
+                    metric_column("Project", "agents-router", None),
                     metric_column("Branch", "main", None),
                     metric_column("Model", "gpt-5.2-codex", None)
                 ]
@@ -424,6 +424,31 @@ fn serializes_card_with_header_action_and_preview() {
         json!({
             "tag": "markdown",
             "content": "**Preview**\ndone"
+        })
+    );
+}
+
+#[test]
+fn uses_later_link_when_primary_link_cannot_be_rendered_as_button() {
+    let mut signal = structured_codex_signal(None, None, None);
+    signal.links = vec![
+        SignalLink {
+            label: "Broken Codex Link".to_string(),
+            url: "codex://threads/".to_string(),
+        },
+        SignalLink {
+            label: "Open Logs".to_string(),
+            url: "https://example.com/logs".to_string(),
+        },
+    ];
+
+    let body = FeishuLarkCardBody::from_signal(&signal, "2026-05-10 01:35:42 +08:00");
+
+    assert_eq!(
+        body.open_link,
+        Some(FeishuLarkActionLink {
+            label: "Open Logs".to_string(),
+            url: "https://example.com/logs".to_string(),
         })
     );
 }

@@ -6,6 +6,7 @@ pub mod feishu_lark;
 mod formatting;
 mod http;
 pub mod microsoft_teams;
+mod notification_view;
 pub mod ntfy;
 pub mod pushover;
 pub mod slack;

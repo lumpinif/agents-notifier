@@ -1,134 +1,66 @@
-use crate::signal::{Signal, SignalAnswer, SignalLink};
+use crate::providers::notification_view::{
+    NotificationAction, NotificationFieldKey, NotificationSection, SignalNotificationView,
+};
+use crate::signal::Signal;
 
 pub(super) fn format_signal_message(signal: &Signal, formatted_time: &str) -> String {
-    format!(
-        "{}\n\n{}",
-        signal.title(),
-        format_signal_body(signal, formatted_time)
-    )
+    let view = SignalNotificationView::from_signal(signal, formatted_time);
+    format!("{}\n\n{}", view.title, format_notification_view_body(&view))
 }
 
 pub(super) fn format_signal_body(signal: &Signal, formatted_time: &str) -> String {
+    let view = SignalNotificationView::from_signal(signal, formatted_time);
+    format_notification_view_body(&view)
+}
+
+fn format_notification_view_body(view: &SignalNotificationView) -> String {
     let mut details = Vec::new();
-    let has_structured_details = has_structured_details(signal);
-
-    if !has_structured_details {
-        push_present(&mut details, signal.summary().to_string());
+    if let Some(summary) = &view.summary {
+        details.push(summary.to_string());
     }
-
-    if let Some(workspace) = &signal.workspace {
-        push_labeled(&mut details, "Project", workspace.project_name.as_deref());
-        push_labeled(
-            &mut details,
-            "Project Path",
-            workspace.project_path.as_deref(),
-        );
-    }
-
-    if let Some(conversation) = &signal.conversation {
-        push_labeled(
-            &mut details,
-            "Session",
-            conversation.session_title.as_deref(),
-        );
-        push_labeled(&mut details, "Model", conversation.model.as_deref());
-    }
-
-    for link in &signal.links {
-        push_link(&mut details, link);
-    }
-
-    if let Some(lifecycle) = &signal.lifecycle
-        && let Some(duration_ms) = lifecycle.duration_ms
-    {
-        details.push(format!("Duration: {}", format_duration_ms(duration_ms)));
-    }
-
-    if let Some(workspace) = &signal.workspace {
-        push_labeled(&mut details, "Branch", workspace.branch.as_deref());
-    }
-
-    details.push(format!("Time: {formatted_time}"));
-    if let Some(conversation) = &signal.conversation {
-        push_labeled(
-            &mut details,
-            "Session ID",
-            conversation.session_id.as_deref(),
-        );
-    }
+    push_fields_and_actions(&mut details, view);
 
     let mut sections = Vec::new();
     sections.push(details.join("\n"));
 
-    if let Some(conversation) = &signal.conversation {
-        if let Some(prompt) = present(conversation.prompt.as_deref()) {
-            sections.push(format!("Prompt: {prompt}"));
-        }
-        if let Some(answer) = present_answer(conversation.answer.as_ref()) {
-            sections.push(format!(
-                "{}: {}",
-                answer.kind.display_label(),
-                answer.content.trim()
-            ));
+    for section in &view.sections {
+        match section {
+            NotificationSection::Prompt(prompt) => sections.push(format!("Prompt: {prompt}")),
+            NotificationSection::Preview(answer) => sections.push(format!("Preview: {answer}")),
+            NotificationSection::Answer(answer) => sections.push(format!("Answer: {answer}")),
         }
     }
 
     sections.join("\n\n")
 }
 
-pub(super) fn format_duration_ms(duration_ms: u64) -> String {
-    let total_seconds = duration_ms / 1_000;
-    let hours = total_seconds / 3_600;
-    let minutes = (total_seconds % 3_600) / 60;
-    let seconds = total_seconds % 60;
+fn push_fields_and_actions(lines: &mut Vec<String>, view: &SignalNotificationView) {
+    let mut actions_pushed = false;
+    for field in &view.fields {
+        if !actions_pushed
+            && matches!(
+                field.key,
+                NotificationFieldKey::Duration
+                    | NotificationFieldKey::Branch
+                    | NotificationFieldKey::Time
+                    | NotificationFieldKey::SessionId
+            )
+        {
+            push_actions(lines, &view.actions);
+            actions_pushed = true;
+        }
+        lines.push(format!("{}: {}", field.label, field.value));
+    }
 
-    if hours > 0 {
-        format!("{hours}h {minutes}m {seconds}s")
-    } else if minutes > 0 {
-        format!("{minutes}m {seconds}s")
-    } else {
-        format!("{seconds}s")
+    if !actions_pushed {
+        push_actions(lines, &view.actions);
     }
 }
 
-fn has_structured_details(signal: &Signal) -> bool {
-    signal.workspace.is_some()
-        || signal.conversation.as_ref().is_some_and(|conversation| {
-            conversation.session_title.is_some()
-                || conversation.session_id.is_some()
-                || conversation.prompt.is_some()
-                || conversation.answer.is_some()
-                || conversation.model.is_some()
-        })
-        || !signal.links.is_empty()
-}
-
-fn push_link(lines: &mut Vec<String>, link: &SignalLink) {
-    let label = link.label.trim();
-    let url = link.url.trim();
-    if !label.is_empty() && !url.is_empty() {
-        lines.push(format!("{label}: {url}"));
+fn push_actions(lines: &mut Vec<String>, actions: &[NotificationAction]) {
+    for action in actions {
+        lines.push(format!("{}: {}", action.label, action.url));
     }
-}
-
-fn push_labeled(lines: &mut Vec<String>, label: &str, value: Option<&str>) {
-    if let Some(value) = present(value) {
-        lines.push(format!("{label}: {value}"));
-    }
-}
-
-fn push_present(lines: &mut Vec<String>, value: String) {
-    if !value.trim().is_empty() {
-        lines.push(value);
-    }
-}
-
-fn present(value: Option<&str>) -> Option<&str> {
-    value.map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn present_answer(answer: Option<&SignalAnswer>) -> Option<&SignalAnswer> {
-    answer.filter(|answer| !answer.content.trim().is_empty())
 }
 
 #[cfg(test)]

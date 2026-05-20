@@ -14,10 +14,12 @@ use crate::delivery::{
 use crate::local_machine;
 use crate::local_open_bridge::codex_thread_bridge_url;
 use crate::provider_urls::validate_feishu_lark_webhook_url;
-use crate::providers::formatting::format_duration_ms;
 use crate::providers::http::provider_http_client;
+use crate::providers::notification_view::{
+    NotificationAction, NotificationFieldKey, NotificationSection, SignalNotificationView,
+};
 use crate::router::{Provider, ProviderFuture};
-use crate::signal::{Signal, SignalAnswerKind, SignalLink};
+use crate::signal::Signal;
 
 type HmacSha256 = Hmac<Sha256>;
 const CODEX_CARD_TEMPLATE: &str = "purple";
@@ -209,7 +211,8 @@ struct FeishuLarkCard {
 impl FeishuLarkCard {
     fn from_signal(signal: &Signal, computer_name: &str) -> Self {
         let detail_time = format_local_timestamp(signal.timestamp);
-        let card_body = FeishuLarkCardBody::from_signal(signal, &detail_time);
+        let view = SignalNotificationView::from_signal(signal, &detail_time);
+        let card_body = FeishuLarkCardBody::from_view(&view);
 
         Self {
             config: FeishuLarkCardConfig {
@@ -219,7 +222,7 @@ impl FeishuLarkCard {
                 template: CODEX_CARD_TEMPLATE,
                 title: FeishuLarkPlainText {
                     tag: "plain_text",
-                    content: format_header_title(computer_name, signal.title(), &card_body),
+                    content: format_header_title(computer_name, &view.title, &card_body),
                 },
             },
             elements: format_signal_card_elements(card_body),
@@ -416,41 +419,64 @@ struct FeishuLarkAnswerBlock {
 }
 
 impl FeishuLarkCardBody {
+    #[cfg(test)]
     fn from_signal(signal: &Signal, formatted_time: &str) -> Self {
+        let view = SignalNotificationView::from_signal(signal, formatted_time);
+        Self::from_view(&view)
+    }
+
+    fn from_view(view: &SignalNotificationView) -> Self {
         let mut other_details = Vec::new();
 
-        if !has_structured_card_content(signal) {
-            push_markdown_detail(&mut other_details, signal.summary());
+        if let Some(summary) = view.summary.as_deref() {
+            push_markdown_detail(&mut other_details, summary);
         }
 
-        let workspace = signal.workspace.as_ref();
-        let conversation = signal.conversation.as_ref();
-        let lifecycle = signal.lifecycle.as_ref();
+        let prompt = view.sections.iter().find_map(|section| match section {
+            NotificationSection::Prompt(prompt) => Some(prompt.to_string()),
+            NotificationSection::Preview(_) | NotificationSection::Answer(_) => None,
+        });
+        let answer = view.sections.iter().find_map(|section| match section {
+            NotificationSection::Preview(answer) => Some(FeishuLarkAnswerBlock {
+                label: "Preview",
+                content: answer.to_string(),
+            }),
+            NotificationSection::Answer(answer) => Some(FeishuLarkAnswerBlock {
+                label: "Answer",
+                content: answer.to_string(),
+            }),
+            NotificationSection::Prompt(_) => None,
+        });
 
         Self {
-            project: workspace.and_then(|workspace| workspace.project_name.clone()),
-            project_path: workspace.and_then(|workspace| workspace.project_path.clone()),
-            session_title: conversation
-                .and_then(|conversation| present(conversation.session_title.as_deref()))
+            project: view
+                .field_value(NotificationFieldKey::Project)
                 .map(ToOwned::to_owned),
-            session_id: conversation
-                .and_then(|conversation| present(conversation.session_id.as_deref()))
+            project_path: view
+                .field_value(NotificationFieldKey::ProjectPath)
                 .map(ToOwned::to_owned),
-            model: conversation.and_then(|conversation| conversation.model.clone()),
-            duration: lifecycle
-                .and_then(|lifecycle| lifecycle.duration_ms)
-                .map(format_duration_ms),
-            branch: workspace.and_then(|workspace| workspace.branch.clone()),
-            time: Some(formatted_time.to_string()),
+            session_title: view
+                .field_value(NotificationFieldKey::Session)
+                .map(ToOwned::to_owned),
+            session_id: view
+                .field_value(NotificationFieldKey::SessionId)
+                .map(ToOwned::to_owned),
+            model: view
+                .field_value(NotificationFieldKey::Model)
+                .map(ToOwned::to_owned),
+            duration: view
+                .field_value(NotificationFieldKey::Duration)
+                .map(ToOwned::to_owned),
+            branch: view
+                .field_value(NotificationFieldKey::Branch)
+                .map(ToOwned::to_owned),
+            time: view
+                .field_value(NotificationFieldKey::Time)
+                .map(ToOwned::to_owned),
             other_details,
-            open_link: signal.links.iter().find_map(feishu_action_link),
-            prompt: conversation.and_then(|conversation| conversation.prompt.clone()),
-            answer: conversation
-                .and_then(|conversation| conversation.answer.as_ref())
-                .map(|answer| FeishuLarkAnswerBlock {
-                    label: answer_label(answer.kind),
-                    content: answer.content.trim().to_string(),
-                }),
+            open_link: view.actions.iter().find_map(feishu_action_link),
+            prompt,
+            answer,
         }
     }
 
@@ -462,13 +488,25 @@ impl FeishuLarkCardBody {
         let mut columns = Vec::new();
 
         if let Some(project) = self.project.as_deref() {
-            columns.push(metric_column("Project Name", project, None));
+            columns.push(metric_column(
+                NotificationFieldKey::Project.label(),
+                project,
+                None,
+            ));
         }
         if let Some(branch) = self.branch.as_deref() {
-            columns.push(metric_column("Branch", branch, None));
+            columns.push(metric_column(
+                NotificationFieldKey::Branch.label(),
+                branch,
+                None,
+            ));
         }
         if let Some(model) = self.model.as_deref() {
-            columns.push(metric_column("Model", model, None));
+            columns.push(metric_column(
+                NotificationFieldKey::Model.label(),
+                model,
+                None,
+            ));
         }
 
         if columns.is_empty() {
@@ -482,10 +520,18 @@ impl FeishuLarkCardBody {
         let mut columns = Vec::new();
 
         if let Some(duration) = self.duration.as_deref() {
-            columns.push(metric_column("Duration", duration, None));
+            columns.push(metric_column(
+                NotificationFieldKey::Duration.label(),
+                duration,
+                None,
+            ));
         }
         if let Some(time) = self.time.as_deref() {
-            columns.push(metric_column("Time", strip_numeric_timezone(time), None));
+            columns.push(metric_column(
+                NotificationFieldKey::Time.label(),
+                strip_numeric_timezone(time),
+                None,
+            ));
         }
 
         if columns.is_empty() {
@@ -496,22 +542,14 @@ impl FeishuLarkCardBody {
     }
 
     fn session_row(&self) -> Option<FeishuLarkCardElement> {
-        self.session_id
-            .as_deref()
-            .map(|session_id| column_set(vec![metric_column("Session ID", session_id, None)]))
-    }
-}
-
-fn has_structured_card_content(signal: &Signal) -> bool {
-    signal.workspace.is_some()
-        || signal.conversation.as_ref().is_some_and(|conversation| {
-            conversation.session_title.is_some()
-                || conversation.session_id.is_some()
-                || conversation.prompt.is_some()
-                || conversation.answer.is_some()
-                || conversation.model.is_some()
+        self.session_id.as_deref().map(|session_id| {
+            column_set(vec![metric_column(
+                NotificationFieldKey::SessionId.label(),
+                session_id,
+                None,
+            )])
         })
-        || !signal.links.is_empty()
+    }
 }
 
 fn push_markdown_detail(details: &mut Vec<String>, value: &str) {
@@ -521,25 +559,21 @@ fn push_markdown_detail(details: &mut Vec<String>, value: &str) {
     }
 }
 
-fn answer_label(kind: SignalAnswerKind) -> &'static str {
-    kind.display_label()
-}
-
-fn feishu_action_link(link: &SignalLink) -> Option<FeishuLarkActionLink> {
-    let label = link.label.trim();
+fn feishu_action_link(action: &NotificationAction) -> Option<FeishuLarkActionLink> {
+    let label = action.label.trim();
     if label.is_empty() {
         return None;
     }
 
-    let url = feishu_action_url(link)?;
+    let url = feishu_action_url(&action.url)?;
     Some(FeishuLarkActionLink {
         label: label.to_string(),
         url,
     })
 }
 
-fn feishu_action_url(link: &SignalLink) -> Option<String> {
-    let url = link.url.trim();
+fn feishu_action_url(url: &str) -> Option<String> {
+    let url = url.trim();
     if url.is_empty() {
         return None;
     }
