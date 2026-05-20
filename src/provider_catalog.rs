@@ -519,7 +519,7 @@ mod tests {
     }
 
     fn docs_limit_text(constraint: ProviderMessageConstraint, limit: usize) -> String {
-        if constraint.unit == MessageLimitUnit::Bytes && limit % 1024 == 0 {
+        if constraint.unit == MessageLimitUnit::Bytes && limit.is_multiple_of(1024) {
             return format!("{} KB", limit / 1024);
         }
 

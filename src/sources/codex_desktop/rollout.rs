@@ -7,16 +7,14 @@ use anyhow::{Context, anyhow};
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::warn;
-use uuid::Uuid;
 
-use crate::config::{AnswerDetail, SourceConfig};
+use crate::config::SourceConfig;
 use crate::signal::{
-    Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalDisplay, SignalEvent,
-    SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalLink, SignalSource,
+    SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalLink,
     SignalWorkspace,
 };
+use crate::signal_builder::{SignalConversationDraft, SignalDraft};
 
-const PREVIEW_LIMIT_CHARS: usize = 360;
 const DEFAULT_TITLE: &str = "Codex Desktop";
 const DEFAULT_SUMMARY: &str = "Codex Desktop finished a task.";
 
@@ -218,14 +216,13 @@ pub(super) fn read_session_info(path: &Path) -> anyhow::Result<SessionInfo> {
     Ok(session)
 }
 
-pub(super) fn signal_from_task_complete(
+pub(super) fn draft_from_task_complete(
     source: &SourceConfig,
     session: &SessionInfo,
     session_title: Option<&str>,
     task: TaskComplete,
-    answer_detail: AnswerDetail,
     prompt: Option<&str>,
-) -> Option<Signal> {
+) -> Option<SignalDraft> {
     if !session.is_codex_desktop() {
         return None;
     }
@@ -234,7 +231,7 @@ pub(super) fn signal_from_task_complete(
     let answer = task
         .last_agent_message
         .as_deref()
-        .and_then(|message| answer_block(message, answer_detail));
+        .and_then(answer_candidate);
     let prompt = prompt.and_then(prompt_block).map(ToOwned::to_owned);
     let branch = present_owned(session.branch.as_deref());
     let session_title = present_owned(session_title);
@@ -257,56 +254,48 @@ pub(super) fn signal_from_task_complete(
         metadata.insert("codex_model_provider".to_string(), model_provider.clone());
     }
 
-    let mut signal = Signal::new_structured_with_timestamp(
-        Uuid::new_v4().to_string(),
-        SignalSource {
-            id: source.id.clone(),
-            source_type: source.source_type.as_str().to_string(),
-        },
-        SignalEvent {
-            kind: SignalEventKind::TurnCompleted,
-            raw_name: Some("task_complete".to_string()),
-        },
-        SignalDisplay {
-            title: DEFAULT_TITLE.to_string(),
-            summary: DEFAULT_SUMMARY.to_string(),
-        },
-        task.timestamp,
-        metadata,
+    let mut draft = SignalDraft::new(
+        source.id.clone(),
+        source.source_type,
+        DEFAULT_TITLE,
+        DEFAULT_SUMMARY,
     );
 
-    signal.workspace = workspace_if_present(SignalWorkspace {
+    draft.event = SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("task_complete".to_string()),
+    };
+    draft.timestamp = Some(task.timestamp);
+    draft.metadata = metadata;
+    draft.workspace = workspace_if_present(SignalWorkspace {
         cwd,
         project_name: project,
         project_path,
         branch,
         worktree: None,
     });
-    signal.conversation = Some(SignalConversation {
+    draft.conversation = Some(SignalConversationDraft {
         session_id: session.id.clone(),
         session_title,
         turn_id: Some(turn_id),
         prompt,
-        answer: answer.map(|answer| SignalAnswer {
-            kind: answer.kind,
-            content: answer.content,
-        }),
+        answer,
         model: present_owned(session.model.as_deref()),
     });
-    signal.lifecycle = Some(SignalLifecycle {
+    draft.lifecycle = Some(SignalLifecycle {
         status: Some(SignalLifecycleStatus::Completed),
         started_at: None,
         completed_at: task.completed_at.and_then(timestamp_from_epoch_seconds),
         duration_ms: task.duration_ms.map(|duration_ms| duration_ms as u64),
     });
     if let Some(thread_link) = thread_link {
-        signal.links.push(SignalLink {
+        draft.links.push(SignalLink {
             label: "Open in Codex".to_string(),
             url: thread_link,
         });
     }
 
-    Some(signal)
+    Some(draft)
 }
 
 fn workspace_if_present(workspace: SignalWorkspace) -> Option<SignalWorkspace> {
@@ -322,23 +311,9 @@ fn workspace_if_present(workspace: SignalWorkspace) -> Option<SignalWorkspace> {
     }
 }
 
-struct AnswerBlock {
-    kind: SignalAnswerKind,
-    content: String,
-}
-
-fn answer_block(value: &str, answer_detail: AnswerDetail) -> Option<AnswerBlock> {
+fn answer_candidate(value: &str) -> Option<String> {
     let value = strip_codex_app_directive_lines(value);
-    let (kind, content) = match answer_detail {
-        AnswerDetail::Preview => (SignalAnswerKind::Preview, preview_text(&value)),
-        AnswerDetail::Full => (SignalAnswerKind::Full, value.trim().to_string()),
-    };
-
-    if content.is_empty() {
-        None
-    } else {
-        Some(AnswerBlock { kind, content })
-    }
+    present_owned(Some(&value))
 }
 
 fn prompt_block(value: &str) -> Option<&str> {
@@ -449,6 +424,10 @@ fn parse_rollout_line(
     line: &str,
     include_user_messages: bool,
 ) -> anyhow::Result<Option<RolloutItem>> {
+    if !include_user_messages && rollout_line_is_user_message(line).unwrap_or(false) {
+        return Ok(None);
+    }
+
     let value: serde_json::Value =
         serde_json::from_str(line).context("failed to parse rollout JSON line")?;
     let record_type = value
@@ -483,6 +462,27 @@ fn parse_rollout_line(
         }
         _ => Ok(None),
     }
+}
+
+fn rollout_line_is_user_message(line: &str) -> anyhow::Result<bool> {
+    let envelope: RolloutLineKind =
+        serde_json::from_str(line).context("failed to parse rollout JSON line")?;
+    Ok(envelope.record_type.as_deref() == Some("event_msg")
+        && envelope.payload.payload_type.as_deref() == Some("user_message"))
+}
+
+#[derive(Debug, Deserialize)]
+struct RolloutLineKind {
+    #[serde(rename = "type")]
+    record_type: Option<String>,
+    #[serde(default)]
+    payload: RolloutPayloadKind,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RolloutPayloadKind {
+    #[serde(rename = "type")]
+    payload_type: Option<String>,
 }
 
 fn parse_rollout_session_context_line(line: &str) -> Option<RolloutItem> {
@@ -650,21 +650,6 @@ fn parse_rfc3339_timestamp(value: &str) -> Option<DateTime<Utc>> {
 
 fn timestamp_from_epoch_seconds(value: i64) -> Option<DateTime<Utc>> {
     Utc.timestamp_opt(value, 0).single()
-}
-
-fn preview_text(value: &str) -> String {
-    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    truncate_chars(&compact, PREVIEW_LIMIT_CHARS)
-}
-
-fn truncate_chars(value: &str, limit: usize) -> String {
-    let mut chars = value.chars();
-    let truncated: String = chars.by_ref().take(limit).collect();
-    if chars.next().is_some() {
-        format!("{truncated}...")
-    } else {
-        truncated
-    }
 }
 
 fn present_owned(value: Option<&str>) -> Option<String> {

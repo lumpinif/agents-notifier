@@ -1,9 +1,15 @@
 mod support;
 
+use std::collections::BTreeMap;
+
 use agents_router::config::SourceType;
 use agents_router::local_ingress::{LocalIngressState, route_event_with_state};
-use agents_router::signal::{SignalAnswerKind, SignalEventKind};
-use agents_router::sources::{claude_code, codex_cli, gemini_cli, github_copilot_cli};
+use agents_router::signal::{
+    SignalAnswerKind, SignalEvent, SignalEventKind, SignalLifecycleStatus, SignalWorkspace,
+};
+use agents_router::sources::{
+    agent_hook, claude_code, codex_cli, gemini_cli, github_copilot_cli, opencode_cli,
+};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use support::{SignalCaptureProvider, source_contract_config};
 
@@ -245,5 +251,117 @@ async fn github_copilot_notification_fixture_routes_custom_signal() {
     assert_eq!(
         signal.metadata.get("notification_type").map(String::as_str),
         Some("agent_idle")
+    );
+}
+
+#[tokio::test]
+async fn opencode_cli_idle_session_routes_turn_completed_signal() {
+    let config = source_contract_config("opencode_cli", SourceType::AgentHook);
+    let state = LocalIngressState::default();
+    let capture = SignalCaptureProvider::new();
+    let event = opencode_cli::local_event_from_session_input(
+        "opencode_cli",
+        serde_json::from_str(
+            r#"{
+                "event": {
+                    "type": "session.status",
+                    "properties": {
+                        "sessionID": "opencode-session-1",
+                        "status": { "type": "idle" }
+                    }
+                },
+                "cwd": "/Users/tester/projects/agents-router",
+                "worktree": "main",
+                "timestamp": "2026-05-12T10:15:30Z",
+                "model": "opencode-model"
+            }"#,
+        )
+        .expect("OpenCode fixture should parse"),
+    )
+    .expect("OpenCode fixture should create local event");
+
+    route_event_with_state(&config, &[&capture], &state, event)
+        .await
+        .expect("OpenCode fixture should route signal");
+
+    let signals = capture.signals();
+    assert_eq!(signals.len(), 1);
+    let signal = &signals[0];
+    assert_eq!(signal.source.id, "opencode_cli");
+    assert_eq!(signal.source.source_type, "agent_hook");
+    assert_eq!(signal.event.kind, SignalEventKind::TurnCompleted);
+    assert_eq!(
+        signal
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.worktree.as_deref()),
+        Some("main")
+    );
+    assert_eq!(
+        signal
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.session_id.as_deref()),
+        Some("opencode-session-1")
+    );
+    assert_eq!(
+        signal
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.status),
+        Some(SignalLifecycleStatus::Completed)
+    );
+    assert_eq!(
+        signal.metadata.get("status_type").map(String::as_str),
+        Some("idle")
+    );
+}
+
+#[tokio::test]
+async fn generic_structured_agent_hook_preserves_user_supplied_metadata() {
+    let config = source_contract_config("cursor_cli", SourceType::AgentHook);
+    let state = LocalIngressState::default();
+    let capture = SignalCaptureProvider::new();
+    let mut metadata = BTreeMap::new();
+    metadata.insert("user_key".to_string(), "user_value".to_string());
+    let event = agent_hook::local_event_from_structured_hook(
+        "cursor_cli",
+        agent_hook::StructuredAgentHookInput {
+            display: agent_hook::StructuredAgentHookDisplay {
+                title: "Cursor CLI".to_string(),
+                summary: "Cursor CLI finished a task.".to_string(),
+            },
+            event: SignalEvent {
+                kind: SignalEventKind::TurnCompleted,
+                raw_name: Some("wrapper.completed".to_string()),
+            },
+            workspace: Some(SignalWorkspace {
+                cwd: Some("/Users/tester/projects/agents-router".to_string()),
+                project_name: Some("agents-router".to_string()),
+                project_path: Some("/Users/tester/projects/agents-router".to_string()),
+                branch: None,
+                worktree: None,
+            }),
+            conversation: None,
+            lifecycle: None,
+            links: Vec::new(),
+            metadata,
+        },
+    )
+    .expect("structured hook should create local event");
+
+    route_event_with_state(&config, &[&capture], &state, event)
+        .await
+        .expect("structured hook should route signal");
+
+    let signals = capture.signals();
+    assert_eq!(signals.len(), 1);
+    let signal = &signals[0];
+    assert_eq!(signal.source.id, "cursor_cli");
+    assert_eq!(signal.source.source_type, "agent_hook");
+    assert_eq!(signal.event.raw_name.as_deref(), Some("wrapper.completed"));
+    assert_eq!(
+        signal.metadata.get("user_key").map(String::as_str),
+        Some("user_value")
     );
 }

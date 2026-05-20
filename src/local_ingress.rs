@@ -17,19 +17,25 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::time::{Duration, timeout};
 use tracing::{info, warn};
 
-use crate::config::{AnswerDetail, PromptDetail, SourceType, ValidatedConfig};
+use crate::config::{SourceType, ValidatedConfig};
 use crate::delivery_safety::DeliverySafetyGuard;
 use crate::paths::{IngressEndpoint, codex_sessions_dir_path};
 use crate::router::{DeliveryReport, Provider, Router};
 use crate::runtime::RuntimeState;
 use crate::signal::{
-    Signal, SignalAnswer, SignalAnswerKind, SignalConversation, SignalEvent, SignalEventKind,
-    SignalLifecycle, SignalLifecycleStatus, SignalLink, SignalWorkspace,
+    SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalLink,
+    SignalWorkspace,
 };
-use crate::sources::{agent_hook, agents_router, claude_code, codex_cli};
+use crate::signal_builder::{SignalBuilder, SignalConversationDraft, SignalDraft};
+use crate::sources::codex_cli;
 
 const READINESS_PING_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// Cross-process local ingress payload.
+///
+/// This type is the wire DTO accepted from `agents-router emit` / `ingest` over
+/// the local socket or named pipe. It is not the internal source draft model.
+/// Convert it to `SignalDraft` only at the local ingress boundary.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSignalEvent {
     pub source_id: String,
@@ -70,6 +76,29 @@ impl LocalSignalEvent {
             metadata: BTreeMap::new(),
         }
     }
+
+    fn into_signal_draft(self, expected_source_type: SourceType) -> SignalDraft {
+        let mut draft =
+            SignalDraft::new(self.source_id, expected_source_type, self.title, self.body);
+        if let Some(event) = self.event {
+            draft.event = event;
+        }
+        draft.workspace = self.workspace;
+        draft.lifecycle = self.lifecycle;
+        draft.links = self.links;
+        draft.metadata.extend(self.metadata);
+        if let Some(conversation) = self.conversation {
+            draft.conversation = Some(SignalConversationDraft {
+                session_id: conversation.session_id,
+                session_title: conversation.session_title,
+                turn_id: conversation.turn_id,
+                prompt: conversation.prompt,
+                answer: conversation.answer,
+                model: conversation.model,
+            });
+        }
+        draft
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -87,6 +116,11 @@ impl LocalSignalAction {
     }
 }
 
+/// Conversation fields carried by the local ingress wire DTO.
+///
+/// Builder-level privacy gates are intentionally not applied here. This type
+/// only preserves what the caller submitted; `SignalBuilder` decides what can
+/// enter the final `Signal`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocalSignalConversation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -498,9 +532,10 @@ async fn route_event_with_state_and_codex_sessions_dir_and_safety(
         return Ok(DeliveryReport::default());
     }
 
-    let mut signal = create_signal(config, event)?;
-    apply_session_context(state, &mut signal)?;
-    apply_turn_start_context(state, &mut signal)?;
+    let mut draft = create_signal_draft(config, event)?;
+    apply_session_context(state, &mut draft)?;
+    apply_turn_start_context(state, &mut draft)?;
+    let signal = SignalBuilder::new(config).build(draft)?;
     info!(
         signal.id = %signal.id,
         source.id = %signal.source_id(),
@@ -638,24 +673,21 @@ fn store_turn_start(
     Ok(())
 }
 
-fn create_signal(config: &ValidatedConfig, event: LocalSignalEvent) -> anyhow::Result<Signal> {
-    let source_id = event.source_id.clone();
-    let title = event.title.clone();
-    let body = event.body.clone();
-    let source = validate_local_ingress_source(config, &source_id)?;
+#[cfg(test)]
+fn create_signal(
+    config: &ValidatedConfig,
+    event: LocalSignalEvent,
+) -> anyhow::Result<crate::signal::Signal> {
+    let draft = create_signal_draft(config, event)?;
+    SignalBuilder::new(config).build(draft)
+}
 
-    let mut signal = match source.source_type {
-        SourceType::AgentsRouter => agents_router::create_signal(config, &source_id, title, body),
-        SourceType::AgentHook => agent_hook::create_signal(config, &source_id, title, body),
-        SourceType::ClaudeCode => claude_code::create_signal(config, &source_id, title, body),
-        SourceType::CodexCli => codex_cli::create_signal(config, &source_id, title, body),
-        SourceType::CodexDesktop => {
-            unreachable!("codex_desktop is rejected before signal creation")
-        }
-    }?;
-
-    apply_local_structured_fields(config, &mut signal, event);
-    Ok(signal)
+fn create_signal_draft(
+    config: &ValidatedConfig,
+    event: LocalSignalEvent,
+) -> anyhow::Result<SignalDraft> {
+    let source = validate_local_ingress_source(config, &event.source_id)?;
+    Ok(event.into_signal_draft(source.source_type))
 }
 
 fn validate_local_ingress_source<'a>(
@@ -676,33 +708,9 @@ fn validate_local_ingress_source<'a>(
     Ok(source)
 }
 
-fn apply_local_structured_fields(
-    config: &ValidatedConfig,
-    signal: &mut Signal,
-    event: LocalSignalEvent,
-) {
-    if let Some(event) = event.event {
-        signal.event = event;
-    }
-    signal.workspace = event.workspace;
-    signal.lifecycle = event.lifecycle;
-    signal.links = event.links;
-    signal.metadata.extend(event.metadata);
-    if let Some(conversation) = event.conversation {
-        signal.conversation = Some(SignalConversation {
-            session_id: conversation.session_id,
-            session_title: conversation.session_title,
-            turn_id: conversation.turn_id,
-            prompt: prompt_for_config(conversation.prompt, config.notification.prompt_detail),
-            answer: answer_for_config(conversation.answer, config.notification.answer_detail),
-            model: conversation.model,
-        });
-    }
-}
-
-fn apply_session_context(state: &LocalIngressState, signal: &mut Signal) -> anyhow::Result<()> {
-    let source_id = signal.source_id().to_string();
-    let Some(conversation) = signal.conversation.as_mut() else {
+fn apply_session_context(state: &LocalIngressState, draft: &mut SignalDraft) -> anyhow::Result<()> {
+    let source_id = draft.source_id.clone();
+    let Some(conversation) = draft.conversation.as_mut() else {
         return Ok(());
     };
     if conversation.model.is_some() {
@@ -717,13 +725,16 @@ fn apply_session_context(state: &LocalIngressState, signal: &mut Signal) -> anyh
     Ok(())
 }
 
-fn apply_turn_start_context(state: &LocalIngressState, signal: &mut Signal) -> anyhow::Result<()> {
-    if signal.event.kind != SignalEventKind::TurnCompleted {
+fn apply_turn_start_context(
+    state: &LocalIngressState,
+    draft: &mut SignalDraft,
+) -> anyhow::Result<()> {
+    if draft.event.kind != SignalEventKind::TurnCompleted {
         return Ok(());
     }
 
-    let source_id = signal.source_id().to_string();
-    let Some(conversation) = signal.conversation.as_ref() else {
+    let source_id = draft.source_id.clone();
+    let Some(conversation) = draft.conversation.as_ref() else {
         return Ok(());
     };
     let Some(session_id) = conversation.session_id.as_deref() else {
@@ -733,7 +744,7 @@ fn apply_turn_start_context(state: &LocalIngressState, signal: &mut Signal) -> a
         return Ok(());
     };
 
-    let lifecycle = signal.lifecycle.get_or_insert(SignalLifecycle {
+    let lifecycle = draft.lifecycle.get_or_insert(SignalLifecycle {
         status: Some(SignalLifecycleStatus::Completed),
         started_at: None,
         completed_at: None,
@@ -757,41 +768,6 @@ fn apply_turn_start_context(state: &LocalIngressState, signal: &mut Signal) -> a
     }
 
     Ok(())
-}
-
-fn prompt_for_config(prompt: Option<String>, prompt_detail: PromptDetail) -> Option<String> {
-    if prompt_detail != PromptDetail::On {
-        return None;
-    }
-
-    prompt.and_then(present_owned)
-}
-
-fn answer_for_config(answer: Option<String>, answer_detail: AnswerDetail) -> Option<SignalAnswer> {
-    let answer = answer.and_then(present_owned)?;
-    let (kind, content) = match answer_detail {
-        AnswerDetail::Preview => (SignalAnswerKind::Preview, preview_text(&answer)),
-        AnswerDetail::Full => (SignalAnswerKind::Full, answer),
-    };
-
-    if content.is_empty() {
-        None
-    } else {
-        Some(SignalAnswer { kind, content })
-    }
-}
-
-fn preview_text(value: &str) -> String {
-    const LIMIT: usize = 360;
-
-    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut chars = compact.chars();
-    let truncated: String = chars.by_ref().take(LIMIT).collect();
-    if chars.next().is_some() {
-        format!("{truncated}...")
-    } else {
-        truncated
-    }
 }
 
 fn present_owned(value: String) -> Option<String> {

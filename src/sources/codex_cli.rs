@@ -6,23 +6,13 @@ use serde::Deserialize;
 use crate::config::{SourceType, ValidatedConfig};
 use crate::local_ingress::{LocalSignalConversation, LocalSignalEvent};
 use crate::signal::{
-    Signal, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
+    SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
 };
-use crate::sources::agent_hook;
 use crate::sources::codex_desktop::{self, CodexSessionOrigin};
 use crate::sources::hook_payload::{present, project_name_from_cwd};
 
 const DEFAULT_TITLE: &str = "Codex CLI";
 const DEFAULT_BODY: &str = "Codex CLI finished a task.";
-
-pub fn create_signal(
-    config: &ValidatedConfig,
-    source_id: &str,
-    title: impl Into<String>,
-    body: impl Into<String>,
-) -> anyhow::Result<Signal> {
-    agent_hook::create_signal_for_type(config, source_id, SourceType::CodexCli, title, body)
-}
 
 #[derive(Debug, Deserialize)]
 pub struct CodexCliStopHookInput {
@@ -154,42 +144,6 @@ mod tests {
     };
     use crate::signal::SignalLifecycleStatus;
     use tempfile::tempdir;
-
-    #[test]
-    fn creates_signal_from_cli_args() {
-        let config = test_config(SourceType::CodexCli);
-
-        let signal = create_signal(&config, "codex_cli", "Codex", "Ready for review.")
-            .expect("codex_cli source should create signal");
-
-        assert_eq!(signal.source_id(), "codex_cli");
-        assert_eq!(signal.source_type(), "codex_cli");
-        assert_eq!(signal.title(), "Codex");
-        assert_eq!(signal.summary(), "Ready for review.");
-    }
-
-    #[test]
-    fn rejects_missing_source() {
-        let config = test_config(SourceType::CodexCli);
-
-        let err = create_signal(&config, "missing", "Codex", "Body")
-            .expect_err("missing source should fail");
-
-        assert!(
-            err.to_string()
-                .contains("source `missing` is not configured")
-        );
-    }
-
-    #[test]
-    fn rejects_non_codex_cli_source() {
-        let config = test_config(SourceType::CodexDesktop);
-
-        let err = create_signal(&config, "codex_cli", "Codex", "Body")
-            .expect_err("wrong source type should fail");
-
-        assert!(err.to_string().contains("expected `codex_cli`"));
-    }
 
     #[test]
     fn creates_local_event_from_stop_hook_input() {

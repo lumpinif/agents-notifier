@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -565,6 +566,74 @@ async fn delivery_safety_reset_request_clears_live_guard() {
         serde_json::from_slice(&std::fs::read(state_path).expect("state should be readable"))
             .expect("state should be JSON");
     assert_eq!(persisted["global_pause"], serde_json::Value::Null);
+}
+
+#[test]
+fn local_signal_event_is_converted_to_draft_at_single_ingress_boundary() {
+    let mut metadata = BTreeMap::new();
+    metadata.insert("safe_key".to_string(), "safe_value".to_string());
+    let mut event =
+        LocalSignalEvent::new("gemini_cli", "Gemini CLI", "Gemini CLI finished a task.");
+    event.event = Some(SignalEvent {
+        kind: SignalEventKind::TurnCompleted,
+        raw_name: Some("AfterAgent".to_string()),
+    });
+    event.workspace = Some(SignalWorkspace {
+        cwd: Some("/Users/tester/projects/agents-router".to_string()),
+        project_name: Some("agents-router".to_string()),
+        project_path: Some("/Users/tester/projects/agents-router".to_string()),
+        branch: None,
+        worktree: None,
+    });
+    event.conversation = Some(LocalSignalConversation {
+        session_id: Some("session-1".to_string()),
+        session_title: None,
+        turn_id: None,
+        prompt: Some("Review this patch.".to_string()),
+        answer: Some("Ready for review.".to_string()),
+        model: Some("gemini-3-pro".to_string()),
+    });
+    event.lifecycle = Some(SignalLifecycle {
+        status: Some(SignalLifecycleStatus::Completed),
+        started_at: None,
+        completed_at: Some(timestamp()),
+        duration_ms: Some(420_000),
+    });
+    event.metadata = metadata;
+
+    let draft = event.into_signal_draft(SourceType::AgentHook);
+
+    assert_eq!(draft.source_id, "gemini_cli");
+    assert_eq!(draft.expected_source_type, SourceType::AgentHook);
+    assert_eq!(draft.display.title, "Gemini CLI");
+    assert_eq!(draft.display.summary, "Gemini CLI finished a task.");
+    assert_eq!(draft.event.kind, SignalEventKind::TurnCompleted);
+    assert_eq!(draft.event.raw_name.as_deref(), Some("AfterAgent"));
+    assert_eq!(
+        draft
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.project_name.as_deref()),
+        Some("agents-router")
+    );
+    assert_eq!(
+        draft
+            .conversation
+            .as_ref()
+            .and_then(|conversation| conversation.prompt.as_deref()),
+        Some("Review this patch.")
+    );
+    assert_eq!(
+        draft
+            .lifecycle
+            .as_ref()
+            .and_then(|lifecycle| lifecycle.duration_ms),
+        Some(420_000)
+    );
+    assert_eq!(
+        draft.metadata.get("safe_key").map(String::as_str),
+        Some("safe_value")
+    );
 }
 
 #[test]

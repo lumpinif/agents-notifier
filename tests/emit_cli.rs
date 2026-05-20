@@ -522,7 +522,7 @@ async fn ingest_submits_claude_code_user_prompt_submit_context_to_local_service_
     assert_eq!(request["workspace"]["project_name"], "agents-router");
     assert_eq!(request["conversation"]["session_id"], "claude-session-1");
     assert_eq!(request["conversation"]["prompt"], Value::Null);
-    assert_eq!(request["lifecycle"]["started_at"].is_string(), true);
+    assert!(request["lifecycle"]["started_at"].is_string());
     assert_eq!(request["metadata"]["permission_mode"], "default");
     assert_eq!(request["metadata"]["transcript_path"], Value::Null);
 }

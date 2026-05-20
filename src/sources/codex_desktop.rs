@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time;
 use tracing::{debug, info, warn};
 
-use crate::config::{AnswerDetail, PromptDetail, SourceConfig, SourceType, ValidatedConfig};
+use crate::config::{PromptDetail, SourceConfig, SourceType, ValidatedConfig};
 use crate::delivery_safety::DeliverySafetyGuard;
 use crate::paths::{
     codex_desktop_source_state_path, codex_session_index_path, codex_sessions_dir_path,
@@ -18,10 +18,11 @@ use crate::paths::{
 use crate::router::{Provider, Router};
 use crate::runtime::RuntimeState;
 use crate::signal::Signal;
+use crate::signal_builder::SignalBuilder;
 use rollout::{
     RolloutItem, SessionInfo, completed_rollout_offset, discover_rollout_paths,
-    load_session_titles, path_key, read_new_rollout_items, read_session_info,
-    signal_from_task_complete,
+    draft_from_task_complete, load_session_titles, path_key, read_new_rollout_items,
+    read_session_info,
 };
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -58,11 +59,7 @@ pub async fn watch(runtime: RuntimeState) -> anyhow::Result<()> {
                 let watcher = watcher
                     .as_mut()
                     .expect("Codex Desktop watcher should exist after start");
-                let batch = watcher.poll(
-                    source,
-                    snapshot.config.notification.answer_detail,
-                    snapshot.config.notification.prompt_detail,
-                )?;
+                let batch = watcher.poll(&snapshot.config, source)?;
                 let providers = snapshot.provider_refs();
                 let delivery_safety = runtime.delivery_safety();
                 route_and_checkpoint_batch(
@@ -197,10 +194,10 @@ impl CodexDesktopSessionWatcher {
 
     fn poll(
         &self,
+        config: &ValidatedConfig,
         source: &SourceConfig,
-        answer_detail: AnswerDetail,
-        prompt_detail: PromptDetail,
     ) -> anyhow::Result<CodexDesktopPollBatch> {
+        let prompt_detail = config.notification.prompt_detail;
         let titles = load_session_titles(&self.session_index_path)?;
         let mut state = self.state.clone();
         let mut pending_prompts = self.pending_prompts.clone();
@@ -291,14 +288,14 @@ impl CodexDesktopSessionWatcher {
                             None
                         };
 
-                        if let Some(signal) = signal_from_task_complete(
+                        if let Some(draft) = draft_from_task_complete(
                             source,
                             &session,
                             titles.get(session_id).map(String::as_str),
                             task,
-                            answer_detail,
                             prompt.as_deref(),
                         ) {
+                            let signal = SignalBuilder::new(config).build(draft)?;
                             state.delivered_turns.insert(delivery_key);
                             state.prune_delivered_turns();
                             signals.push(signal);

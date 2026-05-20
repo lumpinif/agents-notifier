@@ -2,8 +2,12 @@ use chrono::{DateTime, Utc};
 use std::io::Write;
 use tempfile::NamedTempFile;
 
-use crate::config::{AnswerDetail, SourceConfig, SourceType};
+use crate::config::{
+    AnswerDetail, CliConfig, LogConfig, NotificationConfig, PromptDetail, ProviderType, RawConfig,
+    RawProviderConfig, RouteConfig, SourceConfig, SourceType, ValidatedConfig,
+};
 use crate::signal::{SignalAnswerKind, SignalEventKind, SignalLifecycleStatus};
+use crate::signal_builder::{SignalBuilder, SignalDraft};
 
 use super::*;
 
@@ -61,15 +65,15 @@ fn creates_signal_from_task_complete_rollout_event() {
             ),
         };
 
-    let signal = signal_from_task_complete(
+    let draft = draft_from_task_complete(
         &source,
         &session,
         Some("agents-router sync report"),
         task,
-        AnswerDetail::Preview,
         None,
     )
     .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Preview, PromptDetail::Off);
 
     assert_eq!(signal.source_id(), "codex_desktop");
     assert_eq!(signal.source_type(), "codex_desktop");
@@ -114,8 +118,8 @@ fn creates_signal_from_task_complete_rollout_event() {
     assert_eq!(signal.links.len(), 1);
     assert_eq!(signal.links[0].label, "Open in Codex");
     assert_eq!(signal.links[0].url, "codex://threads/session-1");
-    assert!(signal.metadata.get("turn_id").is_none());
-    assert!(signal.metadata.get("duration_ms").is_none());
+    assert!(!signal.metadata.contains_key("turn_id"));
+    assert!(!signal.metadata.contains_key("duration_ms"));
 }
 
 #[test]
@@ -136,8 +140,9 @@ fn creates_signal_with_full_answer_detail() {
         last_agent_message: Some("Fixed the route.\n\nNext, run the tests.".to_string()),
     };
 
-    let signal = signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full, None)
+    let draft = draft_from_task_complete(&source, &session, None, task, None)
         .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Full, PromptDetail::Off);
 
     let answer = signal
         .conversation
@@ -166,15 +171,10 @@ fn creates_signal_with_prompt_before_answer() {
         last_agent_message: Some("Fixed the route.".to_string()),
     };
 
-    let signal = signal_from_task_complete(
-        &source,
-        &session,
-        None,
-        task,
-        AnswerDetail::Full,
-        Some("Please fix the route."),
-    )
-    .expect("Codex Desktop task should create a signal");
+    let draft =
+        draft_from_task_complete(&source, &session, None, task, Some("Please fix the route."))
+            .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Full, PromptDetail::On);
 
     let conversation = signal.conversation.expect("conversation should be set");
     assert_eq!(
@@ -208,8 +208,9 @@ fn full_answer_detail_omits_codex_app_directives() {
         ),
     };
 
-    let signal = signal_from_task_complete(&source, &session, None, task, AnswerDetail::Full, None)
+    let draft = draft_from_task_complete(&source, &session, None, task, None)
         .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Full, PromptDetail::Off);
 
     let answer = signal
         .conversation
@@ -235,10 +236,20 @@ fn parses_user_message_without_logging_or_reading_extra_fields() {
 
 #[test]
 fn ignores_user_message_when_prompt_detail_is_off() {
-    let line = r#"{"timestamp":"2026-05-09T17:35:42.000Z","type":"event_msg","payload":{"type":"user_message","message":"Please fix the route.","images":[]}}"#;
+    let large_prompt = "Please fix the route. ".repeat(10_000);
+    let line = serde_json::json!({
+        "timestamp": "2026-05-09T17:35:42.000Z",
+        "type": "event_msg",
+        "payload": {
+            "type": "user_message",
+            "message": large_prompt,
+            "images": []
+        }
+    })
+    .to_string();
 
     assert!(
-        parse_rollout_line(line, false)
+        parse_rollout_line(&line, false)
             .expect("line should parse")
             .is_none()
     );
@@ -246,13 +257,29 @@ fn ignores_user_message_when_prompt_detail_is_off() {
 
 #[test]
 fn preview_detail_omits_codex_app_directives() {
-    let block = answer_block(
-        "Implemented the fix.\n\n::git-stage{cwd=\"/repo\"}",
-        AnswerDetail::Preview,
-    )
-    .expect("answer block should be present");
+    let source = source_config();
+    let session = SessionInfo {
+        id: Some("session-1".to_string()),
+        originator: Some("Codex Desktop".to_string()),
+        ..SessionInfo::default()
+    };
+    let task = TaskComplete {
+        turn_id: "turn-1".to_string(),
+        timestamp: Utc::now(),
+        completed_at: None,
+        duration_ms: Some(1_000),
+        last_agent_message: Some("Implemented the fix.\n\n::git-stage{cwd=\"/repo\"}".to_string()),
+    };
 
-    assert_eq!(block.content, "Implemented the fix.");
+    let draft = draft_from_task_complete(&source, &session, None, task, None)
+        .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Preview, PromptDetail::Off);
+    let answer = signal
+        .conversation
+        .and_then(|conversation| conversation.answer)
+        .expect("answer should be set");
+
+    assert_eq!(answer.content, "Implemented the fix.");
 }
 
 #[test]
@@ -281,10 +308,7 @@ fn ignores_non_desktop_codex_originator() {
         last_agent_message: Some("done".to_string()),
     };
 
-    assert!(
-        signal_from_task_complete(&source, &session, None, task, AnswerDetail::Preview, None)
-            .is_none()
-    );
+    assert!(draft_from_task_complete(&source, &session, None, task, None).is_none());
 }
 
 #[test]
@@ -433,9 +457,9 @@ fn model_provider_does_not_become_conversation_model() {
         last_agent_message: Some("done".to_string()),
     };
 
-    let signal =
-        signal_from_task_complete(&source, &session, None, task, AnswerDetail::Preview, None)
-            .expect("Codex Desktop task should create a signal");
+    let draft = draft_from_task_complete(&source, &session, None, task, None)
+        .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Preview, PromptDetail::Off);
     let conversation = signal.conversation.expect("conversation should be set");
 
     assert_eq!(conversation.model, None);
@@ -446,17 +470,33 @@ fn model_provider_does_not_become_conversation_model() {
 }
 
 #[test]
-fn truncates_preview_on_character_boundary() {
-    assert_eq!(truncate_chars("abcdef", 3), "abc...");
-    assert_eq!(preview_text("hello\n\nworld"), "hello world");
-}
+fn preview_detail_compacts_and_limits_answer_context() {
+    let source = source_config();
+    let session = SessionInfo {
+        id: Some("session-1".to_string()),
+        originator: Some("Codex Desktop".to_string()),
+        ..SessionInfo::default()
+    };
+    let task = TaskComplete {
+        turn_id: "turn-1".to_string(),
+        timestamp: Utc::now(),
+        completed_at: None,
+        duration_ms: Some(1_000),
+        last_agent_message: Some(format!("hello\n\n{}", "a".repeat(361))),
+    };
 
-#[test]
-fn limits_preview_to_useful_but_bounded_context() {
-    let preview = preview_text(&"a".repeat(PREVIEW_LIMIT_CHARS + 1));
+    let draft = draft_from_task_complete(&source, &session, None, task, None)
+        .expect("Codex Desktop task should create a signal");
+    let signal = build_signal(draft, AnswerDetail::Preview, PromptDetail::Off);
+    let preview = signal
+        .conversation
+        .and_then(|conversation| conversation.answer)
+        .expect("answer should be set")
+        .content;
 
-    assert_eq!(preview.chars().count(), PREVIEW_LIMIT_CHARS + 3);
+    assert_eq!(preview.chars().count(), 363);
     assert!(preview.ends_with("..."));
+    assert!(preview.starts_with("hello "));
 }
 
 fn source_config() -> SourceConfig {
@@ -464,4 +504,38 @@ fn source_config() -> SourceConfig {
         id: "codex_desktop".to_string(),
         source_type: SourceType::CodexDesktop,
     }
+}
+
+fn build_signal(
+    draft: SignalDraft,
+    answer_detail: AnswerDetail,
+    prompt_detail: PromptDetail,
+) -> crate::signal::Signal {
+    let config = test_config(answer_detail, prompt_detail);
+    SignalBuilder::new(&config)
+        .build(draft)
+        .expect("draft should build")
+}
+
+fn test_config(answer_detail: AnswerDetail, prompt_detail: PromptDetail) -> ValidatedConfig {
+    let mut provider = RawProviderConfig::new("debug", ProviderType::Webhook);
+    provider.url = Some("https://example.com/hook".to_string());
+
+    RawConfig {
+        schema_version: 1,
+        cli: CliConfig::default(),
+        log: LogConfig::default(),
+        notification: NotificationConfig {
+            answer_detail,
+            prompt_detail,
+        },
+        sources: vec![source_config()],
+        providers: vec![provider],
+        routes: vec![RouteConfig::new(
+            vec!["codex_desktop".to_string()],
+            vec!["debug".to_string()],
+        )],
+    }
+    .validate()
+    .expect("test config should validate")
 }

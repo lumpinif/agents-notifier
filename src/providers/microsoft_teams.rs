@@ -228,7 +228,7 @@ fn validate_request_size(
 }
 
 fn format_payload_limit(limit: usize) -> String {
-    if limit % 1024 == 0 {
+    if limit.is_multiple_of(1024) {
         return format!("{} KB", limit / 1024);
     }
 

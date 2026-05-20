@@ -18,6 +18,7 @@ pub mod runtime;
 pub mod service;
 pub mod setup;
 pub mod signal;
+pub(crate) mod signal_builder;
 pub mod source_integration_catalog;
 pub mod sources;
 pub mod update;

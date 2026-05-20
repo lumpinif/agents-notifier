@@ -13,7 +13,7 @@ pub(super) struct LoadedConfig {
 }
 
 pub(super) enum ProviderSetupOutcome {
-    Loaded(LoadedConfig),
+    Loaded(Box<LoadedConfig>),
     Exit(i32),
 }
 
@@ -488,7 +488,7 @@ pub(super) async fn run_provider_setup(path: &Path) -> anyhow::Result<ProviderSe
 
     run_guided_provider_setup(path, mode, defaults, i18n)
         .await
-        .map(ProviderSetupOutcome::Loaded)
+        .map(|loaded| ProviderSetupOutcome::Loaded(Box::new(loaded)))
 }
 
 pub(super) async fn run_guided_provider_setup(

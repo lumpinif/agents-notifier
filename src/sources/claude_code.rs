@@ -4,25 +4,14 @@ use anyhow::Context;
 use chrono::Utc;
 use serde::Deserialize;
 
-use crate::config::{SourceType, ValidatedConfig};
 use crate::local_ingress::{LocalSignalAction, LocalSignalConversation, LocalSignalEvent};
 use crate::signal::{
-    Signal, SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
+    SignalEvent, SignalEventKind, SignalLifecycle, SignalLifecycleStatus, SignalWorkspace,
 };
-use crate::sources::agent_hook;
 use crate::sources::hook_payload::{present, project_name_from_cwd};
 
 const DEFAULT_TITLE: &str = "Claude Code";
 const STOP_BODY: &str = "Claude Code finished a task.";
-
-pub fn create_signal(
-    config: &ValidatedConfig,
-    source_id: &str,
-    title: impl Into<String>,
-    body: impl Into<String>,
-) -> anyhow::Result<Signal> {
-    agent_hook::create_signal_for_type(config, source_id, SourceType::ClaudeCode, title, body)
-}
 
 #[derive(Debug, Deserialize)]
 pub struct ClaudeCodeHookInput {
@@ -250,38 +239,6 @@ fn metadata_from_hook_input(input: &ClaudeCodeHookInput) -> BTreeMap<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        CliConfig, LogConfig, NotificationConfig, ProviderType, RawConfig, RawProviderConfig,
-        RouteConfig, SourceConfig, SourceType, ValidatedConfig,
-    };
-
-    #[test]
-    fn creates_signal_from_claude_code_hook_event() {
-        let config = test_config(SourceType::ClaudeCode);
-
-        let signal = create_signal(
-            &config,
-            "claude_code",
-            "Claude Code",
-            "Claude Code finished a task.",
-        )
-        .expect("claude_code source should create signal");
-
-        assert_eq!(signal.source_id(), "claude_code");
-        assert_eq!(signal.source_type(), "claude_code");
-        assert_eq!(signal.title(), "Claude Code");
-        assert_eq!(signal.summary(), "Claude Code finished a task.");
-    }
-
-    #[test]
-    fn rejects_non_claude_code_source() {
-        let config = test_config(SourceType::AgentHook);
-
-        let err = create_signal(&config, "claude_code", "Claude Code", "Body")
-            .expect_err("wrong source type should fail");
-
-        assert!(err.to_string().contains("expected `claude_code`"));
-    }
 
     #[test]
     fn creates_local_event_from_stop_hook_input() {
@@ -513,28 +470,5 @@ mod tests {
         .expect_err("unsupported hook should fail");
 
         assert!(err.to_string().contains("SessionStart"));
-    }
-
-    fn test_config(source_type: SourceType) -> ValidatedConfig {
-        let mut provider = RawProviderConfig::new("debug", ProviderType::Webhook);
-        provider.url = Some("https://example.com/hook".to_string());
-
-        RawConfig {
-            schema_version: 1,
-            cli: CliConfig::default(),
-            log: LogConfig::default(),
-            notification: NotificationConfig::default(),
-            sources: vec![SourceConfig {
-                id: "claude_code".to_string(),
-                source_type,
-            }],
-            providers: vec![provider],
-            routes: vec![RouteConfig::new(
-                vec!["claude_code".to_string()],
-                vec!["debug".to_string()],
-            )],
-        }
-        .validate()
-        .expect("test config should validate")
     }
 }

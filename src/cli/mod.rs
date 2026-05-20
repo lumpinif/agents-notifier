@@ -245,7 +245,7 @@ pub async fn run() -> anyhow::Result<()> {
             let config_path = resolve_config_path(config_path)?;
             print_legacy_migration(legacy::migrate_legacy_installation(&config_path)?);
             let loaded = match run_provider_setup(&config_path).await? {
-                ProviderSetupOutcome::Loaded(loaded) => loaded,
+                ProviderSetupOutcome::Loaded(loaded) => *loaded,
                 ProviderSetupOutcome::Exit(code) => std::process::exit(code),
             };
             run_start_service(&config_path, loaded, true, true).await

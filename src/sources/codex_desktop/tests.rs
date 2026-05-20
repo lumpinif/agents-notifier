@@ -38,7 +38,10 @@ fn first_run_skips_existing_rollout_events_then_emits_new_events() {
     )
     .expect("watcher should start");
     let first = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("first poll should pass");
     assert!(first.signals.is_empty());
     watcher.commit(first).expect("first batch should commit");
@@ -49,7 +52,10 @@ fn first_run_skips_existing_rollout_events_then_emits_new_events() {
         &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
     );
     let second = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("second poll should pass");
 
     assert_eq!(second.signals.len(), 1);
@@ -100,7 +106,10 @@ fn prompt_detail_on_attaches_prompt_without_persisting_it() {
     )
     .expect("watcher should start");
     watcher
-        .poll(&source_config(), AnswerDetail::Full, PromptDetail::On)
+        .poll(
+            &watcher_config(AnswerDetail::Full, PromptDetail::On),
+            &source_config(),
+        )
         .and_then(|batch| watcher.commit(batch))
         .expect("first poll should pass");
 
@@ -110,7 +119,10 @@ fn prompt_detail_on_attaches_prompt_without_persisting_it() {
         &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "fixed"),
     );
     let batch = watcher
-        .poll(&source_config(), AnswerDetail::Full, PromptDetail::On)
+        .poll(
+            &watcher_config(AnswerDetail::Full, PromptDetail::On),
+            &source_config(),
+        )
         .expect("second poll should pass");
 
     assert_eq!(batch.signals.len(), 1);
@@ -158,7 +170,10 @@ fn partial_rollout_line_is_not_checkpointed() {
     )
     .expect("watcher should start");
     let first = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("first poll should pass");
     assert!(first.signals.is_empty());
     watcher.commit(first).expect("first batch should commit");
@@ -169,7 +184,10 @@ fn partial_rollout_line_is_not_checkpointed() {
         .expect("fixture should contain last_agent_message");
     append_raw(&rollout_path, &complete_line[..split_at]);
     let partial = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("partial poll should pass");
     assert!(partial.signals.is_empty());
     watcher
@@ -179,7 +197,10 @@ fn partial_rollout_line_is_not_checkpointed() {
     append_raw(&rollout_path, &complete_line[split_at..]);
     append_raw(&rollout_path, "\n");
     let completed = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("completed poll should pass");
 
     assert_eq!(completed.signals.len(), 1);
@@ -221,7 +242,10 @@ fn bootstrap_does_not_checkpoint_partial_rollout_line() {
     )
     .expect("watcher should start");
     let partial = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("partial poll should pass");
     assert!(partial.signals.is_empty());
     watcher
@@ -231,7 +255,10 @@ fn bootstrap_does_not_checkpoint_partial_rollout_line() {
     append_raw(&rollout_path, &complete_line[split_at..]);
     append_raw(&rollout_path, "\n");
     let completed = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("completed poll should pass");
 
     assert_eq!(completed.signals.len(), 1);
@@ -267,7 +294,10 @@ fn uncommitted_poll_retries_task_complete() {
     )
     .expect("watcher should start");
     watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .and_then(|batch| watcher.commit(batch))
         .expect("first poll should pass");
 
@@ -276,10 +306,16 @@ fn uncommitted_poll_retries_task_complete() {
         &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
     );
     let first_attempt = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("first task poll should pass");
     let retry_attempt = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("retry task poll should pass");
 
     assert_eq!(first_attempt.signals.len(), 1);
@@ -296,7 +332,10 @@ fn uncommitted_poll_retries_task_complete() {
         .commit(retry_attempt)
         .expect("successful retry should commit");
     let after_commit = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("post-commit poll should pass");
     assert!(after_commit.signals.is_empty());
 }
@@ -324,7 +363,10 @@ async fn provider_failure_does_not_reopen_codex_desktop_rollout_events() {
     )
     .expect("watcher should start");
     watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .and_then(|batch| watcher.commit(batch))
         .expect("first poll should pass");
 
@@ -333,7 +375,10 @@ async fn provider_failure_does_not_reopen_codex_desktop_rollout_events() {
         &task_complete_line("turn-new", "2026-05-09T17:01:32.000Z", "new result"),
     );
     let batch = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("task poll should pass");
     assert_eq!(batch.signals.len(), 1);
 
@@ -344,7 +389,10 @@ async fn provider_failure_does_not_reopen_codex_desktop_rollout_events() {
         .expect("provider failure should not fail checkpointing");
 
     let after_failure = watcher
-        .poll(&source_config(), AnswerDetail::Preview, PromptDetail::Off)
+        .poll(
+            &watcher_config(AnswerDetail::Preview, PromptDetail::Off),
+            &source_config(),
+        )
         .expect("post-failure poll should pass");
     assert!(
         after_failure.signals.is_empty(),
@@ -382,9 +430,25 @@ fn source_config() -> SourceConfig {
 }
 
 fn routing_config() -> ValidatedConfig {
-    ValidatedConfig::from_toml_str(
+    watcher_config(AnswerDetail::Preview, PromptDetail::Off)
+}
+
+fn watcher_config(answer_detail: AnswerDetail, prompt_detail: PromptDetail) -> ValidatedConfig {
+    let answer_detail = match answer_detail {
+        AnswerDetail::Preview => "preview",
+        AnswerDetail::Full => "full",
+    };
+    let prompt_detail = match prompt_detail {
+        PromptDetail::Off => "off",
+        PromptDetail::On => "on",
+    };
+    ValidatedConfig::from_toml_str(&format!(
         r#"
 schema_version = 1
+
+[notification]
+answer_detail = "{answer_detail}"
+prompt_detail = "{prompt_detail}"
 
 [[sources]]
 id = "codex_desktop"
@@ -399,8 +463,8 @@ url = "http://127.0.0.1:9/unused"
 sources = ["codex_desktop"]
 providers = ["failing"]
 "#,
-    )
-    .expect("routing config should be valid")
+    ))
+    .expect("watcher config should be valid")
 }
 
 fn session_meta_line(session_id: &str) -> String {
